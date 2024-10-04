@@ -189,6 +189,10 @@ Sound playback is mapped as follows:
 
 > 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2' and 'key5' cannot be played back through a TCD keypad command.
 
+If a button is configured as a maintained switch in the Config Portal, keyX will be played on each flip. keyXl cannot be played.
+
+If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
+
 ### WiFi connection:
 
 If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up.
@@ -365,7 +369,9 @@ The Remote supports the MQTT protocol version 3.1.1 for the following features:
 
 ### Send messages through buttons 1-8
 
-In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm. 
+In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm.
+
+The ON message will be sent when a button has been pressed, the OFF message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the ON message will be sent when the switch is closed, the OFF message when it is opened.
 
 ### Control the Remote via MQTT
 
