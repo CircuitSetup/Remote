@@ -331,13 +331,13 @@ The names of the audio files must only consist of three-digit numbers, starting 
 
 Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you - provided you can live with the files being sorted in alphabetical order: Just copy your files with their original filenames to the music folder; upon boot or upon selecting a folder containing such files, they will be renamed following the 3-digit name scheme (as mentioned: in alphabetic order). You can also add files to a music folder later, they will be renamed properly; when you do so, delete the file "TCD_DONE.TXT" from the music folder on the SD card so that the firmware knows that something has changed. The renaming process can take a while (10 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the control board as this speeds up the process.
 
-To start and stop music playback, TODO. TODO jumps to the previous song, TODO to the next one. (The same can be achieved by entering codes on the TCD's keypad: 7002 = previous song, 7005 = play/stop, 7008 = next song).
+To start and stop music playback, hold "O.O" for 2 seconds. Briefly pressing "O.O" jumps to the previous song, pressing "RESET" to the next one. (The same can be achieved by entering codes on the TCD's keypad: 7002 = previous song, 7005 = play/stop, 7008 = next song).
 
-By default, the songs are played in order, starting at 000.mp3, followed by 001.mp3 and so on. TODO enables Shuffle mode, TODO disables Shuffle mode. TODO restarts the player at song number 0. The power-up Shuffle mode can be set up in the Config Portal.
+By default, the songs are played in order, starting at 000.mp3, followed by 001.mp3 and so on. Holding "RESET" toggles Shuffle mode. The power-up Shuffle mode can be set up in the Config Portal.
 
-See [here](#music-player-mode) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
+See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
 
-While the music player is playing music, other sound effects are disabled/muted. Initiating a time travel stops the music player. The TCD-triggered alarm will, if so configured, sound and stop the music player.
+While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, sound and stop the music player.
 
 ## Connecting a Time Circuits Display
 
