@@ -9,13 +9,13 @@ The firmware has the following minimum requirements:
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Additionally, up to eight "buttons" can be installed, used for audio playback and/or MQTT messaging. These buttons are hereinafter called "Buttons 1-8", and all of them are optional.
+Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging.
 
-Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, "Buttons 1-8" to assign.
+Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
 
-"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board (unless you want to power down your Futaba prop by pulling out the USB cable from the battery). The other can, for instance, be equipped with a 3-position momentary flat handle mini toggle switch, provide two momentary connections, one of which can be "Calibration", the other #1 of "Buttons 1-8". 
+"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board (unless you want to power down your Futaba prop by pulling out the USB cable from the battery). The other can, for instance, be equipped with a 3-position momentary flat handle mini toggle switch, provide two momentary connections, one of which can be "Calibration", the other a User Button. 
 
-You can also wire the "Fail Safe Set" button on the Futaba as "Calibration", and/or use the Futaba's toggle switches on the top and front as "Buttons 1-8".
+You can also wire the "Fail Safe Set" button on the Futaba as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
 ### How to take apart the Futaba remote control
 
@@ -69,9 +69,9 @@ Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T
 
 #### Toggle switches
 
-Note that using the Futaba's original front and top toggle switches is entirely optional, and doing it is not trivial. They would serve as "buttons 1-8" for audio playback and MQTT messages.
+Note that using the Futaba's original front and top toggle switches is entirely optional, and doing it is not trivial. They would serve as User Buttons for audio playback and MQTT messages.
 
-If you do not wish to use your Futaba's toggle switches, you can use the "UP/DOWN" and "HOLD" switches on the Unibox instead; you can install three-position momentary switches there and have four "buttons" as a result.
+If you do not wish to use your Futaba's toggle switches, you can use the "UP/DOWN" and "HOLD" switches on the Unibox instead; you can install three-position momentary switches there and have four User Buttons as a result.
 
 If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and to the GND screw connector on the Control Board.
 
