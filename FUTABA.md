@@ -29,4 +29,9 @@
 
 Now you can access the potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
+### Pot connection
+
+![pot](img/pot.jpg)
+
+Desolder the red/green/black wires from the pot an attach new ones to connect the pot to the Control Board
 
