@@ -22,7 +22,7 @@
 
 ![part6](img/htof6.jpg)
 
-9) Remove four silver screws around the antenna, and pull out antenna as far as the wire permits
+9) Remove four silver screws (7) around the antenna, and pull out antenna as far as the wire permits
 10) Remove two silver screws on the top of the main PCB
 11) Remove five ribbon cables on the main PCB
 12) Lift main PCB (at this point, it is held by only pin sockets that connect it to other PCBs)
