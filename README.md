@@ -7,7 +7,7 @@ Features:
 - Movie-accurate sound effects
 - Lever on actual Futaba remote control used for acceleration and speed maintenance
 - Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (if your Remote has the "FAIL SAFE SET" button on the back side, it is recommended to use that one) 
-- Eight optional buttons ("User Buttons") for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
+- Eight optional buttons ("[User Buttons](#user-buttons)") for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
@@ -146,9 +146,9 @@ The Calibration button needs to be a momentary contact.
 
 ### Buttons "O.O" and "RESET"
 
-These two buttons serve different purposes depending on whether or not the additional (optional) User Buttons (see below) are enabled in the Config Portal.
+These two buttons serve different purposes depending on whether or not the optional [User Buttons](#user-buttons) are enabled in the Config Portal.
 
-If the additional User Buttons are enabled:
+If the User Buttons are enabled:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td><a href="#the-music-player">Music Player</a>: Previous Song</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
@@ -189,7 +189,7 @@ Sound playback is mapped as follows:
 
 > 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2' and 'key5' cannot be played back through a TCD keypad command.
 
-If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option "Maintained: Audio on ON only" is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
+If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option **_Maintained: Audio on ON only_** is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
 
