@@ -12,7 +12,7 @@
 
 5) Remove two black screws (5) on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different)
 
-![part1](img/htof4.jpg)
+![part4](img/htof4.jpg)
 
 6) Remove four black screws (6) on the bottom
 
