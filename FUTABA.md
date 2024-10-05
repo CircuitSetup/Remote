@@ -29,8 +29,11 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 ![part6](img/htof6.jpg)
 
 9) Remove four silver screws (7) around the antenna, and pull out antenna as far as the wire permits
-10) Remove two silver screws on the top of the main PCB
-11) Remove five ribbon cables on the main PCB
+
+![part7](img/htof7.jpg)
+
+10) Remove two silver screws (8) on the top of the main PCB
+11) Remove five ribbon cables (9) on the main PCB
 12) Lift main PCB; at this point, it is held by only pin sockets that connect it to other PCBs; you can't pull it out entirely because it is connected to other parts by wires.
 
 Now you can access the potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
