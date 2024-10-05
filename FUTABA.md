@@ -48,11 +48,15 @@ Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T
 
 ### Button/switch connections
 
-If you want to wire switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and the GND screw connector on the Control Board.
+If you want to wire switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and to the GND screw connector on the Control Board.
 
 Some of the switches on the Futaba are interconnected, such as the ones on top, right hand side (when viewed from the front). Check the traces of the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
 
 Do not re-connect the wide ribbon cables to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with switch operation.
+
+The "Fail Safe Set" button on the back makes an excellent "Calibration" button. Desolder the green and yellow wires, and connect your new wires to the Control Board in their place:
+
+![FailSafeSet](img/fss.jpg)
 
 ### Wires
 
