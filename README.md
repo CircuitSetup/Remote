@@ -422,7 +422,7 @@ After the Remote has restarted, re-enter the Remote's Config Portal (while the T
 
 Using this setup enables the Remote to communicate with your TCD wirelessly, and to query the TCD for data. Also, the TCD keypad can be used to remote-control the Remote.
 
-In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://drmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
+In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
 
 ## Flash Wear
 
