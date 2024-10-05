@@ -5,15 +5,15 @@ This repository holds the most current firmware for a Futaba remote control kit 
 Features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. The throttle can increase or decrease speed, the "Stop" switch controls the "brakes" on the TCD. When the speed on the TCD reaches 88mph, a time travel is triggered.
 - Movie-accurate sound effects
-- Lever on actual Futaba remote control used for acceleration
-- Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (if your Remote has the "FAIL SAFE SET" button on the back side, I recommend using that one) 
-- Eight optional buttons for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
+- Lever on actual Futaba remote control used for acceleration and speed maintenance
+- Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (if your Remote has the "FAIL SAFE SET" button on the back side, it is recommended to use that one) 
+- Eight optional buttons ("User Buttons") for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
 
-Hardware note: The "Calibration" button as well as buttons 1-8 can be wired freely. Calibration needs to be a momentary contact, while buttons 1-8 can be either momentary or maintained. The firmware has no designated function for "HOLD" and "UP/DOWN", so those two can be used, along with any buttons/switches on the Futaba remote itself.
+Hardware note: The "Calibration" button as well as the User Buttons can be wired freely. Calibration needs to be a momentary contact, while the User Buttons can be either momentary or maintained. The firmware has no designated function for "HOLD" and "UP/DOWN", so those two can be used, along with any buttons/switches on the Futaba remote itself.
 
 ## Firmware Installation
 
@@ -146,16 +146,16 @@ The Calibration button needs to be a momentary contact.
 
 ### Buttons "O.O" and "RESET"
 
-These two buttons serve different purposes depending on whether or not the additional (optional) buttons 1-8 (see below) are enabled in the Config Portal.
+These two buttons serve different purposes depending on whether or not the additional (optional) User Buttons (see below) are enabled in the Config Portal.
 
-If the additional buttons 1-8 are enabled:
+If the additional User Buttons are enabled:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td><a href="#the-music-player">Music Player</a>: Previous Song</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
   <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
 </table>
 
-If the additional buttons are disabled:
+If the User Buttons are disabled:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td>Play "<a href="#additional-custom-sounds">key3.mp3</a>"</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
@@ -169,7 +169,7 @@ When fake power is off, the buttons are used to set up audio volume and brightne
   <tr><td>Button "RESET"</td><td>Volume down</td><td>Brightness down</td></tr>
 </table>
 
-### Buttons 1-8
+### User Buttons
 
 These buttons are entirely optional. You can install any number of buttons, they only serve the purpose of playing back user-provided sound effects and/or send user-configurable messages to an [MQTT](#home-assistant--mqtt) broker.
 
@@ -189,7 +189,7 @@ Sound playback is mapped as follows:
 
 > 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2' and 'key5' cannot be played back through a TCD keypad command.
 
-If a button is configured as a maintained switch in the Config Portal, keyX will be played on each flip. keyXl cannot be played.
+If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option "Maintained: Audio on ON only" is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
 
@@ -314,8 +314,8 @@ The firmware supports some additional user-provided sound effects, which it will
 
 - "poweroff.mp3": Played when the Remote is (fake)-powered off.
 - "brakeoff.mp3": Played when the brake is switched off.
-- "key1.mp3", "key2.mp3", ""key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#buttons-1-8), and by typing 700x on the TCD's keypad (connected through BTTFN).
-- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#buttons-1-8).
+- "key1.mp3", "key2.mp3", ""key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), and by typing 700x on the TCD's keypad (connected through BTTFN).
+- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons).
 
 > The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the MusicPlayer occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
 
@@ -367,9 +367,9 @@ You can use BTTF-Network and MQTT at the same time, see immediately below.
 
 The Remote supports the MQTT protocol version 3.1.1 for the following features:
 
-### Send messages through buttons 1-8
+### Send messages through User Buttons
 
-In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm.
+In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight User buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm.
 
 The ON message will be sent when a button has been pressed, the OFF message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the ON message will be sent when the switch is closed, the OFF message when it is opened.
 
@@ -594,10 +594,14 @@ This procedure ensures that all your settings are copied from the old to the new
 
 #### Hardware settings
 
-##### &#9654; Disable buttons 1-8
+##### &#9654; Disable User Buttons
 
-This disables all of the optional buttons 1-8. Note that buttons "O.O" and "RESET" change function in that case.
+This disables all of the optional User Buttons. Note that buttons "O.O" and "RESET" change function in that case.
 
 ##### &#9654; Button x is maintained
 
 You might want use one or more switches of the Futaba remote for sound effects and/or MQTT messages. If that switch is a maintained contact, check this option for the respective "button" number. Leave unchecked when using a momentary button.
+
+##### &#9654; Maintained: Play audio on ON only
+
+If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
