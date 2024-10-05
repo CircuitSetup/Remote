@@ -1,6 +1,6 @@
 ## How to take apart the Futaba remote control
 
-![The Config Portal](img/htof1.jpg)
+![part1](img/htof1.jpg)
 
 1) Remove the cover of the adjustment panel (1) on the back
 2) Remove the transmitter module (2); it is held by two clips at top and bottom
@@ -8,9 +8,11 @@
 
 4) Remove four black screws on the adjustment panel, and remove the bezel
 
-![The Config Portal](img/htof3.jpg)
+![part3](img/htof3.jpg)
 
 5) Remove two black screws (5) on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different)
+
+![part1](img/htof4.jpg)
 
 6) Remove four black screws (6) on the bottom
 
