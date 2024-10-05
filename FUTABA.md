@@ -13,7 +13,7 @@ Additionally, up to eight "buttons" can be installed, used for audio playback an
 
 Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, "Buttons 1-8" to assign.
 
-"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position momentary flat handle mini toggle switch, provide two momentary connections, one of which can be "Calibration", the other #1 of "Buttons 1-8". 
+"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board (unless you want to power down your Futaba prop by pulling out the USB cable from the battery). The other can, for instance, be equipped with a 3-position momentary flat handle mini toggle switch, provide two momentary connections, one of which can be "Calibration", the other #1 of "Buttons 1-8". 
 
 You can also wire the "Fail Safe Set" button on the Futaba as "Calibration", and/or use the Futaba's toggle switches on the top and front as "Buttons 1-8".
 
