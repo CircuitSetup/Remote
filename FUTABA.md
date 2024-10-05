@@ -16,11 +16,16 @@
 
 6) Remove four black screws (6) on the bottom
 
+![part5](img/htof5.jpg)
+
 7) Pull out side parts
-8) Remove four silver screws around the antenna, and pull out antenna as far as the wire permits
-9) Remove two silver screws on the top of the main PCB
-10) Remove five ribbon cables on the main PCB
-11) Lift main PCB (at this point, it is held by only pin sockets that connect it to other PCBs)
+
+![part6](img/htof6.jpg)
+
+9) Remove four silver screws around the antenna, and pull out antenna as far as the wire permits
+10) Remove two silver screws on the top of the main PCB
+11) Remove five ribbon cables on the main PCB
+12) Lift main PCB (at this point, it is held by only pin sockets that connect it to other PCBs)
 
 Now you can access the potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
