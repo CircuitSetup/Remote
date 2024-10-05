@@ -1,4 +1,8 @@
-## How to take apart the Futaba remote control
+## Hardware
+
+### How to take apart the Futaba remote control
+
+The following instructions only apply to the movie-accurate models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part1](img/htof1.jpg)
 
@@ -18,7 +22,7 @@
 
 ![part5](img/htof5.jpg)
 
-7) Pull out side parts
+7) Pull out side parts; the small switch panels can be pulled out of the side parts easily.
 
 ![part6](img/htof6.jpg)
 
@@ -33,5 +37,20 @@ Now you can access the potentiometer to patch in black-green-red wires in order 
 
 ![pot](img/pot.jpg)
 
-Desolder the red/green/black wires from the pot an attach new ones to connect the pot to the Control Board
+Desolder the red/green/black wires from the pot an attach new ones to connect the pot to the Control Board. The connector on the Control Board is marked R, G, Bk, matching the original wire colors.
 
+Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T8SGH-P, which use a 5k pot and resistancies of 1.8k through 3k for the throttle. If you are using a different model, the electronics might need modifications. Please contact us for more information.
+
+### Button/switch connections
+
+If you want to wire switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and the GND screw connector on the Control Board.
+
+Some of the switches on the Futaba are interconnected, such as the ones on top, right hand side (when viewed from the front). Check the traces of the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+
+Do not re-connect the wide ribbon cables to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with switch operation.
+
+### Wires
+
+The wires need to lead out of the Futaba's body. One way to do this is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward to make room for the wires in the corners.
+
+![wires](img/wires.jpg)
