@@ -10,6 +10,8 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 2) Remove the transmitter module (2); it is held by two clips at top and bottom
 3) Remove the four silver screws (3) on the back and remove back cover
 
+![part2](img/htof2.jpg)
+
 4) Remove four black screws (4) on the adjustment panel, and remove the bezel
 
 ![part3](img/htof3.jpg)
