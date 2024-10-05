@@ -1,20 +1,21 @@
 ## Hardware
 
-This document contains instructions on how to modify your Futaba remote control to work with the kit Control Board.
+This document contains information on buttons/switches as well as instructions on how to modify your Futaba remote control to work with the kit Control Board.
 
 ### Button/switch mapping
 
-The firmware requires the following as a minimum requirement:
+The firmware has the following minimum requirements:
 - Power switch (fake power; maintained)
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, "buttons 1-8" to assign.
+Additionally, up to eight "buttons" can be installed, used for audio playback and/or MQTT messaging. These buttons are hereinafter called "Buttons 1-8", and all of them are optional.
 
-"UP/DOWN" and "HOLD" are free to use to your liking, and, with 3-position momentary flat handle mini toggle switches are installed, provide for four "buttons".
+Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, "Buttons 1-8" to assign.
 
-"Calibration"
+"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position momentary flat handle mini toggle switch, provide two momentary connections, one of which can be "Calibration", the other #1 of "Buttons 1-8". 
 
+You can also wire the "Fail Safe Set" button on the Futaba as "Calibration", and/or use the Futaba's toggle switches on the top and front as "Buttons 1-8".
 
 ### How to take apart the Futaba remote control
 
