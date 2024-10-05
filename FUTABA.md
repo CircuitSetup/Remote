@@ -1,5 +1,21 @@
 ## Hardware
 
+This document contains instructions on how to modify your Futaba remote control to work with the kit Control Board.
+
+### Button/switch mapping
+
+The firmware requires the following as a minimum requirement:
+- Power switch (fake power; maintained)
+- Buttons "O.O" and "RESET" (various functions; momentary)
+- Calibration button (momentary)
+
+Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, "buttons 1-8" to assign.
+
+"UP/DOWN" and "HOLD" are free to use to your liking, and, with 3-position momentary flat handle mini toggle switches are installed, provide for four "buttons".
+
+"Calibration"
+
+
 ### How to take apart the Futaba remote control
 
 The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
@@ -40,25 +56,33 @@ Now you can access the potentiometer to patch in black-green-red wires in order 
 
 It is recommended to remove the battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it.
 
-### Pot connection
+### Throttle connection
 
 ![pot](img/pot.jpg)
 
-Desolder the red/green/black wires from the pot an attach new ones to connect the pot to the Control Board. The connector on the Control Board is marked R, G, Bk, matching the original wire colors.
+Desolder the red/green/black wires from the pot, located top left hand side (looking at it from the back), and attach new ones to connect the pot to the Control Board. The connector on the Control Board is marked R, G, Bk, matching the original wire colors.
 
 Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T8SGH-P, which use a 5k pot and resistancies of 1.8k through 3k for the throttle. If you are using a different model, the electronics might need modifications. Please contact us for more information.
 
 ### Button/switch connections
 
-If you want to wire switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and to the GND screw connector on the Control Board.
+#### Toggle switches
 
-Some of the switches on the Futaba are interconnected, such as the ones on top, left hand side (when viewed from the back). Check the traces of the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+Note that using the Futaba's original front and top toggle switches is entirely optional, and doing it is not trivial. They would serve as "buttons 1-8" for audio playback and MQTT messages.
+
+If you do not wish to use your Futaba's toggle switches, you can use the "UP/DOWN" and "HOLD" switches on the Unibox instead; you can install three-position momentary switches there and have four "buttons" as a result.
+
+If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and to the GND screw connector on the Control Board.
+
+Some of the toggle switches on the Futaba are interconnected, such as the ones on top, left hand side (when viewed from the back). Check the traces of the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+
+Important: Do not re-connect the two widest ribbon cables (top two ones) to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with toggle switch operation.
+
+#### Calibration
 
 The "Fail Safe Set" button on the back makes an excellent "Calibration" button. Desolder the green and yellow wires, and connect your new wires to the Control Board in their place:
 
 ![FailSafeSet](img/fss.jpg)
-
-Important: Do not re-connect the two widest ribbon cables (top two ones) to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with switch operation.
 
 ### Power LED
 
@@ -68,6 +92,6 @@ The power LED is a bit tricky to reach, Its solder points are on the center PCB,
 
 ### Wires
 
-The wires need to lead out of the Futaba's body. One way to do this is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward to make room for the wires in the corners.
+The wires need to lead out of the Futaba's body. One way to do this is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward (or breaking it off) to make room for the wires in the corners.
 
 ![wires](img/wires.jpg)
