@@ -2,7 +2,7 @@
 
 ### How to take apart the Futaba remote control
 
-The following instructions only apply to the movie-accurate models FP-T8SGA-P and FP-T8SGH-P.
+The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part1](img/htof1.jpg)
 
