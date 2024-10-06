@@ -17,6 +17,10 @@ Power, "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optiona
 
 You can also wire the "Fail Safe Set" button on the Futaba as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
+Example schematics:
+
+![schematics](img/schematics.png)
+
 ### How to take apart the Futaba remote control
 
 The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
