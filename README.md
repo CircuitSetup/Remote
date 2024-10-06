@@ -13,7 +13,7 @@ Features:
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
 
-Hardware note: The "Calibration" button as well as the User Buttons can be wired freely. Calibration needs to be a momentary contact, while the User Buttons can be either momentary or maintained. The firmware has no designated function for "HOLD" and "UP/DOWN", so those two can be used, along with any buttons/switches on the Futaba remote itself.
+Hardware note: The "Calibration" button as well as the User Buttons can be wired freely. Calibration needs to be a momentary contact, while the User Buttons can be either momentary or maintained. The firmware has no designated function for "HOLD" and "UP/DOWN", so those two can be used, along with any buttons/switches on the Futaba remote itself. See [here](FUTABA.md) for more information and examples.
 
 ## Firmware Installation
 
