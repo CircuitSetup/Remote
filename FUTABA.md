@@ -89,7 +89,7 @@ The "Fail Safe Set" button on the back makes an excellent "Calibration" button. 
 
 ### Power LED
 
-The power LED is a bit tricky to reach, Its solder points are on the center PCB, below the power meter, under a "flying" pot that looks like a white square. You can bend up that pot to reach the solder points. Left is GND, right is VCC (when viewed from the back). Don't forget to bend the pot back after soldering, otherwise you can't put in the antenna.
+Connecting the Control Board to the Futaba's power LED is optional, and this LED is a bit tricky to access, Its solder points are on the center PCB, below the power meter, under a "flying" pot that looks like a white square. You can bend up that pot to reach the solder points. Left is GND, right is VCC (when viewed from the back). Don't forget to bend the pot back after soldering, otherwise you can't put in the antenna.
 
 ![PowerLED](img/pled.jpg)
 
