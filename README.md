@@ -1,19 +1,17 @@
 # Firmware for Remote Control
 
-This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed.
+This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. See [here](FUTABA.md) for information on the hardware.
 
 Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. The throttle can increase or decrease speed, the "Stop" switch controls the "brakes" on the TCD. When the speed on the TCD reaches 88mph, a time travel is triggered.
 - Movie-accurate sound effects
 - Lever on actual Futaba remote control used for acceleration and speed maintenance
-- Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (if your Remote has the "FAIL SAFE SET" button on the back side, it is recommended to use that one) 
-- Eight optional buttons ("[User Buttons](#user-buttons)") for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
+- Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (can be "HOLD" if a momentary switch is installed, or the "FAIL SAFE SET" button on Futaba). "UP/DOWN" can be used as a (real) power switch.
+- Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
-
-Hardware note: The "Calibration" button as well as the User Buttons can be wired freely. Calibration needs to be a momentary contact, while the User Buttons can be either momentary or maintained. The firmware has no designated function for "HOLD" and "UP/DOWN", so those two can be used, along with any buttons/switches on the Futaba remote itself. See [here](FUTABA.md) for more information and examples.
 
 ## Firmware Installation
 
