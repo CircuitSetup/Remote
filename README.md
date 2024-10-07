@@ -1,8 +1,8 @@
 # Firmware for Remote Control
 
-This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me).
+This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed.
 
-Features:
+Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. The throttle can increase or decrease speed, the "Stop" switch controls the "brakes" on the TCD. When the speed on the TCD reaches 88mph, a time travel is triggered.
 - Movie-accurate sound effects
 - Lever on actual Futaba remote control used for acceleration and speed maintenance
