@@ -603,3 +603,6 @@ You might want use one or more switches of the Futaba remote for sound effects a
 ##### &#9654; Maintained: Play audio on ON only
 
 If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
+
+
+_Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._
