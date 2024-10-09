@@ -23,7 +23,7 @@ Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibratio
 
 "UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board (unless you want to power down your Futaba prop by pulling out the USB cable from the battery). The other can, for instance, be equipped with a 3-position MOM-OFF-MOM or ON-OFF-MOM flat handle mini toggle switch, serving as "Calibration" (MOM) and one User Button. 
 
-If you are willing to modify your Futaba beyond of connecting the throttle pot, you can also wire its "Fail Safe Set" button as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
+If you are willing to modify your Futaba beyond connecting the throttle pot, you can also wire its "Fail Safe Set" button as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
 Example schematics:
 
