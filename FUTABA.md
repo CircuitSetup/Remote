@@ -17,7 +17,7 @@ The firmware has the following minimum requirements:
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging.
+Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These buttons can be momentary or maintained contacts.
 
 Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
 
