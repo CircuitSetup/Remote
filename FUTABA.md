@@ -29,6 +29,8 @@ Example schematics:
 
 ![schematics](img/schematics.png)
 
+The switch for User Button 4 and 5 in above example must be a three-position switch with OFF in the middle.
+
 ### How to take apart the Futaba remote control
 
 The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
