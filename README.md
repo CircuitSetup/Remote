@@ -4,8 +4,9 @@ This repository holds the most current firmware for a Futaba remote control kit 
 
 Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. The throttle can increase or decrease speed, the "Stop" switch controls the "brakes" on the TCD. When the speed on the TCD reaches 88mph, a time travel is triggered.
+- Stick on actual Futaba remote control used for acceleration and speed maintenance
 - Movie-accurate sound effects
-- Lever on actual Futaba remote control used for acceleration and speed maintenance
+- Supports controlling the Futaba's power LED and battery level meter (static display only, not actual level display)
 - Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (can be "HOLD" if a momentary switch is installed, or the "FAIL SAFE SET" button on Futaba). "UP/DOWN" can be used as a (real) power switch.
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
