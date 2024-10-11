@@ -59,7 +59,7 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part6](img/htof6.jpg)
 
-9) Remove four silver screws (7) around the antenna, and pull out the antenna as far as the wire permits
+9) Remove four silver screws (7) around the antenna, and pull out the antenna as far as the wire permits; you could as well cut off that wire since the antenna isn't used.
 
 ![part7](img/htof7.jpg)
 
