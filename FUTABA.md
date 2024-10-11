@@ -105,6 +105,14 @@ Don't forget to bend the "flying pot" back after soldering, otherwise you can't 
 
 ![PowerLED](img/pled.jpg)
 
+### Battery Level Meter
+
+Connecting the Control Board to the Futaba's level meter is, of course, optional. As far as I could make out, it is never showing anything but "zero" in the movie. In order to connect it to the Control Board, solder two wires to the meter's contact like shown below.
+
+![PowerLED](img/blvl1.jpg)
+
+![PowerLED](img/blvl2.jpg)
+
 ### Wires
 
 The wires need to lead out of the Futaba's body. One way to do this is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward (or breaking it off) to make room for the wires in the corners.
