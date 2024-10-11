@@ -3,10 +3,11 @@
 This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. See [here](FUTABA.md) for information on the hardware.
 
 Firmware features:
-- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. The throttle can increase or decrease speed, the "Stop" switch controls the "brakes" on the TCD. When the speed on the TCD reaches 88mph, a time travel is triggered.
-- Stick on actual Futaba remote control used for acceleration and speed maintenance
+- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. 
+- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD reaches 88mph, a time travel is triggered.
+- Supports controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
+- Movie-accurate "Stop" light and stop switch behavior
 - Movie-accurate sound effects
-- Supports controlling the Futaba's power LED and battery level meter (static display only, not actual level display)
 - Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (can be "HOLD" if a momentary switch is installed, or the "FAIL SAFE SET" button on Futaba). "UP/DOWN" can be used as a (real) power switch.
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
@@ -541,6 +542,18 @@ If a TCD is connected via BTTFN or MQTT, the Dash Gauges visually signals when t
 ##### &#9654; Display TCD speed when off
 
 When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
+
+##### &#9654; Use Power LED
+
+If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
+
+##### &#9654; Use Battery Level Meter
+
+If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75% on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below. Please note that the meter does not show actual battery level.
+
+##### &#9654; Power LED/meter on fake power
+
+If unchecked, the power LED and the battery level meter come to life on real power. If checked, they react to fake power.
 
 #### Home Assistant / MQTT settings
 
