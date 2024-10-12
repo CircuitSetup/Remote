@@ -111,6 +111,8 @@ For acceleration, there are two modes: Linear mode and "movie mode". In linear m
 
 When the remote hits 88.0mph, the TCD triggers a time travel.
 
+Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad), acceleration will continue to run after briefliy pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+
 Buttons and switches:
 
 ### "ON/OFF": Fake power
@@ -208,6 +210,10 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
    <tr>
      <td align="left">Toggle display of TCD speed while off</td>
      <td align="left"<td>7061&#9166;</td>
+    </tr>
+   <tr>
+     <td align="left">Toggle auto-throttle</td>
+     <td align="left"<td>7062&#9166;</td>
     </tr>
     <tr>
      <td align="left">Set volume level (00-19)</td>
@@ -467,6 +473,10 @@ Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi conf
 ##### &#9654; Coasting when throttle in neutral
 
 Normally, when this is unchecked, keeping the throttle in neutral (center) position hold the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
+
+##### &#9654; Auto throttle
+
+If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
 ##### &#9654; Brightness level
 
