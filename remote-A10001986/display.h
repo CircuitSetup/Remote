@@ -59,13 +59,14 @@ class remLED {
 
     public:
         remLED();
-        void begin(uint8_t pin);
+        void begin(uint8_t pin, bool doUse = true);
 
         void setState(bool state);
         bool getState();
 
     private:
         uint8_t _lpin;
+        bool    _doUse = false;
         bool    _state = false;
 };
 

@@ -108,7 +108,12 @@ WiFiManagerParameter custom_aood("<div class='msg P'>Please <a href='/update'>in
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
 WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral (0=no, 1=yes)", settings.coast, 1, "autocomplete='off' title='Enable to enable coasting then trottle is in neutral position'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral", settings.coast, 1, "autocomplete='off' title='Check to enable coasting then trottle is in neutral position' type='checkbox' style='margin-top:5px;margin-bottom:10px;'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral", settings.coast, 1, "autocomplete='off' title='Check to enable coasting then trottle is in neutral position' type='checkbox' style='margin-top:5px;'", WFM_LABEL_AFTER);
+#endif // -------------------------------------------------
+#ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
+WiFiManagerParameter custom_at("at", "Auto throttle (0=no, 1=yes)", settings.autoThrottle, 1, "autocomplete='off' title='When enabled, accleration will continue when trottle in neutral'");
+#else // -------------------- Checkbox hack: --------------
+WiFiManagerParameter custom_at("at", "Auto throttle", settings.autoThrottle, 1, "autocomplete='off' title='When checked, accleration will continue when trottle in neutral' type='checkbox' style='margin-top:5px;margin-bottom:10px;'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 
 WiFiManagerParameter custom_Bri("Bri", "<br>Brightness level (0-15)", settings.Bri, 2, "type='number' min='0' max='15' autocomplete='off'", WFM_LABEL_BEFORE);
@@ -161,9 +166,24 @@ WiFiManagerParameter custom_playALSnd("plyALS", "Play TCD-alarm sound", settings
 #endif // -------------------------------------------------
 #endif // HAVEAUDIO
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when off (0=no, 1=yes)", settings.movieMode, 1, "autocomplete='off'");
+WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when off (0=no, 1=yes)", settings.dgps, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when off", settings.movieMode, 1, "autocomplete='off' type='checkbox'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when off", settings.dgps, 1, "autocomplete='off' type='checkbox'", WFM_LABEL_AFTER);
+#endif // -------------------------------------------------
+#ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
+WiFiManagerParameter custom_uPL("uPL", "Use power LED (0=no, 1=yes)", settings.usePwrLED, 1, "autocomplete='off'");
+#else // -------------------- Checkbox hack: --------------
+WiFiManagerParameter custom_uPL("uPL", "Use power LED", settings.usePwrLED, 1, "autocomplete='off' type='checkbox'", WFM_LABEL_AFTER);
+#endif // -------------------------------------------------
+#ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
+WiFiManagerParameter custom_uLM("uMt", "Use battery level meter (0=no, 1=yes)", settings.useLvlMtr, 1, "autocomplete='off'");
+#else // -------------------- Checkbox hack: --------------
+WiFiManagerParameter custom_uLM("uMt", "Use battery level meter", settings.useLvlMtr, 1, "autocomplete='off' title='If unchecked, LED and meter follow real power' type='checkbox'", WFM_LABEL_AFTER);
+#endif // -------------------------------------------------
+#ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
+WiFiManagerParameter custom_PLD("PLD", "Power LED/meter on fake power (0=no, 1=yes)", settings.pwrLEDonFP, 1, "autocomplete='off'");
+#else // -------------------- Checkbox hack: --------------
+WiFiManagerParameter custom_PLD("PLD", "Power LED/meter on fake power", settings.pwrLEDonFP, 1, "autocomplete='off' title='If unchecked, LED and meter follow real power' type='checkbox'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 
 #ifdef REMOTE_HAVEMQTT
@@ -482,6 +502,7 @@ void wifi_setup()
 
     wm.addParameter(&custom_sectstart_head);// 3
     wm.addParameter(&custom_coast);
+    wm.addParameter(&custom_at);
     wm.addParameter(&custom_Bri);
 
     #ifdef REMOTE_HAVEAUDIO
@@ -502,13 +523,16 @@ void wifi_setup()
     wm.addParameter(&custom_sectstart_nw);  // 2
     wm.addParameter(&custom_tcdIP);
 
-    wm.addParameter(&custom_sectstart);     // 5 (3)
+    wm.addParameter(&custom_sectstart);     // 8 (5)
     wm.addParameter(&custom_sStrict);
     #ifdef REMOTE_HAVEAUDIO
     wm.addParameter(&custom_playclick);
     wm.addParameter(&custom_playALSnd);
     #endif
     wm.addParameter(&custom_dGPS);
+    wm.addParameter(&custom_uPL);
+    wm.addParameter(&custom_uLM);
+    wm.addParameter(&custom_PLD);
 
     #ifdef REMOTE_HAVEMQTT
     wm.addParameter(&custom_sectstart);     // 28
@@ -716,6 +740,15 @@ void wifi_setup2()
     wifiSetupDone = true;
 }
 
+static void setBool(char c, bool& b)
+{
+    if(c == '1') {
+        b = true;
+    } else if(c == '0') {
+        b = false;
+    }
+} 
+
 /*
  * wifi_loop()
  *
@@ -793,28 +826,27 @@ void wifi_loop()
 
             int temp;
 
-            // Save "strict" setting
+            // Save "movieMode" setting
             #ifdef TC_NOCHECKBOXES // --------- Plain text boxes:
             mystrcpy(settings.movieMode, &custom_sStrict);
             #else
             strcpyCB(settings.movieMode, &custom_sStrict);
             #endif
-            if(settings.movieMode[0] == '1') {
-                movieMode = true;
-            } else if(settings.movieMode[0] == '0') {
-                movieMode = false;
-            }
+            setBool(settings.movieMode[0], movieMode);
             // Save "display TCD speed" setting
             #ifdef TC_NOCHECKBOXES // --------- Plain text boxes:
             mystrcpy(settings.dgps, &custom_dGPS);
             #else
             strcpyCB(settings.dgps, &custom_dGPS);
             #endif
-            if(settings.dgps[0] == '1') {
-                displayGPSMode = true;
-            } else if(settings.dgps[0] == '0') {
-                displayGPSMode = false;
-            }
+            setBool(settings.dgps[0], displayGPSMode);
+            // Save "AutoThrottle" setting
+            #ifdef TC_NOCHECKBOXES // --------- Plain text boxes:
+            mystrcpy(settings.autoThrottle, &custom_at);
+            #else
+            strcpyCB(settings.autoThrottle, &custom_at);
+            #endif
+            setBool(settings.autoThrottle[0], autoThrottle);
             updateVisMode();
             saveVis();
 
@@ -933,6 +965,9 @@ void wifi_loop()
             mystrcpy(settings.playClick, &custom_playclick);
             mystrcpy(settings.playALsnd, &custom_playALSnd);
             #endif
+            mystrcpy(settings.usePwrLED, &custom_uPL);
+            mystrcpy(settings.useLvlMtr, &custom_uLM);
+            mystrcpy(settings.pwrLEDonFP, &custom_PLD);
 
             #ifdef REMOTE_HAVEMQTT
             mystrcpy(settings.useMQTT, &custom_useMQTT);
@@ -976,6 +1011,9 @@ void wifi_loop()
             strcpyCB(settings.playClick, &custom_playclick);
             strcpyCB(settings.playALsnd, &custom_playALSnd);
             #endif
+            strcpyCB(settings.usePwrLED, &custom_uPL);
+            strcpyCB(settings.useLvlMtr, &custom_uLM);
+            strcpyCB(settings.pwrLEDonFP, &custom_PLD);
 
             #ifdef REMOTE_HAVEMQTT
             strcpyCB(settings.useMQTT, &custom_useMQTT);
@@ -1471,6 +1509,9 @@ void updateConfigPortalValues()
     custom_playclick.setValue(settings.playClick, 1);
     custom_playALSnd.setValue(settings.playALsnd, 1);
     #endif
+    custom_uPL.setValue(settings.usePwrLED, 1);
+    custom_uLM.setValue(settings.useLvlMtr, 1);
+    custom_PLD.setValue(settings.pwrLEDonFP, 1);
     
     #ifdef REMOTE_HAVEMQTT
     custom_useMQTT.setValue(settings.useMQTT, 1);
@@ -1513,6 +1554,9 @@ void updateConfigPortalValues()
     setCBVal(&custom_playclick, settings.playClick);
     setCBVal(&custom_playALSnd, settings.playALsnd);
     #endif
+    setCBVal(&custom_uPL, settings.usePwrLED);
+    setCBVal(&custom_uLM, settings.useLvlMtr);
+    setCBVal(&custom_PLD, settings.pwrLEDonFP);
 
     #ifdef REMOTE_HAVEMQTT
     setCBVal(&custom_useMQTT, settings.useMQTT);
@@ -1605,6 +1649,12 @@ void updateConfigPortalVisValues()
     custom_dGPS.setValue(settings.dgps, 1);
     #else   // For checkbox hack --------------------------
     setCBVal(&custom_dGPS, settings.dgps);
+    #endif // ---------------------------------------------
+    strcpy(settings.autoThrottle, autoThrottle ? "1" : "0");
+    #ifdef PG_NOCHECKBOXES  // Standard text boxes: -------
+    custom_at.setValue(settings.autoThrottle, 1);
+    #else   // For checkbox hack --------------------------
+    setCBVal(&custom_at, settings.autoThrottle);
     #endif // ---------------------------------------------
 }
 

@@ -77,6 +77,7 @@ extern bool FPBUnitIsOn;
 extern uint16_t visMode;
 extern bool movieMode;
 extern bool displayGPSMode;
+extern bool autoThrottle;
 
 extern bool TTrunning;
 

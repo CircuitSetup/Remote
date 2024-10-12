@@ -66,6 +66,7 @@ extern uint8_t musFolderNum;
 // Default settings
 
 #define DEF_COAST           0     // Engine braking / coasting
+#define DEF_AT              0     // Auto-throttle: Default off
 #define DEF_BRI             15    // Default display brightness
 
 #define DEF_HOSTNAME        "dtmremote"
@@ -78,6 +79,9 @@ extern uint8_t musFolderNum;
 #define DEF_PLAY_CLK        1     // 1: Play accel-clicks, 0: Do not
 #define DEF_PLAY_ALM_SND    0     // 1: Play TCD-alarm sound, 0: do not
 #define DEF_DISP_GPS        0     // 1: Display TCD speed (GPS, RotEnc) when fake-off, 0: Do not
+#define DEF_USE_PLED        0     // 1: Use power LED, 0: do not, leave dark (like mostly in movie)
+#define DEF_USE_LVLMTR      0     // 1: Use Batt. Level Meter, 0: do not, leave at zero (like in movie)
+#define DEF_PLEDFP          1     // 1: Power LED/Meter on fake power, 0: on real power
 
 #define DEF_SHUFFLE         0     // Music Player: Do not shuffle by default
 
@@ -90,6 +94,7 @@ extern uint8_t musFolderNum;
 
 struct Settings {
     char coast[4]           = MS(DEF_COAST);
+    char autoThrottle[4]    = MS(DEF_AT);
 
     char hostName[32]       = DEF_HOSTNAME;
     char systemID[8]        = "";
@@ -102,7 +107,10 @@ struct Settings {
     char movieMode[4]       = MS(DEF_MOV_MD);       // saved, but overruled by vis config file
     char playClick[4]       = MS(DEF_PLAY_CLK);
     char playALsnd[4]       = MS(DEF_PLAY_ALM_SND);
-    char dgps[4]            = MS(DEF_DISP_GPS);
+    char dgps[4]            = MS(DEF_DISP_GPS);     // saved, but overruled by vis config file
+    char usePwrLED[4]       = MS(DEF_USE_PLED);
+    char useLvlMtr[4]       = MS(DEF_USE_LVLMTR);
+    char pwrLEDonFP[4]      = MS(DEF_PLEDFP);
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";

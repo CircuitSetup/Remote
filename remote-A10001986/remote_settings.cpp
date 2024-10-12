@@ -384,6 +384,8 @@ static bool read_settings(File configFile)
     if(!error) {
 
         wd |= CopyCheckValidNumParm(json["coast"], settings.coast, sizeof(settings.coast), 0, 1, DEF_COAST);
+        wd |= CopyCheckValidNumParm(json["at"], settings.autoThrottle, sizeof(settings.autoThrottle), 0, 1, DEF_AT);
+        autoThrottle = (settings.autoThrottle[0] == '1');
         //wd |= CopyCheckValidNumParm(json["ssTimer"], settings.ssTimer, sizeof(settings.ssTimer), 0, 999, DEF_SS_TIMER);
     
         if(json["hostName"]) {
@@ -408,7 +410,7 @@ static bool read_settings(File configFile)
             strncpy(settings.tcdIP, json["tcdIP"], sizeof(settings.tcdIP) - 1);
         } else wd = true;
 
-        // movieMode is overruled by loadVis later (if present)
+        // movieMode, dTDSpd, autoThrottle are overruled by loadVis later (if present)
         wd |= CopyCheckValidNumParm(json["movieMode"], settings.movieMode, sizeof(settings.movieMode), 0, 1, DEF_MOV_MD);
         movieMode = (settings.movieMode[0] == '1');
         #ifdef REMOTE_HAVEAUDIO
@@ -417,6 +419,9 @@ static bool read_settings(File configFile)
         #endif
         wd |= CopyCheckValidNumParm(json["dTCDSpd"], settings.dgps, sizeof(settings.dgps), 0, 1, DEF_DISP_GPS);
         displayGPSMode = (settings.dgps[0] == '1');
+        wd |= CopyCheckValidNumParm(json["uPLED"], settings.usePwrLED, sizeof(settings.usePwrLED), 0, 1, DEF_USE_PLED);
+        wd |= CopyCheckValidNumParm(json["uLvLM"], settings.useLvlMtr, sizeof(settings.useLvlMtr), 0, 1, DEF_USE_LVLMTR);
+        wd |= CopyCheckValidNumParm(json["pLEDFP"], settings.pwrLEDonFP, sizeof(settings.pwrLEDonFP), 0, 1, DEF_PLEDFP);
   
         #ifdef REMOTE_HAVEMQTT
         wd |= CopyCheckValidNumParm(json["useMQTT"], settings.useMQTT, sizeof(settings.useMQTT), 0, 1, 0);
@@ -514,6 +519,8 @@ void write_settings()
     #endif
 
     json["coast"] = (const char *)settings.coast;
+    sprintf(settings.autoThrottle, "%d", autoThrottle ? 1 : 0);
+    json["at"] = (const char *)settings.autoThrottle;
     //json["ssTimer"] = (const char *)settings.ssTimer;
 
     json["hostName"] = (const char *)settings.hostName;
@@ -532,6 +539,9 @@ void write_settings()
     #endif
     sprintf(settings.dgps, "%d", displayGPSMode ? 1 : 0);
     json["dTCDSpd"] = (const char *)settings.dgps;
+    json["uPLED"] = (const char *)settings.usePwrLED;
+    json["uLvLM"] = (const char *)settings.useLvlMtr;
+    json["pLEDFP"] = (const char *)settings.pwrLEDonFP;
   
     #ifdef REMOTE_HAVEMQTT
     json["useMQTT"] = (const char *)settings.useMQTT;

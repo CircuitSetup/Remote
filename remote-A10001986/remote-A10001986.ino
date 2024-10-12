@@ -120,22 +120,29 @@
  *  
  *  The throttle of the Remote needs calibration. Calibration is only possible when the
  *  "fake power" of the Remote is in OFF position.
- *  - Put the throttle lever in neutral (center) position, press the Calibration button.
+ *  - Put the throttle stick in neutral (center) position, press the Calibration button.
  *    The display will briefly show "CAL" to show acceptance.
  *  - Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push
  *    the throttle to the up-most position, and press the Calibration button.
  *    "DN" will be displayed.
- *  - Pull the throttle lever to the bottom-most position, and press the Calibration
+ *  - Pull the throttle stick to the bottom-most position, and press the Calibration
  *    button. The display will clear, calibration is finished.
  *  
- *  When (really, not fake) powering up the Remote, the throttle lever should be in 
- *  Center (zero) position when using a rotary encoder. If it was not, press Calibration
- *  after booting.
+ *  When (really, not fake) powering up the Remote, the throttle stick should be in 
+ *  Center (neutral) position when using a rotary encoder. If it was not, press 
+ *  Calibration after booting, while fake power is off.
  *  
  */
 
 /*  Changelog
  *  
+ *  2024/10/10 (A10001986)
+ *    - CB 1.5: Support for Futaba Battery Level Meter connector.
+ *    - Add options for power LED and batt level meter usage
+ *    - Add option to enable power LED and level meter on either fake or real power
+ *    - Add "auto throttle": If enabled, an acceleration will continue when the throttle
+ *      is released into neutral, until either 88mps is reached, or throttle is pulled
+ *      below neutral.
  *  2024/10/05 (A10001986)
  *    - Buttons 1-8 can now be configured as maintained AND audio-on-ON-only. This
  *      supports use of three-position ON-OFF-(ON) switches, without audio restarted

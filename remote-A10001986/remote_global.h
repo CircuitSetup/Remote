@@ -12,16 +12,11 @@
 #define _REMOTE_GLOBAL_H
 
 /*************************************************************************
- ***                           Miscellaneous                           ***
- *************************************************************************/
-
-
-/*************************************************************************
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V0.23"
-#define REMOTE_VERSION_EXTRA "OCT052024"
+#define REMOTE_VERSION "V0.24"
+#define REMOTE_VERSION_EXTRA "OCT102024"
 
 #define REMOTE_DBG              // debug output on Serial
 
@@ -51,9 +46,6 @@
 // Uncomment for HomeAssistant MQTT protocol support
 #define REMOTE_HAVEMQTT
 
-// Use SPIFFS (if defined) or LittleFS (if undefined; esp32-arduino >= 2.x)
-//#define USE_SPIFFS
-
 // Uncomment to include BTTFN discover support (multicast)
 #define BTTFN_MC
 
@@ -61,6 +53,9 @@
 //#define REMOTE_HAVEVOLKNOB
 // Uncomment when using the prototype display
 //#define PROTO_DISPLAY
+
+// Use SPIFFS (if defined) or LittleFS (if undefined; esp32-arduino >= 2.x)
+//#define USE_SPIFFS
 
 /*************************************************************************
  ***                  esp32-arduino version detection                  ***
@@ -104,6 +99,7 @@
 #define STOPOUT_PIN       16      // Stop output
 
 #define PWRLED_PIN        17      // (Fake) power LED (CB 1.3)
+#define LVLMETER_PIN      12      // Battery level meter on Futaba (CB 1.5)
 
 #define VOLUME_PIN        39      // (unused)
 

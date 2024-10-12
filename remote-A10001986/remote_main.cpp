@@ -92,6 +92,7 @@ remDisplay remdisplay(DISPLAY_ADDR);
 // The LED objects
 remLED remledStop;
 remLED pwrled;
+remLED bLvLMeter;
 
 // The rotary encoder/ADC object
 REMRotEnc rotEnc(4, 
@@ -133,6 +134,8 @@ static bool useRotEncVol = false;
 static bool remoteAllowed = false;
 uint32_t    myRemID = 0x12345678;
 
+static bool pwrLEDonFP = true;
+
 static bool powerState = false;
 static bool brakeState = false;
 static bool triggerCompleteUpdate = false;
@@ -143,6 +146,8 @@ static int     currSpeed = 0;
 static unsigned long lastSpeedUpd = 0;
 static bool    lockThrottle = false;
 static bool    doCoast = false;
+static bool    keepCounting = false;
+bool           autoThrottle = false;
 
 static bool          calibMode = false;
 static bool          calibUp = false;
@@ -239,10 +244,12 @@ static bool          sendBootStatus = false;
 #ifdef REMOTE_HAVEAUDIO
 static bool          havePOFFsnd = false;
 static bool          haveBOFFsnd = false;
+static bool          haveThUp = false;
 static const char    *powerOnSnd  = "/poweron.mp3";   // Default provided
 static const char    *powerOffSnd = "/poweroff.mp3";  // No default sound
 static const char    *brakeOnSnd  = "/brakeon.mp3";   // Default provided
 static const char    *brakeOffSnd = "/brakeoff.mp3";  // No default sound
+static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
 #endif
 
 // BTTF network
@@ -334,7 +341,7 @@ static void increaseBrightness();
 static void decreaseBrightness();
 static void displayBrightness();
 
-static void toggleDisplayGPS();
+static void condPLEDaBLvl(bool sLED, bool sLvl);
 
 static void execute_remote_command();
 
@@ -402,8 +409,20 @@ void main_boot2()
     // Init LEDs
 
     remledStop.begin(STOPOUT_PIN);    // "Stop" LED + Switch output
-    
-    pwrled.begin(PWRLED_PIN);         // (Fake) power LED
+
+    // (Fake) power LED
+    pwrled.begin(PWRLED_PIN, (atoi(settings.usePwrLED) > 0));
+    // Battery level meter (treated as LED)
+    bLvLMeter.begin(LVLMETER_PIN, (atoi(settings.useLvlMtr) > 0));
+
+    // power LED
+    pwrLEDonFP = (atoi(settings.pwrLEDonFP) > 0);
+
+    // init state of power led and level meter
+    if(!(pwrLEDonFP = (atoi(settings.pwrLEDonFP) > 0))) {
+        pwrled.setState(true);
+        bLvLMeter.setState(true);
+    }
 
     // Init LED segment display
     if(!remdisplay.begin()) {
@@ -488,6 +507,7 @@ void main_setup()
     if(loadVis()) {                 // load visMode
         movieMode = !!(visMode & 0x01);
         displayGPSMode = !!(visMode & 0x02);
+        autoThrottle = !!(visMode & 0x04);
     }
     updateConfigPortalVisValues();  // Update CP to current value(s)
     updateConfigPortalBriValues();
@@ -553,6 +573,7 @@ void main_setup()
 
     havePOFFsnd = check_file_SD(powerOffSnd);
     haveBOFFsnd = check_file_SD(brakeOffSnd);
+    haveThUp = check_file_SD(throttleUpSnd);
     #endif
 
     // Initialize throttle
@@ -714,8 +735,9 @@ void main_loop()
                 // Fake power on:
                 FPBUnitIsOn = true;
 
-                pwrled.setState(true);
-
+                // power LED and level meter
+                condPLEDaBLvl(true, true);
+  
                 calibMode = false;    // Cancel calibration
 
                 offDisplayTimer = false;
@@ -732,6 +754,7 @@ void main_loop()
 
                 currSpeedF = 0;
                 currSpeed = 0;
+                keepCounting = false;
 
                 // Re-init brake
                 remledStop.setState(true);
@@ -777,7 +800,8 @@ void main_loop()
                 // Fake power off:
                 FPBUnitIsOn = false;
 
-                pwrled.setState(false);
+                // power LED and level meter
+                condPLEDaBLvl(false, false);
 
                 // Stop musicplayer & audio in general
                 #ifdef REMOTE_HAVEAUDIO
@@ -998,7 +1022,7 @@ void main_loop()
                             offDisplayTimer = true;
                             offDisplayNow = millis();
                             calibMode = false;
-                            pwrled.setState(false);
+                            condPLEDaBLvl(false, false);
                         }
                     } else {
                         if(useRotEnc && rotEnc.setMaxStepsDown(0)) {
@@ -1015,31 +1039,31 @@ void main_loop()
                             offDisplayNow = millis();
                             calibMode = false;
                         }
-                        pwrled.setState(false);
+                        condPLEDaBLvl(false, false);
                     }
                 } else {
-                    pwrled.setState(true);
+                    condPLEDaBLvl(true, true);
                     remdisplay.setText("CAL");
                     remdisplay.show();
                     remdisplay.on();
                     offDisplayTimer = true;
                     offDisplayNow = millis();
-                    delay(20);    // Stabilize voltage after turning on display
+                    delay(200);    // Stabilize voltage after turning on display, LED, level meter
                     if(useRotEnc) {
                         rotEnc.zeroPos(true);
                         if(!rotEnc.dynZeroPos()) {
                             saveCalib();
                         } 
                     }
-                    pwrled.setState(false);
+                    condPLEDaBLvl(false, false);
                 }
             } else if(isCalibKeyLongPressed) {
                 if(calibMode) {
                     calibMode = false;
                     remdisplay.clearBuf();
                     remdisplay.show();
-                    remdisplay.off(); 
-                    pwrled.setState(false);
+                    remdisplay.off();
+                    condPLEDaBLvl(false, false);
                     currSpeedOldGPS = -2;   // force GPS speed display update
                 } else {
                     calibMode = true;
@@ -1047,7 +1071,7 @@ void main_loop()
                     remdisplay.setText("UP");
                     remdisplay.show();
                     remdisplay.on();
-                    pwrled.setState(true);
+                    condPLEDaBLvl(true, true);
                     calibUp = true;
                 }
             }
@@ -1057,6 +1081,7 @@ void main_loop()
                     if(!throttlePos && !tcdIsInP0 && !TTrunning) {
                         currSpeedF = 0;
                         currSpeed = 0;
+                        keepCounting = false;
                         bttfn_remote_send_combined(powerState, brakeState, currSpeed);
                         doForceDispUpd = true;
                     }
@@ -1107,6 +1132,19 @@ void main_loop()
             if(!throttlePos) {
                 lockThrottle = false;
             }
+
+            // Auto throttle
+            if(keepCounting) {
+                if(throttlePos < 0) {
+                    keepCounting = false;
+                } else if(oldThrottlePos > 0) {
+                    if(throttlePos < oldThrottlePos) {
+                        throttlePos = oldThrottlePos;
+                    }
+                }
+            } else if(autoThrottle) {
+                keepCounting = (throttlePos > 0 && !oldThrottlePos);
+            }
             
             if(movieMode) {
 
@@ -1144,14 +1182,22 @@ void main_loop()
                     if(throttlePos > 0) {
                         #ifdef REMOTE_HAVEAUDIO
                         if(!currSpeedF) {
-                            play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV|PA_ALLOWSD, 1.0);
+                            if(haveThUp) {
+                                play_file(throttleUpSnd, PA_THRUP|PA_INTRMUS|PA_ALLOWSD, 1.0);
+                            } else {
+                                play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV|PA_ALLOWSD, 1.0);
+                            }
                         }
                         #endif
                         currSpeedF += accelStep;
-                        if(currSpeedF > 880) currSpeedF = 880;
+                        if(currSpeedF > 880) {
+                            currSpeedF = 880;
+                            keepCounting = false;
+                        }
                     } else if(throttlePos < 0) {
                         currSpeedF -= accelStep;
                         if(currSpeedF < 0) currSpeedF = 0;
+                        keepCounting = false;
                     } else if(doCoast) {
                         currSpeedF -= (esp_random() % 3);
                         if(currSpeedF < 0) currSpeedF = 0;
@@ -1277,7 +1323,7 @@ void main_loop()
     // Execute remote commands
     // No commands in calibMode, during a TT (or P0), and when acceleration is running
     // FPBUnitIsOn checked for each individually
-    if(!TTrunning && !calibMode && !tcdIsInP0 && !throttlePos) {
+    if(!TTrunning && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
         execute_remote_command();
     }
 
@@ -1361,6 +1407,8 @@ void main_loop()
                   lockThrottle = true;
 
                   doForceDispUpd = true;
+
+                  keepCounting = false;
     
                   TTP2 = false;
                   TTrunning = false;
@@ -1378,7 +1426,7 @@ void main_loop()
 
     } else {    // No TT currently
 
-        if(networkAlarm && !calibMode && !tcdIsInP0 && !throttlePos) {
+        if(networkAlarm && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
 
             networkAlarm = false;
 
@@ -1410,7 +1458,7 @@ void main_loop()
     // Poll RotEnv for volume. Don't in calibmode, P0 or during
     // acceleration
     #if 0
-    if(useRotEncVol && !calibMode && !tcdIsInP0 && !throttlePos) {
+    if(useRotEncVol && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
         int oldVol = curSoftVol;
         curSoftVol = rotEncVol->updateVolume(curSoftVol, false);
         if(oldVol != curSoftVol) {
@@ -1420,7 +1468,7 @@ void main_loop()
     }
     #endif
 
-    if(!TTrunning && !tcdIsInP0 && !calibMode && !throttlePos) {
+    if(!TTrunning && !tcdIsInP0 && !calibMode && !throttlePos && !keepCounting) {
         // Save secondary settings 10 seconds after last change
         if(brichanged && (now - brichgnow > 10000)) {
             brichanged = false;
@@ -1545,6 +1593,7 @@ void updateVisMode()
     visMode &= ~0x03;
     if(movieMode) visMode |= 0x01;
     if(displayGPSMode) visMode |= 0x02;
+    if(autoThrottle) visMode |= 0x04;
 }
 
 static void toggleDisplayGPS()
@@ -1567,6 +1616,23 @@ static void toggleMovieMode()
     vischanged = true;
     vischgnow = millis();
     updateConfigPortalVisValues();
+}
+
+static void toggleAutoThrottle()
+{
+    autoThrottle = !autoThrottle;
+    updateVisMode();
+    vischanged = true;
+    vischgnow = millis();
+    updateConfigPortalVisValues();
+}
+
+static void condPLEDaBLvl(bool sLED, bool sLvl)
+{
+    if(pwrLEDonFP) {
+        pwrled.setState(sLED);
+        bLvLMeter.setState(sLvl);
+    }
 }
 
 /*
@@ -1717,6 +1783,9 @@ static void execute_remote_command()
             break;
         case 61:                              // 7061  enable/disable "display TCD speed while fake-off"
             toggleDisplayGPS();
+            break;
+        case 62:                              // 7062  enable/disable autoThrottle
+            toggleAutoThrottle();
             break;
         case 90:                              // 7090: Display IP address
             flushDelayedSave();

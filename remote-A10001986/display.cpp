@@ -64,9 +64,10 @@ remLED::remLED()
 {
 }
 
-void remLED::begin(uint8_t pin)
+void remLED::begin(uint8_t pin, bool doUse)
 {
     _lpin = pin;
+    _doUse = doUse;
     
     pinMode(_lpin, OUTPUT);
     digitalWrite(_lpin, LOW);
@@ -76,7 +77,9 @@ void remLED::begin(uint8_t pin)
 void remLED::setState(bool state)
 {   
     _state = state;
-    digitalWrite(_lpin, state ? HIGH : LOW);
+    if(_doUse) {
+        digitalWrite(_lpin, state ? HIGH : LOW);
+    }
 }
 
 bool remLED::getState()
