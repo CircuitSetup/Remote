@@ -121,5 +121,8 @@ The wires need to lead out of the Futaba's body. One way to do this is to dremel
 
 ![wires](img/wires.jpg)
 
+Final step is to take apart the transmission module, and only insert the lid into the slot.
+
+![wires](img/wires3.jpg)
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._
