@@ -6,7 +6,7 @@ This document contains information on buttons/switches as well as instructions o
 
 The prop is powered by a 5V battery, connected to the USB port of the ESP32 board on top of the Control Board. It should be able to deliver 1A, and have a capacity of >= 2500mAh.
 
-Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, you need an USB extension in order to charge is, since you'd need to disassemble the prop in order to access it.
+Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, access to the battery for charging has to be provided, since the Futaba's battery compartment is not accessible without major disassembly. One way to do this is to use two pins of the existing charging connector.
 
 If you don't want to pull out the USB cable from the battery to power down, you can use the "UP/DOWN" switch on the Unibox; all you need are two open-end USB power cables (one of type "micro USB" for the ESP32, one depending on the output plug type of your battery), and a maintained switch as "UP/DOWN". 
 
