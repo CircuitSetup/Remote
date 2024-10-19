@@ -64,12 +64,12 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 ![part7](img/htof7.jpg)
 
 10) Remove two silver screws (8) on the top of the main PCB
-11) Remove five ribbon cables (9) on the main PCB
+11) Unplug five ribbon cables (9) on the main PCB
 12) Lift main PCB; at this point, it is held by only pin sockets that connect it to other PCBs; you can't pull it out entirely because it is connected to other parts by wires. Just pull it out and downwards, that way you can access all relevant parts.
 
 Now you can access the potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
-It is recommended to remove the Futaba's battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it.
+It is recommended to remove the Futaba's battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it. The space can be used for a rechargeable battery to power the kit.
 
 ### Throttle connection
 
