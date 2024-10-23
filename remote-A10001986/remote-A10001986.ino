@@ -136,6 +136,8 @@
 
 /*  Changelog
  *  
+ *  2024/10/23 (A10001986)
+ *    - Add sound played upon volume change (new sound pack)
  *  2024/10/10 (A10001986)
  *    - CB 1.5: Support for Futaba Battery Level Meter connector.
  *    - Add options for power LED and batt level meter usage

@@ -86,10 +86,10 @@
 #endif
 
 #ifdef REMOTE_HAVEAUDIO
-#define NUM_AUDIOFILES 7
-#define SND_REQ_VERSION "RM01"
+#define NUM_AUDIOFILES 8
+#define SND_REQ_VERSION "RM02"
 #define AC_FMTV 2
-#define AC_TS   190972
+#define AC_TS   194314
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 static const char *CONFN  = "/REMA.bin";
 static const char *CONFND = "/REMA.old";

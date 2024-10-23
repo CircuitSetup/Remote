@@ -933,7 +933,7 @@ void main_loop()
                     offDisplayTimer = true;
                     offDisplayNow = millis();
                 }
-                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
+                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                 #endif
             } else if(isbuttonAKeyLongPressed) {
                 increaseBrightness();
@@ -982,7 +982,7 @@ void main_loop()
                     offDisplayTimer = true;
                     offDisplayNow = millis();
                 }
-                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
+                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                 #endif
             } else if(isbuttonBKeyLongPressed) {
                 decreaseBrightness();
