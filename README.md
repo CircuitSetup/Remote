@@ -148,20 +148,11 @@ The Calibration button needs to be a momentary contact.
 
 ### Buttons "O.O" and "RESET"
 
-These two buttons serve different purposes depending on whether or not the optional [User Buttons](#user-buttons) are enabled in the Config Portal.
-
-If the User Buttons are enabled:
+When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td><a href="#the-music-player">Music Player</a>: Previous Song</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
+  <tr><td>Button "O.O"</td><td>Depends on option <b>O.O triggers BTTFN-wide Time Travel</b></td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
   <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
-</table>
-
-If the User Buttons are disabled:
-<table>
-  <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td>Play "<a href="#additional-custom-sounds">key3.mp3</a>"</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
-  <tr><td>Button "RESET"</td><td>Play "<a href="#additional-custom-sounds">key6.mp3</a>"</td><td><a href="#the-music-player">Music Player</a>: Next song</td></tr>
 </table>
 
 When fake power is off, the buttons are used to set up audio volume and brightness:
@@ -478,6 +469,14 @@ Normally, when this is unchecked, keeping the throttle in neutral (center) posit
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
+##### &#9654; O.O triggers BTTFN-wide Time Travel
+
+This option selects the function of the O.O button:
+
+If checked, briefly pressing O.O triggers a BTTFN-wide Time Travel.
+
+If unchecked, O.O is part of Music Player control and jumps to the previous song.
+
 ##### &#9654; Brightness level
 
 This selects brightness level for the LED display. This can also be done through buttons "O.O" and "RESET", as well as the TCD (74xx).
@@ -563,7 +562,7 @@ If unchecked, the level meter stays at zero, which is the default. If checked, t
 
 ##### &#9654; Power LED/meter on fake power
 
-If unchecked, the power LED and the battery level meter come to life on real power. If checked, they react to fake power.
+If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
 
 #### Home Assistant / MQTT settings
 
@@ -616,17 +615,13 @@ This procedure ensures that all your settings are copied from the old to the new
 
 #### Hardware settings
 
-##### &#9654; Disable User Buttons
-
-This disables all of the optional User Buttons. Note that buttons "O.O" and "RESET" change function in that case.
-
 ##### &#9654; Button x is maintained
 
 You might want use one or more switches of the Futaba remote for sound effects and/or MQTT messages. If that switch is a maintained contact, check this option for the respective "button" number. Leave unchecked when using a momentary button.
 
 ##### &#9654; Maintained: Play audio on ON only
 
-If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
+If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me
