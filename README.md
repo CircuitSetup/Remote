@@ -151,9 +151,11 @@ The Calibration button needs to be a momentary contact.
 When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td>Depends on option <b>O.O triggers BTTFN-wide Time Travel</b></td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
+  <tr><td>Button "O.O"</td><td>BTTFN-wide TT or <a href="#the-music-player">Music Player</a>: Previous Song*</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
   <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
 </table>
+
+* Depends on option **_O.O triggers BTTFN-wide Time Travel_**.
 
 When fake power is off, the buttons are used to set up audio volume and brightness:
 <table>
