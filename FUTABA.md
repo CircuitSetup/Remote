@@ -125,4 +125,5 @@ Final step is to take apart the transmission module, and only insert the lid int
 
 ![wires](img/wires3.jpg)
 
-_Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._
+_Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
+
