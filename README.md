@@ -469,11 +469,11 @@ Normally, when this is unchecked, keeping the throttle in neutral (center) posit
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
-##### &#9654; O.O triggers BTTFN-wide Time Travel
+##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
 
 This option selects the function of the O.O button:
 
-If checked, briefly pressing O.O triggers a BTTFN-wide Time Travel.
+If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing up the throttle stick.
 
 If unchecked, O.O is part of Music Player control and jumps to the previous song.
 
