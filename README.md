@@ -473,7 +473,7 @@ If this is checked, acceleration is, after being started by pushing the throttle
 
 This option selects the function of the O.O button:
 
-If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing up the throttle stick.
+If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
 
 If unchecked, O.O is part of Music Player control and jumps to the previous song.
 
