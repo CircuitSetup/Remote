@@ -67,6 +67,7 @@ extern uint8_t musFolderNum;
 
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
+#define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
 #define DEF_BRI             15    // Default display brightness
 
 #define DEF_HOSTNAME        "dtmremote"
@@ -95,6 +96,7 @@ extern uint8_t musFolderNum;
 struct Settings {
     char coast[4]           = MS(DEF_COAST);
     char autoThrottle[4]    = MS(DEF_AT);
+    char ooTT[4]            = MS(DEF_OO_TT);
 
     char hostName[32]       = DEF_HOSTNAME;
     char systemID[8]        = "";
@@ -126,7 +128,9 @@ struct Settings {
     char CfgOnSD[4]         = MS(DEF_CFG_ON_SD);
     char sdFreq[4]          = MS(DEF_SD_FREQ);
 
+#ifdef ALLOW_DIS_UB
     char disBPack[4]        = MS(DEF_DIS_BPACK);
+#endif    
     char bPb0Maint[4]       = MS(DEF_BPMAINT);
     char bPb1Maint[4]       = MS(DEF_BPMAINT);
     char bPb2Maint[4]       = MS(DEF_BPMAINT);

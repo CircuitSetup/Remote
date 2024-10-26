@@ -136,6 +136,13 @@
 
 /*  Changelog
  *  
+ *  2024/10/26 (A10001986) [0.90]
+ *    - Add support for TCD multicast notifications: This brings more immediate speed 
+ *      updates (no more polling; TCD sends out speed info when appropriate), and 
+ *      less network traffic in time travel sequences.
+ *  2024/10/24 (A10001986)
+ *    - Allow triggering BTTFN-wide TT via O.O followed by throttle-up; button function
+ *      controlled by option (TT vs. MP/prev.song)
  *  2024/10/23 (A10001986)
  *    - Add sound played upon volume change (new sound pack)
  *  2024/10/10 (A10001986)

@@ -70,7 +70,6 @@ extern remLED remledPwr;
 extern remLED remledStop;
 
 extern bool useRotEnc;
-extern bool useBPack;
 
 extern bool FPBUnitIsOn;
 
@@ -124,8 +123,6 @@ void waitAudioDone(bool withBTTFN = false);
 void mydelay(unsigned long mydel, bool withBTTFN = false);
 
 void bttfn_loop();
-bool BTTFNTriggerTT();
-
 void bttfn_remote_unregister();
 
 #endif

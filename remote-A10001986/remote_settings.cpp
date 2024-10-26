@@ -77,7 +77,6 @@
 // Needs to be adapted when config grows
 #define JSON_SIZE 5000
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-#error "ArduinoJSON v7 not supported"
 #define DECLARE_S_JSON(x,n) JsonDocument n;
 #define DECLARE_D_JSON(x,n) JsonDocument n;
 #else
@@ -86,10 +85,10 @@
 #endif
 
 #ifdef REMOTE_HAVEAUDIO
-#define NUM_AUDIOFILES 8
-#define SND_REQ_VERSION "RM02"
+#define NUM_AUDIOFILES 10
+#define SND_REQ_VERSION "RM03"
 #define AC_FMTV 2
-#define AC_TS   194314
+#define AC_TS   202670
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 static const char *CONFN  = "/REMA.bin";
 static const char *CONFND = "/REMA.old";
@@ -386,6 +385,7 @@ static bool read_settings(File configFile)
         wd |= CopyCheckValidNumParm(json["coast"], settings.coast, sizeof(settings.coast), 0, 1, DEF_COAST);
         wd |= CopyCheckValidNumParm(json["at"], settings.autoThrottle, sizeof(settings.autoThrottle), 0, 1, DEF_AT);
         autoThrottle = (settings.autoThrottle[0] == '1');
+        wd |= CopyCheckValidNumParm(json["oott"], settings.ooTT, sizeof(settings.ooTT), 0, 1, DEF_OO_TT);
         //wd |= CopyCheckValidNumParm(json["ssTimer"], settings.ssTimer, sizeof(settings.ssTimer), 0, 999, DEF_SS_TIMER);
     
         if(json["hostName"]) {
@@ -466,8 +466,10 @@ static bool read_settings(File configFile)
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
 
+        #ifdef ALLOW_DIS_UB
         wd |= CopyCheckValidNumParm(json["disBP"], settings.disBPack, sizeof(settings.disBPack), 0, 1, DEF_DIS_BPACK);
-
+        #endif
+        
         wd |= CopyCheckValidNumParm(json["b0Mt"], settings.bPb0Maint, sizeof(settings.bPb0Maint), 0, 1, DEF_BPMAINT);
         wd |= CopyCheckValidNumParm(json["b1Mt"], settings.bPb1Maint, sizeof(settings.bPb1Maint), 0, 1, DEF_BPMAINT);
         wd |= CopyCheckValidNumParm(json["b2Mt"], settings.bPb2Maint, sizeof(settings.bPb2Maint), 0, 1, DEF_BPMAINT);
@@ -521,6 +523,7 @@ void write_settings()
     json["coast"] = (const char *)settings.coast;
     sprintf(settings.autoThrottle, "%d", autoThrottle ? 1 : 0);
     json["at"] = (const char *)settings.autoThrottle;
+    json["oott"] = (const char *)settings.ooTT;
     //json["ssTimer"] = (const char *)settings.ssTimer;
 
     json["hostName"] = (const char *)settings.hostName;
@@ -580,8 +583,10 @@ void write_settings()
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
 
+    #ifdef ALLOW_DIS_UB
     json["disBP"] = (const char *)settings.disBPack;
-
+    #endif
+    
     json["b0Mt"] = (const char *)settings.bPb0Maint;
     json["b1Mt"] = (const char *)settings.bPb1Maint;
     json["b2Mt"] = (const char *)settings.bPb2Maint;

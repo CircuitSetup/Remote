@@ -126,7 +126,7 @@ ButtonPack butPack(4,
                           });
                           
 bool useRotEnc = false;
-bool useBPack = true;
+static bool useBPack = true;
 static bool useRotEncVol = false;
 
 //static bool playTTsounds = true;
@@ -158,6 +158,9 @@ static unsigned long offDisplayNow = 0;
 uint16_t             visMode = 0;
 
 bool                 movieMode = true;
+
+static bool ooTT = true;
+static int  triggerTTonThrottle = 0;
 
 static unsigned long accelDelay = 1000/10;
 static int32_t       accelStep = 1;
@@ -254,6 +257,7 @@ static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (
 
 // BTTF network
 #define BTTFN_VERSION              1
+#define BTTFN_SUP_MC            0x80
 #define BTTF_PACKET_SIZE          48
 #define BTTF_DEFAULT_LOCAL_PORT 1338
 #define BTTFN_POLL_INT          1300
@@ -272,6 +276,7 @@ static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (
 #define BTTFN_NOT_VSR_CMD  12
 #define BTTFN_NOT_REM_CMD  13
 #define BTTFN_NOT_REM_SPD  14
+#define BTTFN_NOT_SPD      15
 #define BTTFN_TYPE_ANY     0    // Any, unknown or no device
 #define BTTFN_TYPE_FLUX    1    // Flux Capacitor
 #define BTTFN_TYPE_SID     2    // SID
@@ -283,10 +288,21 @@ static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (
 #define BTTFN_REMCMD_BYE        2   // Forced unregister
 #define BTTFN_REMCMD_COMBINED   3   // All switches & speed combined
 #define BTTFN_REM_MAX_COMMAND   BTTFN_REMCMD_COMBINED
+#define BTTFN_SSRC_NONE         0
+#define BTTFN_SSRC_GPS          1
+#define BTTFN_SSRC_ROTENC       2
+#define BTTFN_SSRC_REM          3
+#define BTTFN_SSRC_P0           4
+#define BTTFN_SSRC_P1           5
+#define BTTFN_SSRC_P2           6
 static const uint8_t BTTFUDPHD[4] = { 'B', 'T', 'T', 'F' };
 static bool          useBTTFN = false;
 static WiFiUDP       bttfUDP;
 static UDP*          remUDP;
+#ifdef BTTFN_MC
+static WiFiUDP       bttfMcUDP;
+static UDP*          remMcUDP;
+#endif
 static byte          BTTFUDPBuf[BTTF_PACKET_SIZE];
 static unsigned long bttfnRemPollInt = BTTFN_POLL_INT;
 static unsigned long BTTFNUpdateNow = 0;
@@ -300,12 +316,16 @@ static unsigned long lastBTTFNpacket = 0;
 static bool          BTTFNBootTO = false;
 static bool          haveTCDIP = false;
 static IPAddress     bttfnTcdIP;
+static uint8_t       bttfnReqStatus = 0x52; // Request capabilities, status, speed
 #ifdef BTTFN_MC
 static uint32_t      tcdHostNameHash = 0;
+static byte          BTTFMCBuf[BTTF_PACKET_SIZE];
+static uint8_t       bttfnMcMarker = 0;
 #endif 
 static uint32_t      bttfnSeqCnt[BTTFN_REM_MAX_COMMAND+1] = { 1 };
 static bool          bttfn_cmd_status = false;
 static unsigned long bttfnCurrLatency = 0, bttfnPacketSentNow = 0;
+static bool          tcdHasSpeedo = false;
 static int16_t       tcdCurrSpeed = -1;
 static bool          tcdSpdIsRotEnc = false;
 static bool          tcdSpdIsRemote = false;
@@ -380,9 +400,13 @@ static void myloop(bool withBTTFN);
 
 static void bttfn_setup();
 static void BTTFNCheckPacket();
+#ifdef BTTFN_MC
+static bool bttfn_checkmc();
+#endif
 static bool BTTFNTriggerUpdate();
 static void BTTFNSendPacket();
 static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2);
+static bool BTTFNTriggerTT(bool probe);
 static void bttfn_remote_keepalive();
 static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t speed);
 
@@ -513,6 +537,9 @@ void main_setup()
     updateConfigPortalBriValues();
 
     doCoast = (atoi(settings.coast) > 0);
+    #ifdef REMOTE_HAVEAUDIO
+    ooTT = (atoi(settings.ooTT) > 0);
+    #endif
 
     for(int i = 0; i < BTTFN_REM_MAX_COMMAND+1; i++) {
         bttfnSeqCnt[i] = 1;
@@ -632,7 +659,9 @@ void main_setup()
     buttonB.attachLongPressStart(buttonBKeyLongPressed);
     buttonB.attachLongPressStop(buttonBKeyPressed);
 
+    #ifdef ALLOW_DIS_UB
     if(!atoi(settings.disBPack)) {
+    #endif
         if((useBPack = butPack.begin())) {
             butPack.setScanInterval(50);
             butPack.attachPressDown(butPackKeyPressed);
@@ -658,13 +687,15 @@ void main_setup()
             Serial.println("ButtonPack not detected");
             #endif
         }
+    #ifdef ALLOW_DIS_UB    
     } else {
         useBPack = false;
         #ifdef REMOTE_DBG
         Serial.println("ButtonPack disabled");
         #endif
     }
-
+    #endif
+    
     now = millis();
 
     #ifdef REMOTE_HAVEAUDIO
@@ -755,6 +786,7 @@ void main_loop()
                 currSpeedF = 0;
                 currSpeed = 0;
                 keepCounting = false;
+                triggerTTonThrottle = 0;
 
                 // Re-init brake
                 remledStop.setState(true);
@@ -799,6 +831,8 @@ void main_loop()
             if(FPBUnitIsOn) {
                 // Fake power off:
                 FPBUnitIsOn = false;
+
+                triggerTTonThrottle = 0;
 
                 // power LED and level meter
                 condPLEDaBLvl(false, false);
@@ -867,7 +901,7 @@ void main_loop()
     // Button A "O.O":
     //    Fake-power on:
     //        If buttonPack is enabled/present:
-    //            Short press: MusicPlayer Previous Song
+    //            Short press: BTTFN-wide TT or MusicPlayer Previous Song (depending on option)
     //            Long press:  MusicPlayer Play/Stop
     //        If buttonPack is disabled/not present: 
     //            Short press: Play "key3"
@@ -892,11 +926,41 @@ void main_loop()
         if(FPBUnitIsOn) {
             if(useBPack) {
                 if(isbuttonAKeyPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
-                    if(haveMusic) {
-                        mp_prev(mpActive);
+                    if(ooTT) {
+                        if(!TTrunning && !tcdIsInP0) {
+                            #ifdef REMOTE_HAVEAUDIO
+                            bool playBad = false;
+                            #endif
+                            if(!triggerTTonThrottle) {
+                                if(BTTFNTriggerTT(true)) {
+                                    triggerTTonThrottle = 1;
+                                    #ifdef REMOTE_HAVEAUDIO
+                                    play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                                    #endif
+                                } else {
+                                    #ifdef REMOTE_HAVEAUDIO
+                                    playBad = true;
+                                    #endif
+                                }
+                            } else if(triggerTTonThrottle == 1) {
+                                triggerTTonThrottle = 0;
+                                #ifdef REMOTE_HAVEAUDIO
+                                playBad = true;
+                                #endif
+                            }
+                            #ifdef REMOTE_HAVEAUDIO
+                            if(playBad) {
+                                play_file("/bad.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                            }
+                            #endif
+                        }
+                    } else {
+                        #ifdef REMOTE_HAVEAUDIO
+                        if(haveMusic) {
+                            mp_prev(mpActive);
+                        }
+                        #endif
                     }
-                    #endif
                 } else if(isbuttonAKeyLongPressed) {
                     #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
@@ -908,6 +972,7 @@ void main_loop()
                     }
                     #endif
                 }
+            #ifdef ALLOW_DIS_UB
             } else {
                 if(isbuttonAKeyPressed) {
                     #ifdef REMOTE_HAVEAUDIO
@@ -924,6 +989,7 @@ void main_loop()
                     }
                     #endif
                 }
+            #endif  // ALLOW_DIS_UB
             }
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonAKeyPressed) {
@@ -961,6 +1027,7 @@ void main_loop()
                     }
                     #endif
                 }
+            #ifdef ALLOW_DIS_UB
             } else {
                 if(isbuttonBKeyPressed) {
                     #ifdef REMOTE_HAVEAUDIO
@@ -973,6 +1040,7 @@ void main_loop()
                     }
                     #endif
                 }
+            #endif  // ALLOW_DIS_UB
             }
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonBKeyPressed) {
@@ -1082,6 +1150,7 @@ void main_loop()
                         currSpeedF = 0;
                         currSpeed = 0;
                         keepCounting = false;
+                        triggerTTonThrottle = 0;
                         bttfn_remote_send_combined(powerState, brakeState, currSpeed);
                         doForceDispUpd = true;
                     }
@@ -1089,6 +1158,7 @@ void main_loop()
                     flushDelayedSave();
                     display_ip();
                     doForceDispUpd = true;
+                    triggerTTonThrottle = 0;
                 }
             }
         }
@@ -1125,7 +1195,15 @@ void main_loop()
     }
     
     // Scan throttle position
-    if(!calibMode && !tcdIsInP0) {
+    if(triggerTTonThrottle) {
+        throttlePos = rotEnc.updateThrottlePos();
+        if(FPBUnitIsOn && !TTrunning && !tcdIsInP0) {
+            if(triggerTTonThrottle == 1 && throttlePos > 0) {
+                triggerTTonThrottle++;
+                BTTFNTriggerTT(false);
+            }
+        }
+    } else if(!calibMode && !tcdIsInP0) {
         throttlePos = rotEnc.updateThrottlePos();
         if(FPBUnitIsOn && !TTrunning) {
             int tidx;
@@ -1238,7 +1316,7 @@ void main_loop()
             if(displayGPSMode) {
                 if(tcdCurrSpeed != currSpeedOldGPS) {
                     remdisplay.on();
-                    remdisplay.setSpeed(tcdCurrSpeed);
+                    remdisplay.setSpeed(tcdCurrSpeed * 10);
                     remdisplay.show();
                     currSpeedOldGPS = tcdCurrSpeed;
                 }
@@ -1252,6 +1330,7 @@ void main_loop()
     if(tcdIsInP0) {
         if(!tcdIsInP0Old || tcdSpeedP0 != tcdSpeedP0Old) {
             if(!tcdIsInP0Old) {
+                triggerTTonThrottle = 0;
                 tcdIsInP0Old = tcdIsInP0;
                 tcdInP0now = millis();
                 tcdClickNow = 0;
@@ -1261,7 +1340,13 @@ void main_loop()
             }
             if(FPBUnitIsOn) {
                 #ifdef REMOTE_HAVEAUDIO
-                if(tcdSpeedP0 > 0 && (!tcdClickNow || millis() - tcdClickNow > 25)) {
+                if(!tcdSpeedP0) {
+                    if(haveThUp) {
+                        play_file(throttleUpSnd, PA_THRUP|PA_INTRMUS|PA_ALLOWSD, 1.0);
+                    } else {
+                        play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV|PA_ALLOWSD, 1.0);
+                    }
+                } else if(tcdSpeedP0 > 0 && (!tcdClickNow || millis() - tcdClickNow > 25)) {
                     tcdClickNow = millis();
                     play_click();
                 }
@@ -1295,6 +1380,7 @@ void main_loop()
         tcdSpeedP0Old = 2000;
         tcdIsInP0Old = 0;
         doForceDispUpd = true;
+        triggerTTonThrottle = 0;
         #ifdef REMOTE_DBG
         Serial.printf("P0 is off\n");
         #endif
@@ -1409,6 +1495,7 @@ void main_loop()
                   doForceDispUpd = true;
 
                   keepCounting = false;
+                  triggerTTonThrottle = 0;
     
                   TTP2 = false;
                   TTrunning = false;
@@ -2305,14 +2392,28 @@ static void bttfn_setup()
     
     remUDP = &bttfUDP;
     remUDP->begin(BTTF_DEFAULT_LOCAL_PORT);
+
+    #ifdef BTTFN_MC
+    remMcUDP = &bttfMcUDP;
+    remMcUDP->beginMulticast(IPAddress(224, 0, 0, 224), BTTF_DEFAULT_LOCAL_PORT + 2);
+    #endif
+    
     BTTFNfailCount = 0;
     useBTTFN = true;
 }
 
 void bttfn_loop()
 {
+    #ifdef BTTFN_MC
+    int t = 10;
+    #endif
+    
     if(!useBTTFN)
         return;
+
+    #ifdef BTTFN_MC
+    while(bttfn_checkmc() && t--) {}
+    #endif
         
     BTTFNCheckPacket();
     
@@ -2326,6 +2427,168 @@ void bttfn_loop()
         }
     }
 }
+
+static bool check_packet(uint8_t *buf)
+{
+    // Basic validity check
+    if(memcmp(BTTFUDPBuf, BTTFUDPHD, 4))
+        return false;
+
+    uint8_t a = 0;
+    for(int i = 4; i < BTTF_PACKET_SIZE - 1; i++) {
+        a += BTTFUDPBuf[i] ^ 0x55;
+    }
+    if(BTTFUDPBuf[BTTF_PACKET_SIZE - 1] != a)
+        return false;
+
+    return true;
+}
+
+static void handle_tcd_notification(uint8_t *buf)
+{
+    uint32_t seqCnt;
+
+    switch(buf[5]) {
+    case BTTFN_NOT_PREPARE:
+        // Prepare for TT. Comes at some undefined point,
+        // an undefined time before the actual tt, and
+        // may not come at all.
+        if(FPBUnitIsOn && !TTrunning) {
+            prepareTT();
+        }
+        break;
+    case BTTFN_NOT_TT:
+        // Trigger Time Travel (if not running already)
+        if(FPBUnitIsOn && !TTrunning) {
+            networkTimeTravel = true;
+            networkReentry = false;
+            networkAbort = false;
+            networkLead = buf[6] | (buf[7] << 8);
+            networkP1   = buf[8] | (buf[9] << 8);
+        }
+        break;
+    case BTTFN_NOT_REENTRY:
+        // Start re-entry (if TT currently running)
+        // Ignore command if TCD is connected by wire
+        if(TTrunning) {
+            networkReentry = true;
+        }
+        break;
+    case BTTFN_NOT_ABORT_TT:
+        // Abort TT (if TT currently running)
+        // Ignore command if TCD is connected by wire
+        if(TTrunning) {
+            networkAbort = true;
+        }
+        tcdIsInP0 = 0;
+        break;
+    case BTTFN_NOT_ALARM:
+        networkAlarm = true;
+        // Eval this at our convenience
+        break;
+    case BTTFN_NOT_REM_CMD:
+        addCmdQueue( GET32(buf, 6) );
+        break;
+    case BTTFN_NOT_WAKEUP:
+        if(FPBUnitIsOn && !TTrunning) {
+            wakeup();
+        }
+        break;
+    case BTTFN_NOT_REM_SPD:     // TCD fw < 10/26/2024
+        seqCnt = GET32(buf, 12);
+        if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
+            tcdIsInP0  = buf[8] | (buf[9] << 8);
+            tcdSpeedP0 = buf[6] | (buf[7] << 8);
+            #ifdef REMOTE_DBG
+            Serial.printf("TCD sent REM_SPD: %d %d\n", tcdIsInP0, tcdSpeedP0);
+            #endif
+        } else {
+            #ifdef REMOTE_DBG
+            Serial.printf("Out-of-sequence packet received from TCD %d %d\n", seqCnt, bttfnTCDSeqCnt);
+            #endif
+        }
+        bttfnTCDSeqCnt = seqCnt;
+        break;
+    case BTTFN_NOT_SPD:       // TCD fw >= 10/26/2024
+        seqCnt = GET32(buf, 12);
+        if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
+            int t = buf[8] | (buf[9] << 8);
+            tcdCurrSpeed = buf[6] | (buf[7] << 8);
+            if(tcdCurrSpeed > 88) tcdCurrSpeed = 88;
+            switch(t) {
+            case BTTFN_SSRC_P0:
+                tcdSpeedP0 = (uint16_t)tcdCurrSpeed;
+                tcdIsInP0 = FPBUnitIsOn ? 1 : 0;
+                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
+                break;
+            case BTTFN_SSRC_REM:
+                tcdIsInP0 = 0;
+                tcdSpdIsRotEnc = false;
+                tcdSpdIsRemote = true;
+                break;
+            case BTTFN_SSRC_ROTENC:
+                tcdIsInP0 = 0;
+                tcdSpdIsRotEnc = true;
+                tcdSpdIsRemote = false;
+                break;
+            default:
+                tcdIsInP0 = 0;
+                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
+            }
+            #ifdef REMOTE_DBG
+            Serial.printf("TCD sent NOT_SPD: %d src %d (IsP0:%d)\n", tcdCurrSpeed, t, tcdIsInP0);
+            #endif
+        } else {
+            #ifdef REMOTE_DBG
+            Serial.printf("Out-of-sequence packet received from TCD %d %d\n", seqCnt, bttfnTCDSeqCnt);
+            #endif
+        }
+        bttfnTCDSeqCnt = seqCnt;
+        break;
+    }
+}
+
+#ifdef BTTFN_MC
+static bool bttfn_checkmc()
+{
+    int psize = remMcUDP->parsePacket();
+
+    if(!psize) {
+        return false;
+    }
+    
+    remMcUDP->read(BTTFMCBuf, BTTF_PACKET_SIZE);
+
+    #ifdef FC_DBG
+    Serial.printf("Received multicast packet from %s\n", fcMcUDP->remoteIP().toString());
+    #endif
+
+    if(haveTCDIP) {
+        if(bttfnTcdIP != remMcUDP->remoteIP())
+            return false;
+    } else {
+        // Do not use tcdHostNameHash; let DISCOVER do its work
+        // and wait for a result.
+        return false;
+    }
+
+    if(!check_packet(BTTFMCBuf))
+        return false;
+
+    if((BTTFMCBuf[4] & 0x4f) == (BTTFN_VERSION | 0x40)) {
+
+        // A notification from the TCD
+        handle_tcd_notification(BTTFMCBuf);
+    
+    } else {
+      
+        return false;
+
+    }
+
+    return true;
+}
+#endif
 
 // Check for pending packet and parse it
 static void BTTFNCheckPacket()
@@ -2354,85 +2617,14 @@ static void BTTFNCheckPacket()
     
     remUDP->read(BTTFUDPBuf, BTTF_PACKET_SIZE);
 
-    // Basic validity check
-    if(memcmp(BTTFUDPBuf, BTTFUDPHD, 4))
+    if(!check_packet(BTTFUDPBuf))
         return;
 
-    uint8_t a = 0;
-    for(int i = 4; i < BTTF_PACKET_SIZE - 1; i++) {
-        a += BTTFUDPBuf[i] ^ 0x55;
-    }
-    if(BTTFUDPBuf[BTTF_PACKET_SIZE - 1] != a)
-        return;
-
-    if(BTTFUDPBuf[4] == (BTTFN_VERSION | 0x40)) {
+    if((BTTFUDPBuf[4] & 0x4f) == (BTTFN_VERSION | 0x40)) {
 
         // A notification from the TCD
-        uint32_t seqCnt;
-
-        switch(BTTFUDPBuf[5]) {
-        case BTTFN_NOT_PREPARE:
-            // Prepare for TT. Comes at some undefined point,
-            // an undefined time before the actual tt, and
-            // may not come at all.
-            if(FPBUnitIsOn && !TTrunning) {
-                prepareTT();
-            }
-            break;
-        case BTTFN_NOT_TT:
-            // Trigger Time Travel (if not running already)
-            if(FPBUnitIsOn && !TTrunning) {
-                networkTimeTravel = true;
-                networkReentry = false;
-                networkAbort = false;
-                networkLead = BTTFUDPBuf[6] | (BTTFUDPBuf[7] << 8);
-                networkP1   = BTTFUDPBuf[8] | (BTTFUDPBuf[9] << 8);
-            }
-            break;
-        case BTTFN_NOT_REENTRY:
-            // Start re-entry (if TT currently running)
-            // Ignore command if TCD is connected by wire
-            if(TTrunning) {
-                networkReentry = true;
-            }
-            break;
-        case BTTFN_NOT_ABORT_TT:
-            // Abort TT (if TT currently running)
-            // Ignore command if TCD is connected by wire
-            if(TTrunning) {
-                networkAbort = true;
-            }
-            tcdIsInP0 = 0;
-            break;
-        case BTTFN_NOT_ALARM:
-            networkAlarm = true;
-            // Eval this at our convenience
-            break;
-        case BTTFN_NOT_REM_CMD:
-            addCmdQueue( GET32(BTTFUDPBuf, 6) );
-            break;
-        case BTTFN_NOT_WAKEUP:
-            if(FPBUnitIsOn && !TTrunning) {
-                wakeup();
-            }
-            break;
-        case BTTFN_NOT_REM_SPD:
-            seqCnt = GET32(BTTFUDPBuf, 12);
-            if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
-                tcdIsInP0  = BTTFUDPBuf[8] | (BTTFUDPBuf[9] << 8);
-                tcdSpeedP0 = BTTFUDPBuf[6] | (BTTFUDPBuf[7] << 8);
-                #ifdef REMOTE_DBG
-                Serial.printf("TCD sent REM_SPD: %d %d\n", tcdIsInP0, tcdSpeedP0);
-                #endif
-            } else {
-                #ifdef REMOTE_DBG
-                Serial.printf("Out-of-sequence packet received from TCD %d %d\n", seqCnt, bttfnTCDSeqCnt);
-                #endif
-            }
-            bttfnTCDSeqCnt = seqCnt;
-            break;
-        }
-      
+        handle_tcd_notification(BTTFUDPBuf);
+        
     } else {
 
         // (Possibly) a response packet
@@ -2441,7 +2633,7 @@ static void BTTFNCheckPacket()
             return;
     
         // Response marker missing or wrong version, bail
-        if(BTTFUDPBuf[4] != (BTTFN_VERSION | 0x80))
+        if((BTTFUDPBuf[4] & 0x8f) != (BTTFN_VERSION | 0x80))
             return;
 
         bttfnCurrLatency = (mymillis - bttfnPacketSentNow) / 2;
@@ -2469,6 +2661,7 @@ static void BTTFNCheckPacket()
 
         if(BTTFUDPBuf[5] & 0x10) {
             remoteAllowed = (BTTFUDPBuf[26] & 0x04) ? true : false;
+            tcdHasSpeedo  = (BTTFUDPBuf[26] & 0x08) ? true : false;
         } else {
             remoteAllowed = false;
         }
@@ -2477,9 +2670,17 @@ static void BTTFNCheckPacket()
             tcdCurrSpeed = (int16_t)(BTTFUDPBuf[18] | (BTTFUDPBuf[19] << 8));
             if(tcdCurrSpeed > 88) tcdCurrSpeed = 88;
             tcdSpdIsRotEnc = (BTTFUDPBuf[26] & 0x80) ? true : false; 
-            tcdSpdIsRemote = (BTTFUDPBuf[26] & 0x20) ? true : false; 
-        } else {
-            tcdCurrSpeed = -1;
+            tcdSpdIsRemote = (BTTFUDPBuf[26] & 0x20) ? true : false;
+        }
+
+        if(BTTFUDPBuf[5] & 0x40) {
+            bttfnReqStatus &= ~0x40;     // Do no longer poll capabilities
+            #ifdef BTTFN_MC
+            if(BTTFUDPBuf[31] & 0x01) {
+                bttfnMcMarker = BTTFN_SUP_MC;
+                bttfnReqStatus &= ~0x02; // Do no longer poll speed, comes over multicast
+            }
+            #endif
         }
 
         lastBTTFNpacket = mymillis;
@@ -2526,8 +2727,12 @@ static void BTTFNSendPacket()
 
     BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
 
-    BTTFUDPBuf[4] = BTTFN_VERSION;  // Version
-    BTTFUDPBuf[5] = 0x12;           // Request status & TCD speed
+    #ifdef BTTFN_MC
+    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker; // Version, MC-marker
+    #else
+    BTTFUDPBuf[4] = BTTFN_VERSION;
+    #endif
+    BTTFUDPBuf[5] = bttfnReqStatus;        // Request status & TCD speed
 
     #ifdef BTTFN_MC
     if(!haveTCDIP) {
@@ -2548,7 +2753,7 @@ static void BTTFNSendPacket()
     if(haveTCDIP) {
     #endif
         remUDP->beginPacket(bttfnTcdIP, BTTF_DEFAULT_LOCAL_PORT);
-    #ifdef BTTFN_MC    
+    #ifdef BTTFN_MC
     } else {
         #ifdef REMOTE_DBG
         //Serial.printf("Sending multicast (hostname hash %x)\n", tcdHostNameHash);
@@ -2562,7 +2767,7 @@ static void BTTFNSendPacket()
     bttfnPacketSentNow = millis();
 }
 
-bool BTTFNTriggerTT()
+static bool BTTFNTriggerTT(bool probe)
 {
     if(!useBTTFN)
         return false;
@@ -2581,6 +2786,9 @@ bool BTTFNTriggerTT()
     if(TTrunning)
         return false;
 
+    if(probe)
+        return true;
+
     memset(BTTFUDPBuf, 0, BTTF_PACKET_SIZE);
 
     // ID
@@ -2592,8 +2800,12 @@ bool BTTFNTriggerTT()
 
     BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
 
-    BTTFUDPBuf[4] = BTTFN_VERSION;  // Version
-    BTTFUDPBuf[5] = 0x80;           // Trigger BTTFN-wide TT
+    #ifdef BTTFN_MC
+    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker; // Version, MC-marker
+    #else
+    BTTFUDPBuf[4] = BTTFN_VERSION;
+    #endif
+    BTTFUDPBuf[5] = 0x80;                          // Trigger BTTFN-wide TT
 
     SET32(BTTFUDPBuf, 35, myRemID);
 
@@ -2644,7 +2856,7 @@ static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2)
 
     BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
 
-    BTTFUDPBuf[4] = BTTFN_VERSION;  // Version
+    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker;  // Version
     BTTFUDPBuf[5] = 0x00;
 
     SET32(BTTFUDPBuf, 6, bttfnSeqCnt[cmd]);

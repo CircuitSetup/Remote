@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V0.25"
-#define REMOTE_VERSION_EXTRA "OCT232024"
+#define REMOTE_VERSION "V0.90"
+#define REMOTE_VERSION_EXTRA "OCT262024"
 
 #define REMOTE_DBG              // debug output on Serial
 
@@ -47,12 +47,18 @@
 #define REMOTE_HAVEMQTT
 
 // Uncomment to include BTTFN discover support (multicast)
+// This is required for proper operation with TCD firmwares dated Oct 26, 2024,
+// or later.
 #define BTTFN_MC
 
 // Uncomment if hardware has a volume knob
 //#define REMOTE_HAVEVOLKNOB
 // Uncomment when using the prototype display
 //#define PROTO_DISPLAY
+
+// Uncomment to allow user to disable User Buttons
+// (Was used for prototype)
+//#define ALLOW_DIS_UB
 
 // Use SPIFFS (if defined) or LittleFS (if undefined; esp32-arduino >= 2.x)
 //#define USE_SPIFFS

@@ -106,15 +106,22 @@ WiFiManagerParameter custom_aood("<div class='msg P'>Please <a href='/update'>in
 #endif
 
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral (0=no, 1=yes)", settings.coast, 1, "autocomplete='off' title='Enable to enable coasting then trottle is in neutral position'");
+WiFiManagerParameter custom_at("at", "Auto throttle (0=no, 1=yes)", settings.autoThrottle, 1, "autocomplete='off' title='When enabled, accleration will continue when trottle in neutral. Has precedence over Coasting.'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral", settings.coast, 1, "autocomplete='off' title='Check to enable coasting then trottle is in neutral position' type='checkbox' style='margin-top:5px;'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_at("at", "Auto throttle", settings.autoThrottle, 1, "autocomplete='off' title='When checked, accleration will continue when trottle in neutral. Has precedence over Coasting.' type='checkbox' style='margin-top:5px;margin-bottom:5px;'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_at("at", "Auto throttle (0=no, 1=yes)", settings.autoThrottle, 1, "autocomplete='off' title='When enabled, accleration will continue when trottle in neutral'");
+WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral (0=no, 1=yes)", settings.coast, 1, "autocomplete='off' title='Enable to enable coasting then trottle is in neutral position. Mutually exclusive to Auto Throttle.'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_at("at", "Auto throttle", settings.autoThrottle, 1, "autocomplete='off' title='When checked, accleration will continue when trottle in neutral' type='checkbox' style='margin-top:5px;margin-bottom:10px;'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_coast("cst", "Coasting when throttle in neutral", settings.coast, 1, "autocomplete='off' title='Check to enable coasting then trottle is in neutral position. Mutually exclusive to Auto Throttle.' type='checkbox' style='margin-top:5px;'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
+#ifdef REMOTE_HAVEAUDIO
+#ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
+WiFiManagerParameter custom_oott("oott", "O.O press function (0=MP, 1=TT)", settings.autoThrottle, 1, "autocomplete='off' title='TT = BTTFN-wide time travel; MP = previous song (Music Player)'");
+#else // -------------------- Checkbox hack: --------------
+WiFiManagerParameter custom_oott("oott", "O.O, throttle-up trigger BTTFN-wide Time Travel", settings.ooTT, 1, "autocomplete='off' title='When unchecked, pressing O.O will play previous song' type='checkbox' style='margin-top:5px;margin-bottom:10px;'", WFM_LABEL_AFTER);
+#endif // -------------------------------------------------
+#endif
 
 WiFiManagerParameter custom_Bri("Bri", "<br>Brightness level (0-15)", settings.Bri, 2, "type='number' min='0' max='15' autocomplete='off'", WFM_LABEL_BEFORE);
 
@@ -149,9 +156,9 @@ WiFiManagerParameter custom_tcdIP("tcdIP", "IP address of TCD", settings.tcdIP, 
 #endif
 
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_sStrict("sStrict", "Movie-mode acceleration (0=no, 1=yes)<br><span style='font-size:80%'>Check to set the acceleration pace to what is shown in the movie. This slows down acceleration at higher speeds.</span>", settings.movieMode, 1, "autocomplete='off'");
+WiFiManagerParameter custom_sStrict("sStrict", "Movie-like acceleration (0=no, 1=yes)<br><span style='font-size:80%'>Check to set the acceleration pace to what is shown in the movie. This slows down acceleration at higher speeds.</span>", settings.movieMode, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_sStrict("sStrict", "Movie-mode acceleration<br><span style='font-size:80%'>Check to set the acceleration pace to what is shown in the movie. This slows down acceleration at higher speeds.</span>", settings.movieMode, 1, "autocomplete='off' type='checkbox' class='mt5'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_sStrict("sStrict", "Movie-like acceleration<br><span style='font-size:80%'>Check to set the acceleration pace to what is shown in the movie. This slows down acceleration at higher speeds.</span>", settings.movieMode, 1, "autocomplete='off' type='checkbox' class='mt5'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 #ifdef REMOTE_HAVEAUDIO
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
@@ -240,11 +247,13 @@ WiFiManagerParameter custom_CfgOnSD("CfgOnSD", "Save secondary settings on SD<br
 //WiFiManagerParameter custom_sdFrq("sdFrq", "4MHz SD clock speed<br><span style='font-size:80%'>Checking this might help in case of SD card problems</span>", settings.sdFreq, 1, "autocomplete='off' type='checkbox' style='margin-top:12px'", WFM_LABEL_AFTER);
 //#endif // -------------------------------------------------
 
+#ifdef ALLOW_DIS_UB
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
 WiFiManagerParameter custom_dBP("dBP", "Disable User Buttons (0=no, 1=yes)", settings.disBPack, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
 WiFiManagerParameter custom_dBP("dBP", "Disable User Buttons", settings.disBPack, 1, "autocomplete='off' type='checkbox' class='mt5'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
+#endif
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
 WiFiManagerParameter custom_b0mt("b0mt", "Button 1 is maintained (0=no, 1=yes)", settings.bPb0Maint, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
@@ -501,8 +510,11 @@ void wifi_setup()
     #endif
 
     wm.addParameter(&custom_sectstart_head);// 3
-    wm.addParameter(&custom_coast);
     wm.addParameter(&custom_at);
+    wm.addParameter(&custom_coast);
+    #ifdef REMOTE_HAVEAUDIO
+    wm.addParameter(&custom_oott);
+    #endif
     wm.addParameter(&custom_Bri);
 
     #ifdef REMOTE_HAVEAUDIO
@@ -576,7 +588,9 @@ void wifi_setup()
     //wm.addParameter(&custom_sdFrq);
 
     wm.addParameter(&custom_sectstart_hw);  // 10
+    #ifdef ALLOW_DIS_UB
     wm.addParameter(&custom_dBP);
+    #endif
     wm.addParameter(&custom_b0mt);
     #ifdef REMOTE_HAVEAUDIO
     wm.addParameter(&custom_b0mtoo);
@@ -960,6 +974,9 @@ void wifi_loop()
             #ifdef TC_NOCHECKBOXES // --------- Plain text boxes:
 
             mystrcpy(settings.coast, &custom_coast);
+            #ifdef REMOTE_HAVEAUDIO
+            mystrcpy(settings.ooTT, &custom_oott);
+            #endif
 
             #ifdef REMOTE_HAVEAUDIO
             mystrcpy(settings.playClick, &custom_playclick);
@@ -981,7 +998,9 @@ void wifi_loop()
             mystrcpy(settings.CfgOnSD, &custom_CfgOnSD);
             //mystrcpy(settings.sdFreq, &custom_sdFrq);
 
+            #ifdef ALLOW_DIS_UB
             mystrcpy(settings.disBPack, &custom_dBP);
+            #endif
 
             mystrcpy(settings.bPb0Maint, &custom_b0mt);
             mystrcpy(settings.bPb1Maint, &custom_b1mt);
@@ -1006,6 +1025,9 @@ void wifi_loop()
             #else // -------------------------- Checkboxes:
 
             strcpyCB(settings.coast, &custom_coast);
+            #ifdef REMOTE_HAVEAUDIO
+            strcpyCB(settings.ooTT, &custom_oott);
+            #endif
             
             #ifdef REMOTE_HAVEAUDIO
             strcpyCB(settings.playClick, &custom_playclick);
@@ -1027,7 +1049,9 @@ void wifi_loop()
             strcpyCB(settings.CfgOnSD, &custom_CfgOnSD);
             //strcpyCB(settings.sdFreq, &custom_sdFrq);
 
+            #ifdef ALLOW_DIS_UB
             strcpyCB(settings.disBPack, &custom_dBP);
+            #endif
 
             strcpyCB(settings.bPb0Maint, &custom_b0mt);
             strcpyCB(settings.bPb1Maint, &custom_b1mt);
@@ -1504,6 +1528,9 @@ void updateConfigPortalValues()
     #ifdef TC_NOCHECKBOXES  // Standard text boxes: -------
 
     custom_coast.setValue(settings.coast, 1);
+    #ifdef REMOTE_HAVEAUDIO
+    custom_oott.setValue(settings.ooTT, 1);
+    #endif
 
     #ifdef REMOTE_HAVEAUDIO
     custom_playclick.setValue(settings.playClick, 1);
@@ -1524,8 +1551,10 @@ void updateConfigPortalValues()
     custom_CfgOnSD.setValue(settings.CfgOnSD, 1);
     //custom_sdFrq.setValue(settings.sdFreq, 1);
 
+    #ifdef ALLOW_DIS_UB
     custom_dBP.setValue(settings.disBPack, 1);
-
+    #endif
+    
     custom_b0mt.setValue(settings.bPb0Maint, 1);
     custom_b1mt.setValue(settings.bPb1Maint, 1);
     custom_b2mt.setValue(settings.bPb2Maint, 1);
@@ -1549,6 +1578,9 @@ void updateConfigPortalValues()
     #else   // For checkbox hack --------------------------
 
     setCBVal(&custom_coast, settings.coast);
+    #ifdef REMOTE_HAVEAUDIO
+    setCBVal(&custom_oott, settings.ooTT);
+    #endif
     
     #ifdef REMOTE_HAVEAUDIO
     setCBVal(&custom_playclick, settings.playClick);
@@ -1569,8 +1601,10 @@ void updateConfigPortalValues()
     setCBVal(&custom_CfgOnSD, settings.CfgOnSD);
     //setCBVal(&custom_sdFrq, settings.sdFreq);
 
+    #ifdef ALLOW_DIS_UB
     setCBVal(&custom_dBP, settings.disBPack);
-
+    #endif
+    
     setCBVal(&custom_b0mt, settings.bPb0Maint);
     setCBVal(&custom_b1mt, settings.bPb1Maint);
     setCBVal(&custom_b2mt, settings.bPb2Maint);
