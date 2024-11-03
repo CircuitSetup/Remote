@@ -131,11 +131,21 @@ Final step is to take apart the transmission module, and only insert the lid int
 
 ![box2](img/box2.jpg)
 
+The switches are positioned and rotated as closely as possible to match the movie:
+
+![boxm2](img/switchesm2.jpg)
+
+![boxm1](img/switchesm1.jpg)
+
 ### Mounting the box on the Futaba
 
 Since the transmitter module's lid is slightly loose, I decided to attach the Unibox using 6mm PCB standoffs:
 
 ![standoffs](img/boxstandoffs.jpg)
+
+The vertical position in the movie:
+
+![boxpos](img/boxpos.png)
 
 ### "Stop" light and switch
 
