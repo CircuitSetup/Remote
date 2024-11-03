@@ -127,11 +127,13 @@ Final step is to take apart the transmission module, and only insert the lid int
 
 ### "Stop" light and switch
 
-Most people use tape to attach the light and the switch. Since the Futaba's surface isn't really suited for tape at the proper places, and the area's for tape are quite small, I went for screws instead. I used M2 screws to attach both the light and the switch. 
+Most people use tape to attach the light and the switch. Since the Futaba's surface isn't really suited for tape at the proper places, and the area's for tape are quite small, I went for screws to reinforce the tape. I used M2 screws to attach both the light and the switch. 
 
 ![stop1](img/stoplight1.jpg)
 
 ![stop2](img/stoplight2.jpg)
+
+Attaching the switch that way requires disassembling it, removing the small bulb, and to cut out the inner body to make room for the screw heads:
 
 ![stops1](img/stopswitch1.jpg)
 
