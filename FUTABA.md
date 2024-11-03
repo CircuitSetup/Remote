@@ -125,5 +125,25 @@ Final step is to take apart the transmission module, and only insert the lid int
 
 ![wires](img/wires3.jpg)
 
+### "Stop" light and switch
+
+![stop1](img/stoplight1.jpg)
+
+![stop2](img/stoplight2.jpg)
+
+![stops1](img/stopswitch1.jpg)
+
+![stops2](img/stopswitch2.jpg)
+
+### Box attachment
+
+![standoffs](img/boxstandoffs.jpg)
+
+### Box
+
+![box1](img/box1.jpg)
+
+![box2](img/box2.jpg)
+
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
 
