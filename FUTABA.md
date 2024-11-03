@@ -153,6 +153,10 @@ Attaching the switch that way requires disassembling it, removing the small bulb
 
 ![stops2](img/stopswitch2.jpg)
 
+The position of the Stop switch in the movie: (There were several Futabas used, all slightly different. This is the one used for the later close-ups.)
+
+![stopspos](img/stopswitchpos.jpg)
+
 _To be continued._
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
