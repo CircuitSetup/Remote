@@ -131,7 +131,7 @@ Final step is to take apart the transmission module, and only insert the lid int
 
 ![box2](img/box2.jpg)
 
-The switches are positioned and rotated as closely as possible to match the movie:
+The switches are positioned and rotated as in the movie, as far as I could make out:
 
 ![boxm2](img/switchesm2.jpg)
 
