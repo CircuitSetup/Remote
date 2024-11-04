@@ -125,5 +125,49 @@ Final step is to take apart the transmission module, and only insert the lid int
 
 ![wires](img/wires3.jpg)
 
+### Box
+
+![box1](img/box1.jpg)
+
+![box2](img/box2.jpg)
+
+The switches are positioned and rotated as in the movie, as far as I could make out:
+
+![boxm2](img/switchesm2.jpg)
+
+![boxm1](img/switchesm1.jpg)
+
+### Mounting the box on the Futaba
+
+Since the transmitter module's lid is slightly loose, I decided to attach the Unibox using 6mm PCB standoffs:
+
+![standoffs](img/boxstandoffs.jpg)
+
+The vertical position in the movie:
+
+![boxpos](img/boxpos.png)
+
+### "Stop" light and switch
+
+Many people use tape to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I used tape and M2 screws.
+
+The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
+
+![stop1](img/stoplight1.jpg)
+
+![stop2](img/stoplight2.jpg)
+
+Attaching the switch that way requires disassembling it, removing the small bulb, and cutting out the black inner body to make room for the screw heads:
+
+![stops1](img/stopswitch1.jpg)
+
+![stops2](img/stopswitch2.jpg)
+
+The position of the Stop switch in the movie: (There were several Futabas used, all slightly different. This is the one used for the later close-ups.)
+
+![stopspos](img/stopswitchpos.jpg)
+
+_To be continued._
+
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
 
