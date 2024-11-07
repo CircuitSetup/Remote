@@ -2,14 +2,6 @@
 
 This document contains information on buttons/switches as well as instructions on how to modify your Futaba remote control to work with the kit Control Board.
 
-### Power supply
-
-The prop is powered by a 5V battery, connected to the USB port of the ESP32 board on top of the Control Board. It should be able to deliver 1A, and have a capacity of >= 2500mAh.
-
-Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, access to the battery for charging has to be provided, since the Futaba's battery compartment is not accessible without major disassembly. One way to do this is to use two pins of the existing charging connector.
-
-If you don't want to pull out the USB cable from the battery to power down, you can use the "UP/DOWN" switch on the Unibox; all you need are two open-end USB power cables (one of type "micro USB" for the ESP32, one depending on the output plug type of your battery), and a maintained switch as "UP/DOWN". 
-
 ### Button/switch mapping
 
 The firmware has the following minimum requirements:
@@ -21,7 +13,7 @@ Additionally, up to eight "User Buttons" can be installed, used for audio playba
 
 Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
 
-"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board (unless you want to power down your Futaba prop by pulling out the USB cable from the battery). The other can, for instance, be equipped with a 3-position MOM-OFF-MOM or ON-OFF-MOM flat handle mini toggle switch, serving as "Calibration" (MOM) and one User Button. 
+"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position MOM-OFF-MOM or ON-OFF-MOM flat handle mini toggle switch, serving as "Calibration" (MOM) and one User Button. I used "UP/DOWN" for (real) power, and a MOM-OFF-MOM switch as "HOLD", serving as User Buttons #1 and #2.
 
 If you are willing to modify your Futaba beyond connecting the throttle pot, you can also wire its "Fail Safe Set" button as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
@@ -65,11 +57,11 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 10) Remove two silver screws (8) on the top of the main PCB
 11) Unplug five ribbon cables (9) on the main PCB
-12) Lift main PCB; at this point, it is held by only pin sockets that connect it to other PCBs; you can't pull it out entirely because it is connected to other parts by wires. Just pull it out and downwards, that way you can access all relevant parts.
+12) Lift out the main PCB; at this point, it is held by only pin sockets that connect it to other PCBs. 
 
-Now you can access the potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
+Now you can access the throttle potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
-It is recommended to remove the Futaba's battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it. The space can be used for a rechargeable battery to power the kit.
+Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it. 
 
 ### Throttle connection
 
@@ -115,15 +107,44 @@ Connecting the Control Board to the Futaba's level meter is, of course, optional
 
 ### Wires
 
-The wires need to lead out of the Futaba's body. One way to do this is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward (or breaking it off) to make room for the wires in the corners.
+The wires need to lead out of the Futaba's body. 
+
+#### The "whole 9 yards" way
+
+Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way.
+
+![womp1](img/womp1.jpg)
+
+![womp2](img/womp2.jpg)
+
+#### The "soft" way
+
+The less intrusive/destructive way (ie keep the main PCB in) is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward (or breaking it off) to make room for the wires in the corners.
 
 ![wires](img/wires2.jpg)
 
 ![wires](img/wires.jpg)
 
+#### The way out
+
 Final step is to take apart the transmission module, and only insert the lid into the slot.
 
 ![wires](img/wires3.jpg)
+
+### Power supply
+
+The prop is powered by a 5V battery, connected to the USB port of the ESP32 board on top of the Control Board. It should be able to deliver 1A, and have a capacity of >= 2500mAh.
+
+Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, access to the battery for charging has to be provided, since the Futaba's battery compartment is not accessible without major disassembly. One way to do this is to use two pins of the existing charging connector, or the "tachometer" connector.
+
+I used this battery, which I sourced from AliExpress:
+
+![batttery](img/battery.jpg)
+
+With simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics need to be put elsewhere
+
+You can use the "UP/DOWN" switch on the Unibox; all you need are two open-end USB power cables (one of type "micro USB" for the ESP32, one depending on the output plug type of your battery), and a maintained switch as "UP/DOWN". 
+
 
 ### Box
 
