@@ -175,6 +175,8 @@ The position of the Stop switch in the movie: (There were several Futabas used, 
 
 ### The Unibox
 
+Apart from the "UP/DOWN" switch (which I use as a real power switch), all switches and buttons have a common ground (black). The two red wires are from the "UP/DOWN" switch and will be connected to + of the ESP32, and + from the battery.
+
 ![box1](img/box1.jpg)
 
 ![box2](img/box2.jpg)
