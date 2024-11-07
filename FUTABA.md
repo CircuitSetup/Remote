@@ -17,7 +17,7 @@ Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibratio
 
 If you are willing to modify your Futaba beyond connecting the throttle pot, you can also wire its "Fail Safe Set" button as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
-Example schematics:
+The User Buttons/Switches in the following schematics are examples. 
 
 ![schematics](img/schematics.png)
 
