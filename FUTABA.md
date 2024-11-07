@@ -153,7 +153,27 @@ The charging wire is - through a micro-USB plug, center bottom of above picture 
 
 I used the "UP/DOWN" switch on the Unibox for separating the battery from the Control Board, ie acting as a real power switch.
 
-### Box
+### "Stop" light and switch
+
+Many people use tape to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I used tape and M2 screws.
+
+The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
+
+![stop1](img/stoplight1.jpg)
+
+![stop2](img/stoplight2.jpg)
+
+Attaching the switch that way requires disassembling it, removing the small bulb, and cutting out the black inner body to make room for the screw heads:
+
+![stops1](img/stopswitch1.jpg)
+
+![stops2](img/stopswitch2.jpg)
+
+The position of the Stop switch in the movie: (There were several Futabas used, all slightly different. This is the one used for the later close-ups.)
+
+![stopspos](img/stopswitchpos.jpg)
+
+### The Unibox
 
 ![box1](img/box1.jpg)
 
@@ -175,25 +195,6 @@ The vertical position in the movie:
 
 ![boxpos](img/boxpos.png)
 
-### "Stop" light and switch
-
-Many people use tape to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I used tape and M2 screws.
-
-The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
-
-![stop1](img/stoplight1.jpg)
-
-![stop2](img/stoplight2.jpg)
-
-Attaching the switch that way requires disassembling it, removing the small bulb, and cutting out the black inner body to make room for the screw heads:
-
-![stops1](img/stopswitch1.jpg)
-
-![stops2](img/stopswitch2.jpg)
-
-The position of the Stop switch in the movie: (There were several Futabas used, all slightly different. This is the one used for the later close-ups.)
-
-![stopspos](img/stopswitchpos.jpg)
 
 _To be continued._
 
