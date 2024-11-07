@@ -1,6 +1,6 @@
 ## Hardware
 
-This document contains information on buttons/switches as well as instructions on how to modify your Futaba remote control to work with the kit Control Board.
+This document contains information on buttons/switches as well as instructions on how to modify your Futaba remote control.
 
 ### Button/switch mapping
 
