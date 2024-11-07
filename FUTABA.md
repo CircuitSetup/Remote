@@ -131,7 +131,7 @@ The less intrusive/destructive way (ie keep the main PCB in) is to dremel off th
 
 #### The way out
 
-Final step is to take apart the transmission module, and only insert the lid into the slot.
+The final step is to take apart the transmission module, and only insert the lid into the slot.
 
 ![wires](img/wires3.jpg)
 
@@ -145,13 +145,13 @@ I used this battery, which I sourced from AliExpress:
 
 ![battery](img/battery.jpg)
 
-With simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics need to be put elsewhere, otherwise it's too thick. Remove the blue shrink-wrap, the tape below, and the PCB is free. I taped it on top of the battery compartment:
+With a simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics need to be put elsewhere, otherwise it's too thick. Remove the blue shrink-wrap, the tape below, and the PCB is free. I taped it on top of the battery compartment:
 
 ![battelec](img/battelec.jpg)
 
-The charging wire is - through a micro-USB plug, center bottom of above picture - connected to the "tachometer" connector on the Futaba. A JST XH or Dupont 3-pin connector fits fine, so it's easy to make a charging adapter for any kind of power supply.
+The charging wire is - through a micro-USB plug, center bottom of above picture - connected to the "tachometer" connector on the Futaba. A JST XH or Dupont 3-pin connector fits fine, so it's easy to make a charging adapter for any kind of power supply. (I used the center pin for + and the two outer pins for -, that way orientation of the plug does not matter. The black wire on the small Futaba PCB is +, yellow and orange are -.
 
-I used the "UP/DOWN" switch on the Unibox for separating the battery from the Control Board, ie acting as a real power switch.
+The actual power cable for the kit electronics is lead outside, together with the other wires from the switches.
 
 ### "Stop" light and switch
 
