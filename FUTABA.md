@@ -117,6 +117,10 @@ Since I needed some space for my battery's charging electronics (see below), I d
 
 ![womp2](img/womp2.jpg)
 
+![womp3](img/womp3.jpg)
+
+![womp4](img/womp4.jpg)
+
 #### The "soft" way
 
 The less intrusive/destructive way (ie keep the main PCB in) is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward (or breaking it off) to make room for the wires in the corners.
