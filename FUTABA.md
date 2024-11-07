@@ -143,12 +143,15 @@ Depending on the shape of the battery, it can be mounted under the Unibox (inste
 
 I used this battery, which I sourced from AliExpress:
 
-![batttery](img/battery.jpg)
+![battery](img/battery.jpg)
 
-With simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics need to be put elsewhere
+With simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics need to be put elsewhere, otherwise it's too thick. Remove the blue shrink-wrap, the tape below, and the PCB is free. I taped it on top of the battery compartment:
 
-You can use the "UP/DOWN" switch on the Unibox; all you need are two open-end USB power cables (one of type "micro USB" for the ESP32, one depending on the output plug type of your battery), and a maintained switch as "UP/DOWN". 
+![battelec](img/battelec.jpg)
 
+The charging wire is - through a micro-USB plug, center bottom of above picture - connected to the "tachometer" connector on the Futaba. A JST XH or Dupont 3-pin connector fits fine, so it's easy to make a charging adapter for any kind of power supply.
+
+I used the "UP/DOWN" switch on the Unibox for separating the battery from the Control Board, ie acting as a real power switch.
 
 ### Box
 
