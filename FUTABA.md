@@ -191,15 +191,15 @@ Apart from the "UP/DOWN" switch (which I use as a real power switch), all switch
 
 ![box2](img/box2.jpg)
 
-With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker.
-
-[<img src="img/box3.jpg">](img/box3l.jpg)
-
 The switches are positioned and rotated as in the movie, as far as I could make out:
 
 ![boxm2](img/switchesm2.jpg)
 
 ![boxm1](img/switchesm1.jpg)
+
+With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker.
+
+[<img src="img/box3.jpg">](img/box3l.jpg)
 
 _To be continued._
 
