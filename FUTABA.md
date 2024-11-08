@@ -173,6 +173,16 @@ The position of the Stop switch in the movie: (There were several Futabas used, 
 
 ![stopspos](img/stopswitchpos.jpg)
 
+### Mounting the Unibox on the Futaba
+
+Since the transmitter module's lid is slightly loose, I decided to attach the Unibox using 6mm PCB standoffs:
+
+![standoffs](img/boxstandoffs.jpg)
+
+The vertical position in the movie:
+
+![boxpos](img/boxpos.png)
+
 ### The Unibox
 
 Apart from the "UP/DOWN" switch (which I use as a real power switch), all switches and buttons have a common ground (black). The two red wires are from the "UP/DOWN" switch and will be connected to + of the ESP32, and + from the battery.
@@ -186,17 +196,6 @@ The switches are positioned and rotated as in the movie, as far as I could make 
 ![boxm2](img/switchesm2.jpg)
 
 ![boxm1](img/switchesm1.jpg)
-
-### Mounting the box on the Futaba
-
-Since the transmitter module's lid is slightly loose, I decided to attach the Unibox using 6mm PCB standoffs:
-
-![standoffs](img/boxstandoffs.jpg)
-
-The vertical position in the movie:
-
-![boxpos](img/boxpos.png)
-
 
 _To be continued._
 
