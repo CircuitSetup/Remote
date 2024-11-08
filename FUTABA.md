@@ -191,6 +191,8 @@ Apart from the "UP/DOWN" switch (which I use as a real power switch), all switch
 
 ![box2](img/box2.jpg)
 
+![box3](img/box3.jpg)
+
 The switches are positioned and rotated as in the movie, as far as I could make out:
 
 ![boxm2](img/switchesm2.jpg)
