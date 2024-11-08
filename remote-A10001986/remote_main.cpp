@@ -1679,7 +1679,7 @@ static void displayBrightness()
 
 void updateVisMode()
 {
-    visMode &= ~0x03;
+    visMode &= ~0x07;
     if(movieMode) visMode |= 0x01;
     if(displayGPSMode) visMode |= 0x02;
     if(autoThrottle) visMode |= 0x04;
