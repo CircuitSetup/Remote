@@ -9,7 +9,7 @@ The firmware has the following minimum requirements:
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These buttons can be momentary or maintained contacts.
+Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These "buttons" can be momentary or maintained contacts.
 
 Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
 
@@ -77,9 +77,9 @@ Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T
 
 Note that using the Futaba's original front and top toggle switches is entirely optional, and doing it is not trivial. They would serve as User Buttons for audio playback and MQTT messages.
 
-If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and to the GND screw connector on the Control Board.
+If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This common GND wire connects all center pins of all switches to each other and to one of the GND screw connectors on the Control Board.
 
-Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces of the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces on the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
 
 Important: Do not re-connect the two widest ribbon cables (top two ones) to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with toggle switch operation.
 
