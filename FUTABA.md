@@ -12,6 +12,7 @@ The Control Board, which is put in the grey box ("Unibox"), has the following co
 - Buttons "O.O" and "RESET"
 - 8 User Buttons (buttons or switches)
 - Speaker
+- LED segment display
 
 ### Button/switch mapping
 
