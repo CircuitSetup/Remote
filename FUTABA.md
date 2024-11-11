@@ -9,11 +9,13 @@ The firmware has the following minimum requirements:
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These "buttons" can be momentary or maintained contacts.
+Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These "buttons" can be momentary or maintained contacts. (_"Momentary switches"_ are switches which only remain in their _on_ state as long as they're being actuated (pressed, held), for example a push button. A _"maintained switch"_ changes state when actuated, and stays in that state until actuated again, for example a toggle switch. Maintained switches are specified using terms like "ON-OFF" or "ON-OFF-ON", while momentary switches use terms like "(ON)-OFF" or "(ON)-OFF-(ON)". The parentheses symbolize a momentary contact. ON-OFF means a 2 position switch, while ON-OFF-ON is a 3 position switch, with _off_ in the middle.) 
 
-Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
+Fake power (labeled "ON/OFF"), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
 
-"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position MOM-OFF-MOM or ON-OFF-MOM flat handle mini toggle switch, serving as "Calibration" (MOM) and one User Button. I used "UP/DOWN" for (real) power, and a MOM-OFF-MOM switch as "HOLD", serving as User Buttons #1 and #2.
+"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position (ON)-OFF-(ON) or ON-OFF-(ON) flat handle mini toggle switch, serving as "Calibration" (on the momentary side) and one User Button. 
+
+I used "UP/DOWN" for (real) power (ON-OFF type switch), and a (ON)-OFF-(ON) switch as "HOLD", serving as User Buttons #1 and #2.
 
 If you are willing to modify your Futaba beyond connecting the throttle pot, you can also wire its "Fail Safe Set" button as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
