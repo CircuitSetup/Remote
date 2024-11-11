@@ -1,6 +1,16 @@
 ## Hardware
 
-This document contains information on buttons/switches as well as instructions on how to modify your Futaba remote control.
+This document contains instructions on how to modify your Futaba remote control.
+
+The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
+- [Trottle]() from Futaba
+- [Power LED] from Futaba
+- [Battey Level Meter] from Futaba
+- Fake Power (switch)
+- Calibration (button)
+- 8 User Buttons (buttons or switches)
+- Buttons "O.O" and "RESET"
+- Speaker
 
 ### Button/switch mapping
 
