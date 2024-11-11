@@ -6,7 +6,7 @@ The Control Board, which is put in the grey box ("Unibox"), has the following co
 - [Throttle](throttle-connection) from Futaba
 - [Power LED](#power-led) from Futaba
 - [Battey Level Meter](#battery-level-meter) from Futaba
-- "Stop" light/switch
+- ["Stop" light/switch](#stop-light-and-switch)
 - Fake Power (switch)
 - [Calibration](#calibration) (button)
 - Buttons "O.O" and "RESET"
