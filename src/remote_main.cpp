@@ -321,6 +321,7 @@ static uint8_t       bttfnReqStatus = 0x52; // Request capabilities, status, spe
 static uint32_t      tcdHostNameHash = 0;
 static byte          BTTFMCBuf[BTTF_PACKET_SIZE];
 static uint8_t       bttfnMcMarker = 0;
+static IPAddress     bttfnMcIP(224, 0, 0, 224);
 #endif 
 static uint32_t      bttfnSeqCnt[BTTFN_REM_MAX_COMMAND+1] = { 1 };
 static bool          bttfn_cmd_status = false;
@@ -399,6 +400,7 @@ static void re_vol_reset();
 static void myloop(bool withBTTFN);
 
 static void bttfn_setup();
+static void bttfn_loop_quick();
 static void BTTFNCheckPacket();
 #ifdef BTTFN_MC
 static bool bttfn_checkmc();
@@ -551,8 +553,8 @@ void main_setup()
     buttonPackMomentary[3] = !(atoi(settings.bPb3Maint) > 0);
     buttonPackMomentary[4] = !(atoi(settings.bPb4Maint) > 0);
     buttonPackMomentary[5] = !(atoi(settings.bPb5Maint) > 0);
-    buttonPackMomentary[6] = !(atoi(settings.bPb4Maint) > 0);
-    buttonPackMomentary[7] = !(atoi(settings.bPb5Maint) > 0);
+    buttonPackMomentary[6] = !(atoi(settings.bPb6Maint) > 0);
+    buttonPackMomentary[7] = !(atoi(settings.bPb7Maint) > 0);
 
     #ifdef REMOTE_HAVEAUDIO
     buttonPackMtOnOnly[0] = (atoi(settings.bPb0MtO) > 0);
@@ -1677,7 +1679,7 @@ static void displayBrightness()
 
 void updateVisMode()
 {
-    visMode &= ~0x03;
+    visMode &= ~0x07;
     if(movieMode) visMode |= 0x01;
     if(displayGPSMode) visMode |= 0x02;
     if(autoThrottle) visMode |= 0x04;
@@ -2338,7 +2340,7 @@ static void myloop(bool withBTTFN)
 {
     wifi_loop();
     audio_loop();
-    if(withBTTFN) bttfn_loop();
+    if(withBTTFN) bttfn_loop_quick();
 }
 
 /*
@@ -2395,7 +2397,7 @@ static void bttfn_setup()
 
     #ifdef BTTFN_MC
     remMcUDP = &bttfMcUDP;
-    remMcUDP->beginMulticast(IPAddress(224, 0, 0, 224), BTTF_DEFAULT_LOCAL_PORT + 2);
+    remMcUDP->beginMulticast(bttfnMcIP, BTTF_DEFAULT_LOCAL_PORT + 2);
     #endif
     
     BTTFNfailCount = 0;
@@ -2426,6 +2428,20 @@ void bttfn_loop()
             BTTFNTriggerUpdate();
         }
     }
+}
+
+static void bttfn_loop_quick()
+{
+    #ifdef BTTFN_MC
+    int t = 10;
+    #endif
+    
+    if(!useBTTFN)
+        return;
+
+    #ifdef BTTFN_MC
+    while(bttfn_checkmc() && t--) {}
+    #endif
 }
 
 static bool check_packet(uint8_t *buf)
@@ -2487,7 +2503,7 @@ static void handle_tcd_notification(uint8_t *buf)
         // Eval this at our convenience
         break;
     case BTTFN_NOT_REM_CMD:
-        addCmdQueue( GET32(buf, 6) );
+        addCmdQueue(GET32(buf, 6));
         break;
     case BTTFN_NOT_WAKEUP:
         if(FPBUnitIsOn && !TTrunning) {
@@ -2558,10 +2574,6 @@ static bool bttfn_checkmc()
     }
     
     remMcUDP->read(BTTFMCBuf, BTTF_PACKET_SIZE);
-
-    #ifdef FC_DBG
-    Serial.printf("Received multicast packet from %s\n", fcMcUDP->remoteIP().toString());
-    #endif
 
     if(haveTCDIP) {
         if(bttfnTcdIP != remMcUDP->remoteIP())
@@ -2758,7 +2770,7 @@ static void BTTFNSendPacket()
         #ifdef REMOTE_DBG
         //Serial.printf("Sending multicast (hostname hash %x)\n", tcdHostNameHash);
         #endif
-        remUDP->beginPacket("224.0.0.224", BTTF_DEFAULT_LOCAL_PORT + 1);
+        remUDP->beginPacket(bttfnMcIP, BTTF_DEFAULT_LOCAL_PORT + 1);
     }
     #endif
     remUDP->write(BTTFUDPBuf, BTTF_PACKET_SIZE);

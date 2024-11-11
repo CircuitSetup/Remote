@@ -1,6 +1,18 @@
 ## Hardware
 
-This document contains information on buttons/switches as well as instructions on how to modify your Futaba remote control.
+This document contains instructions on how to modify your Futaba remote control.
+
+The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
+- [Throttle](throttle-connection) from Futaba
+- [Power LED](#power-led) from Futaba
+- [Battey Level Meter](#battery-level-meter) from Futaba
+- ["Stop" light/switch](#stop-light-and-switch)
+- Fake Power (switch)
+- [Calibration](#calibration) (button)
+- Buttons "O.O" and "RESET"
+- 8 User Buttons (buttons or switches)
+- Speaker
+- LED segment display
 
 ### Button/switch mapping
 
@@ -9,11 +21,15 @@ The firmware has the following minimum requirements:
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These buttons can be momentary or maintained contacts.
+Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These "buttons" can be momentary or maintained contacts. 
 
-Fake power (ON/OFF), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
+> _"Momentary switches"_ are switches which only remain in their _on_ state as long as they're being actuated (pressed, held), for example a push button. A _"maintained switch"_ changes state when actuated, and stays in that state until actuated again, for example a toggle switch. Maintained switches are specified using terms like "ON-OFF" or "ON-OFF-ON", while momentary switches use terms like "(ON)-OFF" or "(ON)-OFF-(ON)". The parentheses symbolize a momentary contact. ON-OFF means a 2 position switch, while ON-OFF-ON is a 3 position switch, with _off_ in the middle.
 
-"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position MOM-OFF-MOM or ON-OFF-MOM flat handle mini toggle switch, serving as "Calibration" (MOM) and one User Button. I used "UP/DOWN" for (real) power, and a MOM-OFF-MOM switch as "HOLD", serving as User Buttons #1 and #2.
+Fake power (labeled "ON/OFF"), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
+
+"UP/DOWN" and "HOLD" on the Unibox are free to use; however, one of those should be used as a real power switch, separating the battery from the Control Board. The other can, for instance, be equipped with a 3-position (ON)-OFF-(ON) or ON-OFF-(ON) flat handle mini toggle switch, serving as "Calibration" (on the momentary side) and one User Button. 
+
+I used "UP/DOWN" for (real) power (ON-OFF type switch), and a (ON)-OFF-(ON) switch as "HOLD", serving as User Buttons #1 and #2.
 
 If you are willing to modify your Futaba beyond connecting the throttle pot, you can also wire its "Fail Safe Set" button as "Calibration", and/or use the Futaba's toggle switches on the top and front as User Buttons.
 
@@ -77,9 +93,9 @@ Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T
 
 Note that using the Futaba's original front and top toggle switches is entirely optional, and doing it is not trivial. They would serve as User Buttons for audio playback and MQTT messages.
 
-If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This GND wire connects all center pins of all switches to each other and to the GND screw connector on the Control Board.
+If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This common GND wire connects all center pins of all switches to each other and to one of the GND screw connectors on the Control Board.
 
-Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces of the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces on the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
 
 Important: Do not re-connect the two widest ribbon cables (top two ones) to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with toggle switch operation.
 
