@@ -19,7 +19,9 @@ The firmware has the following minimum requirements:
 - Buttons "O.O" and "RESET" (various functions; momentary)
 - Calibration button (momentary)
 
-Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These "buttons" can be momentary or maintained contacts. (_"Momentary switches"_ are switches which only remain in their _on_ state as long as they're being actuated (pressed, held), for example a push button. A _"maintained switch"_ changes state when actuated, and stays in that state until actuated again, for example a toggle switch. Maintained switches are specified using terms like "ON-OFF" or "ON-OFF-ON", while momentary switches use terms like "(ON)-OFF" or "(ON)-OFF-(ON)". The parentheses symbolize a momentary contact. ON-OFF means a 2 position switch, while ON-OFF-ON is a 3 position switch, with _off_ in the middle.) 
+Additionally, up to eight "User Buttons" can be installed, used for audio playback and/or MQTT messaging. These "buttons" can be momentary or maintained contacts. 
+
+> _"Momentary switches"_ are switches which only remain in their _on_ state as long as they're being actuated (pressed, held), for example a push button. A _"maintained switch"_ changes state when actuated, and stays in that state until actuated again, for example a toggle switch. Maintained switches are specified using terms like "ON-OFF" or "ON-OFF-ON", while momentary switches use terms like "(ON)-OFF" or "(ON)-OFF-(ON)". The parentheses symbolize a momentary contact. ON-OFF means a 2 position switch, while ON-OFF-ON is a 3 position switch, with _off_ in the middle.
 
 Fake power (labeled "ON/OFF"), "O.O" and "RESET" are on the Unibox. This leaves Calibration and, optionally, User Buttons to assign.
 
