@@ -199,7 +199,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 <table>
    <tr><td>Function</td><td>Code on TCD</td></tr>
     <tr>
-     <td align="left">Toggle "movie mode"</td>
+     <td align="left">Toggle "<a href="#-movie-mode-acceleration">movie mode</a>"</td>
      <td align="left"<td>7060&#9166;</td>
     </tr>
    <tr>
