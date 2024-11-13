@@ -207,7 +207,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left"<td>7061&#9166;</td>
     </tr>
    <tr>
-     <td align="left">Toggle auto-throttle</td>
+     <td align="left">Toggle <a href="#-auto-throttle">auto-throttle</a></td>
      <td align="left"<td>7062&#9166;</td>
     </tr>
     <tr>
