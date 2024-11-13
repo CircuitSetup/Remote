@@ -1,6 +1,10 @@
 # Firmware for Remote Control (Delorean Time Machine)
 
-This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. See [here](FUTABA.md) for information on the hardware. A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
+This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. 
+
+See [here](FUTABA.md) for information on the hardware. 
+
+A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
 
 Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. 
@@ -195,15 +199,15 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 <table>
    <tr><td>Function</td><td>Code on TCD</td></tr>
     <tr>
-     <td align="left">Toggle "movie mode"</td>
+     <td align="left">Toggle "<a href="#-movie-mode-acceleration">movie mode</a>"</td>
      <td align="left"<td>7060&#9166;</td>
     </tr>
    <tr>
-     <td align="left">Toggle display of TCD speed while off</td>
+     <td align="left">Toggle <a href="#-display-tcd-speed-when-off">display of TCD speed while off</a></td>
      <td align="left"<td>7061&#9166;</td>
     </tr>
    <tr>
-     <td align="left">Toggle auto-throttle</td>
+     <td align="left">Toggle <a href="#-auto-throttle">auto-throttle</a></td>
      <td align="left"<td>7062&#9166;</td>
     </tr>
     <tr>

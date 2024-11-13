@@ -135,6 +135,8 @@ static bool remoteAllowed = false;
 uint32_t    myRemID = 0x12345678;
 
 static bool pwrLEDonFP = true;
+static bool usePwrLED = false;
+static bool useLvlMtr = false;
 
 static bool powerState = false;
 static bool brakeState = false;
@@ -158,6 +160,9 @@ static unsigned long offDisplayNow = 0;
 uint16_t             visMode = 0;
 
 bool                 movieMode = true;
+
+static bool          etmr = false;
+static unsigned long enow = 0;
 
 static bool ooTT = true;
 static int  triggerTTonThrottle = 0;
@@ -436,18 +441,23 @@ void main_boot2()
 
     remledStop.begin(STOPOUT_PIN);    // "Stop" LED + Switch output
 
-    // (Fake) power LED
-    pwrled.begin(PWRLED_PIN, (atoi(settings.usePwrLED) > 0));
+    // Init Power LED and Level Meter
+    usePwrLED = (atoi(settings.usePwrLED) > 0);
+    useLvlMtr = (atoi(settings.useLvlMtr) > 0);
+
+    // Power LED
+    pwrled.begin(PWRLED_PIN, usePwrLED);
     // Battery level meter (treated as LED)
-    bLvLMeter.begin(LVLMETER_PIN, (atoi(settings.useLvlMtr) > 0));
+    bLvLMeter.begin(LVLMETER_PIN, useLvlMtr);
 
-    // power LED
-    pwrLEDonFP = (atoi(settings.pwrLEDonFP) > 0);
-
-    // init state of power led and level meter
-    if(!(pwrLEDonFP = (atoi(settings.pwrLEDonFP) > 0))) {
-        pwrled.setState(true);
-        bLvLMeter.setState(true);
+    // Power LED on Fake Power (or Real Power)
+    if(usePwrLED || useLvlMtr) {
+        if(!(pwrLEDonFP = (atoi(settings.pwrLEDonFP) > 0))) {
+            pwrled.setState(true);
+            bLvLMeter.setState(true);
+        }
+    } else {
+        pwrLEDonFP = false;
     }
 
     // Init LED segment display
@@ -775,6 +785,8 @@ void main_loop()
 
                 offDisplayTimer = false;
 
+                etmr = false;
+
                 // Re-connect if we're in AP mode but
                 // there is a configured WiFi network
                 if(!justBootedNow && wifiNeedReConnect()) {
@@ -952,7 +964,7 @@ void main_loop()
                             }
                             #ifdef REMOTE_HAVEAUDIO
                             if(playBad) {
-                                play_file("/bad.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                                play_bad();
                             }
                             #endif
                         }
@@ -960,6 +972,8 @@ void main_loop()
                         #ifdef REMOTE_HAVEAUDIO
                         if(haveMusic) {
                             mp_prev(mpActive);
+                        } else {
+                            play_bad();
                         }
                         #endif
                     }
@@ -971,6 +985,8 @@ void main_loop()
                         } else {
                             mp_play();
                         }
+                    } else {
+                        play_bad();
                     }
                     #endif
                 }
@@ -988,6 +1004,8 @@ void main_loop()
                         } else {
                             mp_play();
                         }
+                    } else {
+                        play_bad();
                     }
                     #endif
                 }
@@ -1020,12 +1038,17 @@ void main_loop()
                     #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         mp_next(mpActive);
+                    } else {
+                        play_bad();
                     }
                     #endif
                 } else if(isbuttonBKeyLongPressed) {
                     #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         mp_makeShuffle(!mpShuffle);
+                        play_file(mpShuffle ? "/shufon.mp3" : "/shufoff.mp3", PA_ALLOWSD, 1.0);
+                    } else {
+                        play_bad();
                     }
                     #endif
                 }
@@ -1039,6 +1062,8 @@ void main_loop()
                     #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         mp_next(mpActive);
+                    } else {
+                        play_bad();
                     }
                     #endif
                 }
@@ -1118,7 +1143,7 @@ void main_loop()
                     remdisplay.on();
                     offDisplayTimer = true;
                     offDisplayNow = millis();
-                    delay(200);    // Stabilize voltage after turning on display, LED, level meter
+                    delay(pwrLEDonFP ? 2000 : 200);    // Stabilize voltage after turning on display, LED, level meter
                     if(useRotEnc) {
                         rotEnc.zeroPos(true);
                         if(!rotEnc.dynZeroPos()) {
@@ -1208,7 +1233,7 @@ void main_loop()
     } else if(!calibMode && !tcdIsInP0) {
         throttlePos = rotEnc.updateThrottlePos();
         if(FPBUnitIsOn && !TTrunning) {
-            int tidx;
+            int tas = 0, tidx = 0;
             if(!throttlePos) {
                 lockThrottle = false;
             }
@@ -1229,7 +1254,8 @@ void main_loop()
             if(movieMode) {
 
                 if((oldThrottlePos = throttlePos)) {
-                    tidx = (abs(throttlePos)-1)*(sizeof(strictAccelFacts)/sizeof(strictAccelFacts[0]))/100;
+                    tas = sizeof(strictAccelFacts)/sizeof(strictAccelFacts[0]);
+                    tidx = (abs(throttlePos)-1) * tas / 100;
                     accelDelay = strictAccelDelays[currSpeedF / 10] * strictAccelFacts[tidx] / 100;
                     accelStep = 1;
                 } else {
@@ -1242,7 +1268,8 @@ void main_loop()
               
                 if(throttlePos != oldThrottlePos) {
                     if((oldThrottlePos = throttlePos)) {
-                        tidx = (abs(throttlePos)-1)*(sizeof(accelDelays)/sizeof(accelDelays[0]))/100;
+                        tas = sizeof(accelDelays)/sizeof(accelDelays[0]);
+                        tidx = (abs(throttlePos)-1) * tas / 100;
                         accelDelay = accelDelays[tidx];
                         accelStep = accelSteps[tidx];
                     } else {
@@ -1250,10 +1277,22 @@ void main_loop()
                         accelDelay = doCoast ? ((esp_random() % 20) + 40) : 0;
                         //accelStep = 0;
                     }
-
                 }
 
             }
+
+            #ifdef REMOTE_HAVEAUDIO
+            if(tidx < tas - 1 || throttlePos >= 0 || currSpeedF) {
+                etmr = false;
+            } else if(!etmr) {
+                etmr = true;
+                enow = millis();
+            }
+            if(etmr && millis() - enow > 5000) {
+                etmr = false;
+                play_file("/tmd.mp3", PA_ALLOWSD, 1.0);
+            }
+            #endif
             
             if(!lockThrottle) {
                 if(millis() - lastSpeedUpd > accelDelay) {
@@ -1742,6 +1781,8 @@ void timeTravel(uint16_t P0Dur, uint16_t P1Dur)
    
     P0duration = P0Dur;
     P1duration = P1Dur;
+
+    etmr = false;
 
     #ifdef REMOTE_DBG
     Serial.printf("P0 duration is %d, P1 %d\n", P0duration, P1duration);

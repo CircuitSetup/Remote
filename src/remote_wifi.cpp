@@ -1375,7 +1375,6 @@ static void preUpdateCallback()
     wifiAPOffDelay = 0;
     origWiFiOffDelay = 0;
 
-    // Reset esp32 to load new settings
     remdisplay.off();
     remledStop.setState(false);
 
