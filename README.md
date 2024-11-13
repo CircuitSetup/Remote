@@ -199,7 +199,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left"<td>7060&#9166;</td>
     </tr>
    <tr>
-     <td align="left">Toggle display of TCD speed while off</td>
+     <td align="left">Toggle <a href="#-display-tcd-speed-when-off">display of TCD speed while off</a></td>
      <td align="left"<td>7061&#9166;</td>
     </tr>
    <tr>
