@@ -78,6 +78,7 @@ void append_file(const char *audio_file, uint16_t flags, float volumeFactor = 1.
 
 void play_click();
 void play_key(int k, bool l = false, bool stopOnly = false);
+void play_bad();
 
 bool check_file_SD(const char *audio_file);
 bool checkAudioDone();

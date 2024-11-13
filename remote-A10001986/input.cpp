@@ -566,7 +566,7 @@ RemButton::RemButton()
  * activeLow: Set to true when the input level is LOW when the button is pressed, Default is true.
  * pullupActive: Activate the internal pullup when available. Default is true.
  */
-void RemButton::begin(const int pin, const boolean activeLow, const bool pullupActive, const bool pulldownActive)
+void RemButton::begin(const int pin, const bool activeLow, const bool pullupActive, const bool pulldownActive)
 {
     _pin = pin;
 

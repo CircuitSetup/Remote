@@ -143,7 +143,7 @@ class RemButton {
     public:
         RemButton();
 
-        void begin(const int pin, const boolean activeLow = true, const bool pullupActive = true, const bool pulldownActive = false);
+        void begin(const int pin, const bool activeLow = true, const bool pullupActive = true, const bool pulldownActive = false);
       
         void setTiming(const int debounceTs, const int lPressTs);
       

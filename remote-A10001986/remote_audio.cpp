@@ -455,6 +455,11 @@ void play_key(int k, bool l, bool stopOnly)
     play_file(fn, pa_key|PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL);
 }
 
+void play_bad()
+{
+    play_file("/bad.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+}
+
 // Returns value for volume based on the position of the pot
 // Since the values vary we do some noise reduction
 #ifdef REMOTE_HAVEVOLKNOB
