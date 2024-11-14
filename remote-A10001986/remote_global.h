@@ -15,10 +15,10 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V0.93"
-#define REMOTE_VERSION_EXTRA "NOV132024"
+#define REMOTE_VERSION "V1.00"
+#define REMOTE_VERSION_EXTRA "NOV142024"
 
-#define REMOTE_DBG              // debug output on Serial
+//#define REMOTE_DBG              // debug output on Serial
 
 /*************************************************************************
  ***                     mDNS (Bonjour) support                        ***
