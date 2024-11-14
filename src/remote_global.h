@@ -18,7 +18,7 @@
 #define REMOTE_VERSION "V0.93"
 #define REMOTE_VERSION_EXTRA "NOV132024"
 
-#define REMOTE_DBG              // debug output on Serial
+//#define REMOTE_DBG              // debug output on Serial
 
 /*************************************************************************
  ***                     mDNS (Bonjour) support                        ***
