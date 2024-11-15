@@ -151,7 +151,7 @@ I used this battery, which I sourced from [AliExpress](https://www.aliexpress.co
 
 ![battery](img/battery.jpg)
 
-With a simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics need to be put elsewhere, otherwise it's too thick. Remove the blue shrink-wrap, the tape below, and the PCB is free. I taped it on top of the battery compartment:
+With a simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics, which are inside the blue shrink-wrap, need to be put elsewhere, otherwise the battery is too thick. Remove the blue shrink-wrap, the tape below that, and the PCB is free. I taped it on top of the battery compartment:
 
 ![battelec](img/battelec.jpg)
 
@@ -161,7 +161,7 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 ### "Stop" light and switch
 
-Many people use tape to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I regarded tape alone as insufficient and went for tape plus M2 screws.
+Many people use tape (and tape alone) to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I regarded tape alone as insufficient and went for tape plus M2 screws.
 
 The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
 
