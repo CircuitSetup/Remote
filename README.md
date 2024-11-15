@@ -350,7 +350,7 @@ The actual remote controlling is done wirelessly, and the TCD's keypad can be us
 |:--:|
 | Click to watch the video |
 
-Note that the TCD's firmware must be up to date for BTTFN. You can use [this](http://tcd.out-a-ti.me) one or CircuitSetup's release 3.2 or later.
+Note that the TCD's firmware must be up to date for BTTFN. You can update from [here](http://tcd.out-a-ti.me), or install CircuitSetup's release 3.2 or later.
 
 ![BTTFN connection](img/family-wifi-bttfn.png)
 
