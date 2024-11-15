@@ -91,7 +91,7 @@ Please note that the kit electronics are designed for models FP-T8SGA-P and FP-T
 
 #### Toggle switches
 
-Note that using the Futaba's original front and top toggle switches is entirely optional, and doing it is not trivial. They would serve as User Buttons for audio playback and MQTT messages.
+Note that using the Futaba's original front and top toggle switches is entirely optional, and doing so is not trivial. They would serve as User Buttons for audio playback and MQTT messages.
 
 If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This common GND wire connects all center pins of all switches to each other and to one of the GND screw connectors on the Control Board.
 
@@ -125,9 +125,7 @@ Connecting the Control Board to the Futaba's level meter is, of course, optional
 
 The wires need to lead out of the Futaba's body. 
 
-#### The "whole 9 yards" way
-
-Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way.
+Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way, in absense of the "protection" attached to the main PCB.
 
 ![womp1](img/womp1.jpg)
 
@@ -136,14 +134,6 @@ Since I needed some space for my battery's charging electronics (see below), I d
 ![womp3](img/womp3.jpg)
 
 ![womp4](img/womp4.jpg)
-
-#### The "soft" way
-
-The less intrusive/destructive way (ie keep the main PCB in) is to dremel off the back cover a bit to make room, as shown in the picture. This requires bending the top part of the inner shielding upward (or breaking it off) to make room for the wires in the corners.
-
-![wires](img/wires2.jpg)
-
-![wires](img/wires.jpg)
 
 #### The way out
 
@@ -157,7 +147,7 @@ The prop is powered by a 5V battery, connected to the USB port of the ESP32 boar
 
 Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, access to the battery for charging has to be provided, since the Futaba's battery compartment is not accessible without major disassembly. One way to do this is to use two pins of the existing charging connector, or the "tachometer" connector.
 
-I used this battery, which I sourced from AliExpress:
+I used this battery, which I sourced from [AliExpress](https://www.aliexpress.com/item/1005005621203243.html):
 
 ![battery](img/battery.jpg)
 
@@ -171,7 +161,7 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 ### "Stop" light and switch
 
-Many people use tape to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I used tape and M2 screws.
+Many people use tape to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I regarded tape alone as insufficient and went for tape plus M2 screws.
 
 The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
 
@@ -191,7 +181,7 @@ The position of the Stop switch in the movie: (There were several Futabas used, 
 
 ### Mounting the Unibox on the Futaba
 
-Since the transmitter module's lid is slightly loose, I decided to attach the Unibox using 6mm PCB standoffs:
+Since the transmitter module's lid is slightly loose and therefore isn't a properly stable base, I decided to attach the Unibox using 6mm PCB standoffs:
 
 ![standoffs](img/boxstandoffs.jpg)
 
