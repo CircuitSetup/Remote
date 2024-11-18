@@ -136,10 +136,12 @@
 
 /*  Changelog
  *  
+ *  2024/11/14 (A10001986) [1.00]
+ *    - Audio: Switch "personality" - new sound-pack.
  *  2024/11/13 (A10001986)
  *    - Calibration: Longer delay when using Level Meter or Power LED
  *    - Add audio notifications for unsuccessful button presses, as well
- *    - as shuffle on/off
+ *      as shuffle on/off
  *    - New sound-pack
  *  2024/11/08 (A10001986)
  *    - Fix some typos

@@ -1,6 +1,6 @@
 # Firmware for Remote Control (Delorean Time Machine)
 
-This repository holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. 
+This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. 
 
 See [here](FUTABA.md) for information on the hardware. 
 
@@ -9,10 +9,10 @@ A video of an early proof-of-concept is [here](https://www.facebook.com/61553801
 Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. 
 - Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD reaches 88mph, a time travel is triggered.
+- Optional [coasting](#-coasting-when-throttle-in-neutral), optional [auto-throttle](#-auto-throttle)
 - Supports controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
 - Movie-accurate "Stop" light and stop switch behavior
 - Movie-accurate sound effects
-- Uses "O.O", "RESET", "ON/OFF" on Unibox for control. Requires one additional momentary button for calibration (can be "HOLD" if a momentary switch is installed, or the "FAIL SAFE SET" button on Futaba). "UP/DOWN" can be used as a (real) power switch.
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
@@ -350,7 +350,7 @@ The actual remote controlling is done wirelessly, and the TCD's keypad can be us
 |:--:|
 | Click to watch the video |
 
-Note that the TCD's firmware must be up to date for BTTFN. You can use [this](http://tcd.out-a-ti.me) one or CircuitSetup's [upocoming] release 3.1 or later.
+Note that the TCD's firmware must be up to date for BTTFN. You can update from [here](http://tcd.out-a-ti.me), or install CircuitSetup's release 3.2 or later.
 
 ![BTTFN connection](img/family-wifi-bttfn.png)
 
