@@ -151,7 +151,7 @@ I used this battery, which I sourced from [AliExpress](https://www.aliexpress.co
 
 ![battery](img/battery.jpg)
 
-With a simple modification, it has the perfect measurements to fit into the original battery compartment. The charging electronics, which are inside the blue shrink-wrap, need to be put elsewhere, otherwise the battery is too thick. Remove the blue shrink-wrap, the tape below that, and the PCB is free. I taped it on top of the battery compartment:
+This is a dual-cell 3.7-4.2V LiPo battery with a MH-CD42 booster board, which shifts the voltage to 5V and provides charging protection. With a simple modification, it has the perfect measurements to fit into the original battery compartment. The booster electronics, which are inside the blue shrink-wrap, need to be put elsewhere, otherwise the battery is too thick. Remove the blue shrink-wrap, the tape below that, and the PCB is free. I taped it on top of the battery compartment:
 
 ![battelec](img/battelec.jpg)
 
