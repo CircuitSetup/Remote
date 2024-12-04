@@ -538,11 +538,11 @@ If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP ad
 
 ##### &#9654; Movie-mode acceleration
 
-The Remote knows to modes of acceleration: Linear and "movie mode".
-
-In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
+The Remote knows to modes of acceleration: "Movie mode" and "linear".
 
 In movie mode, acceleration changes with speed. At lower speeds, it is faster, and will gradually become slower as speed increases. The pace matches the movie mostly; unfortunately the remote is only shown for a very few seconds and timing is inconsistent (to say the least), so some interpolations were required.
+
+In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
 
 ##### &#9654; Play acceleration 'click' sound
 
@@ -582,11 +582,11 @@ The broker server address. Can be a domain (eg. "myhome.me") or an IP address (e
 
 The username (and optionally the password) to be used when connecting to the broker. Can be left empty if the broker accepts anonymous logins.
 
-##### Button x topic
+##### &#9654; Button x topic
 
 The MQTT topic for on/off messages. Nothing is published/sent if the topic is empty.
 
-##### Button x message on ON/OFF
+##### &#9654; Button x message on ON/OFF
 
 The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
