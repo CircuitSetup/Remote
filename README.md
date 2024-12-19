@@ -18,7 +18,7 @@ Firmware features:
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
-- Smart battery monitoring (M-boards, non-M-boards with battery monitor add-on) for LiPo batteries
+- Smart battery monitoring for certain LiPo batteries (requires M-version Control Board, or non-M-board with BatMon add-on)
 
 ## Firmware Installation
 
