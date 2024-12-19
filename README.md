@@ -18,6 +18,7 @@ Firmware features:
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
+- Smart battery monitoring (M-boards, non-M-boards with battery monitor add-on) for LiPo batteries
 
 ## Firmware Installation
 
@@ -282,6 +283,18 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left">Display current IP address</td>
      <td align="left">7090&#9166;</td>
     </tr>   
+  <tr>
+     <td align="left">Display battery charge percentage(*)</td>
+     <td align="left">7091&#9166;</td>
+    </tr>   
+  <tr>
+     <td align="left">Display battery "Time to empty"(*)</td>
+     <td align="left">7092&#9166;</td>
+    </tr>   
+  <tr>
+     <td align="left">Display battery voltage(*)</td>
+     <td align="left">7093&#9166;</td>
+    </tr>   
     <tr>
      <td align="left">Reboot the device</td>
      <td align="left">7064738&#9166;</td>
@@ -291,6 +304,8 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left">7123456&#9166;</td>
     </tr>
 </table>
+
+* M-board, or non-M-board with battery monitor Add-on required; only if LiPo battery is properly connected to battery monitor.
 
 ## SD card
 
