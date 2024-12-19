@@ -585,6 +585,8 @@ If unchecked, the level meter stays at zero, which is the default. If checked, t
 
 If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
 
+#### Battery monitoring
+
 ##### &#9654; Battery monitoring/warnings
 
 Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
