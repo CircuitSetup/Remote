@@ -137,8 +137,10 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td></tr>
-  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address</td></tr>
+  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*), battery voltage(*)</td></tr>
 </table>
+
+(* M-board, or non-M-board with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
 
 The throttle of the Remote needs calibration:
 
@@ -305,7 +307,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
     </tr>
 </table>
 
-* M-board, or non-M-board with battery monitor Add-on required; only if LiPo battery is properly connected to battery monitor.
+* M-board, or non-M-board with BatMon Add-on required; only if LiPo battery is properly connected to battery monitor.
 
 ## SD card
 
