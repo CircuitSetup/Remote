@@ -585,6 +585,20 @@ If unchecked, the level meter stays at zero, which is the default. If checked, t
 
 If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
 
+##### &#9654; Battery monitoring/warnings
+
+Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
+
+If the battery charge level is lower than 8 percent, warnings are issued; the display blinks every 30 seconds as long as the charge level is low.
+
+##### &#9654; Battery type
+
+Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
+
+##### &#9654; Capacity per cell (1000-6000)
+
+Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
+
 #### Home Assistant / MQTT settings
 
 ##### &#9654; Use Home Assistant (MQTT 3.1.1)
