@@ -137,7 +137,7 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td></tr>
-  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*), battery voltage(*)</td></tr>
+  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
 </table>
 
 (* M-board, or non-M-board with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
