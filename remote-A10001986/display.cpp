@@ -103,7 +103,7 @@ bool remLED::getState()
 #define S7G_M   0b01000000    // G  middle
 #define S7G_DOT 0b10000000    // DP dot
 
-static const uint16_t font7segGeneric[47] = {
+static const uint16_t font7segGeneric[48] = {
     S7G_T|S7G_TR|S7G_BR|S7G_B|S7G_BL|S7G_TL,
     S7G_TR|S7G_BR,
     S7G_T|S7G_TR|S7G_B|S7G_BL|S7G_M,
@@ -151,6 +151,7 @@ static const uint16_t font7segGeneric[47] = {
     S7G_T|S7G_B,  // 44           7
     S7G_T|S7G_BR|S7G_B|S7G_BL|S7G_M,  // 45 8
     S7G_BR|S7G_B|S7G_BL|S7G_M,        // 46 9
+    S7G_T|S7G_B|S7G_M                 // 47 % = top middle bottom
 };
 
 static const struct dispConf {
@@ -223,9 +224,9 @@ bool remDisplay::begin()
 // Turn on the display
 void remDisplay::on()
 {
-    if(_onCache > 0) return;
-    directCmd(0x80 | 1);
-    _onCache = 1;
+    if(_onCache == (1 | _blink)) return;
+    directCmd(0x80 | 1 | _blink);
+    _onCache = 1 | _blink;
     _briCache = 0xfe;
 }
 
@@ -235,6 +236,12 @@ void remDisplay::off()
     if(!_onCache) return;
     directCmd(0x80);
     _onCache = 0;
+}
+
+void remDisplay::blink(bool bl)
+{
+    _blink = bl ? 0x02: 0;
+    if(_onCache) on();
 }
 
 // Clear the buffer
@@ -385,6 +392,8 @@ uint16_t remDisplay::getLEDChar(uint8_t value)
         return *(_fontXSeg + 36);
     } else if(value == '-') {
         return *(_fontXSeg + 37);
+    } else if(value == '&') {       // "percent" sign
+        return *(_fontXSeg + 47); 
     } else if(value >= 1 && value <= 9) {
         return *(_fontXSeg + 38 + (value - 1));
     } 

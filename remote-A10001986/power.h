@@ -5,8 +5,8 @@
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
- * Main
- *
+ * Power Monitor class (LC709204F)
+ * 
  * -------------------------------------------------------------------
  * License: MIT NON-AI
  * 
@@ -47,85 +47,70 @@
  * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * -------------------------------------------------------------------
  */
 
-#ifndef _REMOTE_MAIN_H
-#define _REMOTE_MAIN_H
+#ifndef REM_PWRMON
+#define REM_PWRMON
 
-#include "display.h"
-#include "input.h"
 #ifdef HAVE_PM
-#include "power.h"
+
+// Battery profiles
+#define BAT_PROF_01  0    // Type 1: 3.7V-4.2V
+#define BAT_PROF_04  1    // Type 4: UR18650ZY(Panasonic) 3.7V-4.2V
+#define BAT_PROF_05  2    // Type 5: ICR18650-26H(Samsung) 3.63V-4.2V
+#define BAT_PROF_06  3    // Type 6: 3.8V-4.35V
+#define BAT_PROF_07  4    // Type 7: 3.85V-4.4V
+#define BAT_PROF_MAX BAT_PROF_07
+
+/* remPwrMon Class */
+
+class remPowMon {
+
+    public:
+
+        remPowMon(uint8_t address);
+        bool     begin(bool doUse, int battProf=BAT_PROF_01, uint16_t battCap=2000); // Cap per cell
+
+        bool     havePM();
+
+        int      loop();
+        bool     readSOC();
+        bool     readVoltage();
+        bool     readTimeToEmpty();
+
+        bool     _useAlarm = true;    // Use alarm pin instead of reading via i2c
+
+        bool     _haveSOC = false;
+        bool     _haveTTE = false;
+        bool     _haveVolt = false;
+        bool     _haveCharging = false;
+
+        uint16_t _soc = 0;
+        uint16_t _tte = 0;
+        float    _voltage = 0;
+        bool     _charging = false;
+
+        bool     _battWarn = false;
+
+        int      _lowSCond = -1;
+        
+    private:
+        bool     read16(uint16_t regno, uint16_t& val);
+        void     write16(uint16_t regno, uint16_t value);
+
+        uint8_t _address;
+        uint8_t _crcAR, _crcAW;
+        bool    _usePwrMon;
+        bool    _havePwrMon;
+
+        unsigned long _lastAScan;
+        unsigned long _lastSScan;
+        unsigned long _lastTScan;
+        unsigned long _SSScanInt;
+        unsigned long _TTScanInt;
+                
+};
 #endif
-
-// Durations of tt phases as defined by TCD
-#define P0_DUR          5000    // etto lead
-#define P1_DUR          6600    // time tunnel phase
-
-extern unsigned long powerupMillis;
-
-extern uint32_t myRemID;
-
-extern REMRotEnc rotEnc;
-
-extern remDisplay remdisplay;
-extern remLED remledPwr;
-extern remLED remledStop;
-
-extern bool useRotEnc;
-
-extern bool havePwrMon;
-
-extern bool FPBUnitIsOn;
-
-extern uint16_t visMode;
-extern bool movieMode;
-extern bool displayGPSMode;
-extern bool autoThrottle;
-
-extern bool TTrunning;
-
-extern bool bttfnTT;
-
-extern bool networkTimeTravel;
-extern bool networkReentry;
-extern bool networkAbort;
-extern bool networkAlarm;
-extern uint16_t networkLead;
-extern uint16_t networkP1;
-
-extern uint16_t tcdIsInP0;
-
-void main_boot();
-void main_boot2();
-void main_setup();
-void main_loop();
-
-void flushDelayedSave();
-#ifdef REMOTE_HAVEAUDIO
-bool increaseVolume();
-bool decreaseVolume();
-#endif
-
-void timeTravel(uint16_t P0Dur = P0_DUR, uint16_t P1Dur = P1_DUR);
-
-void showWaitSequence();
-void endWaitSequence();
-void showCopyError();
-
-void prepareTT();
-void wakeup();
-
-void updateVisMode();
-
-#ifdef REMOTE_HAVEAUDIO
-void switchMusicFolder(uint8_t nmf);
-void waitAudioDone(bool withBTTFN = false);
-#endif
-
-void mydelay(unsigned long mydel, bool withBTTFN = false);
-
-void bttfn_loop();
-void bttfn_remote_unregister();
 
 #endif

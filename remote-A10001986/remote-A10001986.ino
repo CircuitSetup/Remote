@@ -136,6 +136,13 @@
 
 /*  Changelog
  *  
+ *  2024/12/18-19 (A10001986) [1.02]
+ *    - Fixes for LC709204F battery fuel gauge IC support
+ *  2024/11/22 (A10001986) [1.01]
+ *    - Add (untested) support for LC709204F battery fuel gauge IC
+ *  2024/11/16-20 (A10001986) 
+ *    - Prepare for Battery Monitoring by adding "battery low" warning 
+ *      mechanism.
  *  2024/11/14 (A10001986) [1.00]
  *    - Audio: Switch "personality" - new sound-pack.
  *  2024/11/13 (A10001986)

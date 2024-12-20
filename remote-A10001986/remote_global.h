@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.00"
-#define REMOTE_VERSION_EXTRA "NOV142024"
+#define REMOTE_VERSION "V1.02"
+#define REMOTE_VERSION_EXTRA "DEC192024"
 
 //#define REMOTE_DBG              // debug output on Serial
 
@@ -55,6 +55,9 @@
 //#define REMOTE_HAVEVOLKNOB
 // Uncomment when using the prototype display
 //#define PROTO_DISPLAY
+
+// Battery monitor support
+#define HAVE_PM
 
 // Uncomment to allow user to disable User Buttons
 // (Was used for prototype)
@@ -106,6 +109,8 @@
 
 #define PWRLED_PIN        17      // (Fake) power LED (CB 1.3)
 #define LVLMETER_PIN      12      // Battery level meter on Futaba (CB 1.5)
+
+#define BALM_PIN          4       // Battery monitor alarm (CB 1.6; act. low)     (PU on CB 1.6)
 
 #define VOLUME_PIN        39      // (unused)
 

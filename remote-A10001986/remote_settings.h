@@ -83,6 +83,9 @@ extern uint8_t musFolderNum;
 #define DEF_USE_PLED        0     // 1: Use power LED, 0: do not, leave dark (like mostly in movie)
 #define DEF_USE_LVLMTR      0     // 1: Use Batt. Level Meter, 0: do not, leave at zero (like in movie)
 #define DEF_PLEDFP          1     // 1: Power LED/Meter on fake power, 0: on real power
+#define DEF_USE_PWRMON      1     // 1: Use Power Monitor (if present), 0: do not
+#define DEF_BAT_TYPE        0     // 0=3.7/4.2V
+#define DEF_BAT_CAP         2000  // battery capacity per cell
 
 #define DEF_SHUFFLE         0     // Music Player: Do not shuffle by default
 
@@ -113,6 +116,11 @@ struct Settings {
     char usePwrLED[4]       = MS(DEF_USE_PLED);
     char useLvlMtr[4]       = MS(DEF_USE_LVLMTR);
     char pwrLEDonFP[4]      = MS(DEF_PLEDFP);
+#ifdef HAVE_PM
+    char usePwrMon[4]       = MS(DEF_USE_PWRMON);
+    char batType[4]         = MS(DEF_BAT_TYPE);
+    char batCap[8]          = MS(DEF_BAT_CAP);
+#endif
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";

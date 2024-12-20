@@ -101,6 +101,22 @@ static const char acul_part8[]  = "</div></div></body></html>";
 
 static const char *aco = "autocomplete='off'";
 
+#ifdef HAVE_PM
+static const char custHTMLSel[] = " selected";
+static const char *osde = "</option></select></div>";
+static const char *ooe  = "</option><option value='";
+static char batTypeCustHTML[512] = "";
+static const char *batTypeHTMLSrc[7] = {
+    "<div class='cmp0'><label for='bty'>Battery type</label><select class='sel0' value='",
+    "bty",
+    ">3.7V/4.2V LiPo%s3'",
+    ">3.8V/4.35V LiPo%s4'",
+    ">3.85V/4.4V LiPo%s1'",
+    ">UR18650ZY%s2'",
+    ">ICR18650-26H%s"
+};
+#endif
+
 #ifdef REMOTE_HAVEAUDIO
 WiFiManagerParameter custom_aood("<div class='msg P'>Please <a href='/update'>install/update</a> audio data</div>");
 #endif
@@ -173,25 +189,34 @@ WiFiManagerParameter custom_playALSnd("plyALS", "Play TCD-alarm sound", settings
 #endif // -------------------------------------------------
 #endif // HAVEAUDIO
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when off (0=no, 1=yes)", settings.dgps, 1, "autocomplete='off'");
+WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when fake-off (0=no, 1=yes)", settings.dgps, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when off", settings.dgps, 1, "autocomplete='off' type='checkbox'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when fake-off", settings.dgps, 1, "autocomplete='off' type='checkbox'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_uPL("uPL", "Use power LED (0=no, 1=yes)", settings.usePwrLED, 1, "autocomplete='off'");
+WiFiManagerParameter custom_uPL("uPL", "Use Futaba power LED (0=no, 1=yes)", settings.usePwrLED, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_uPL("uPL", "Use power LED", settings.usePwrLED, 1, "autocomplete='off' type='checkbox'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_uPL("uPL", "Use Futaba power LED", settings.usePwrLED, 1, "autocomplete='off' type='checkbox' style='margin-top:20px'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_uLM("uMt", "Use battery level meter (0=no, 1=yes)", settings.useLvlMtr, 1, "autocomplete='off'");
+WiFiManagerParameter custom_uLM("uMt", "Use Futaba battery level meter (0=no, 1=yes)", settings.useLvlMtr, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_uLM("uMt", "Use battery level meter", settings.useLvlMtr, 1, "autocomplete='off' title='If unchecked, LED and meter follow real power' type='checkbox'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_uLM("uMt", "Use Futaba battery level meter", settings.useLvlMtr, 1, "autocomplete='off' title='If unchecked, LED and meter follow real power' type='checkbox'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
-WiFiManagerParameter custom_PLD("PLD", "Power LED/meter on fake power (0=no, 1=yes)", settings.pwrLEDonFP, 1, "autocomplete='off'");
+WiFiManagerParameter custom_PLD("PLD", "Power LED/level meter on fake power (0=no, 1=yes)", settings.pwrLEDonFP, 1, "autocomplete='off'");
 #else // -------------------- Checkbox hack: --------------
-WiFiManagerParameter custom_PLD("PLD", "Power LED/meter on fake power", settings.pwrLEDonFP, 1, "autocomplete='off' title='If unchecked, LED and meter follow real power' type='checkbox'", WFM_LABEL_AFTER);
+WiFiManagerParameter custom_PLD("PLD", "Power LED/level meter on fake power", settings.pwrLEDonFP, 1, "autocomplete='off' title='If unchecked, LED and meter follow real power' type='checkbox' style='margin-left:20px'", WFM_LABEL_AFTER);
 #endif // -------------------------------------------------
+#ifdef HAVE_PM
+#ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
+WiFiManagerParameter custom_UPM("UPM", "Battery monitoring/warnings (0=no, 1=yes)", settings.usePwrMon, 1, "autocomplete='off'");
+#else // -------------------- Checkbox hack: --------------
+WiFiManagerParameter custom_UPM("UPM", "Battery monitoring/warnings", settings.usePwrMon, 1, "autocomplete='off' title='If unchecked, no battery-low warnings will be given' type='checkbox' class='mt5'", WFM_LABEL_AFTER);
+#endif // -------------------------------------------------
+WiFiManagerParameter custom_bty(batTypeCustHTML);  // batt type
+WiFiManagerParameter custom_bca("bCa", "Capacity per cell (1000-6000)", settings.batCap, 5, "type='number' min='1000' max='6000' autocomplete='off'", WFM_LABEL_BEFORE);
+#endif
 
 #ifdef REMOTE_HAVEMQTT
 #ifdef TC_NOCHECKBOXES  // --- Standard text boxes: -------
@@ -348,7 +373,7 @@ WiFiManagerParameter custom_sectstart_nw("</div><div class='sects'><div class='h
 WiFiManagerParameter custom_sectstart_mp("</div><div class='sects'><div class='headl'>MusicPlayer</div>");
 #endif
 
-WiFiManagerParameter custom_sectstart_hw("</div><div class='sects'><div class='headl'>Buttons 1-8 setup</div>");
+WiFiManagerParameter custom_sectstart_hw("</div><div class='sects'><div class='headl'>User Buttons</div>");
 
 WiFiManagerParameter custom_sectend_foot("</div><p></p>");
 
@@ -417,13 +442,17 @@ static void setupStaticIP();
 static void ipToString(char *str, IPAddress ip);
 static IPAddress stringToIp(char *str);
 
-static void getParam(String name, char *destBuf, size_t length);
+static void getParam(String name, char *destBuf, size_t length, int defaultVal);
 static bool myisspace(char mychar);
 static char* strcpytrim(char* destination, const char* source, bool doFilter = false);
 static void mystrcpy(char *sv, WiFiManagerParameter *el);
 #ifndef TC_NOCHECKBOXES
 static void strcpyCB(char *sv, WiFiManagerParameter *el);
 static void setCBVal(WiFiManagerParameter *el, char *sv);
+#endif
+
+#ifdef HAVE_PM
+static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting);
 #endif
 
 #ifdef REMOTE_HAVEAUDIO
@@ -545,6 +574,15 @@ void wifi_setup()
     wm.addParameter(&custom_uPL);
     wm.addParameter(&custom_uLM);
     wm.addParameter(&custom_PLD);
+    
+    #ifdef HAVE_PM
+    if(havePwrMon) {
+        wm.addParameter(&custom_sectstart);
+        wm.addParameter(&custom_UPM);
+        wm.addParameter(&custom_bty);
+        wm.addParameter(&custom_bca);
+    }
+    #endif
 
     #ifdef REMOTE_HAVEMQTT
     wm.addParameter(&custom_sectstart);     // 28
@@ -941,6 +979,13 @@ void wifi_loop()
                 for ( ; *s; ++s) *s = tolower(*s);
             }
 
+            #ifdef HAVE_PM
+            if(havePwrMon) {
+                getParam("bty", settings.batType, 1, DEF_BAT_TYPE);
+                mystrcpy(settings.batCap, &custom_bca);
+            }
+            #endif
+
             #ifdef REMOTE_HAVEMQTT
             strcpytrim(settings.mqttServer, custom_mqttServer.getValue());
             strcpyutf8(settings.mqttUser, custom_mqttUser.getValue(), sizeof(settings.mqttUser));
@@ -985,6 +1030,12 @@ void wifi_loop()
             mystrcpy(settings.usePwrLED, &custom_uPL);
             mystrcpy(settings.useLvlMtr, &custom_uLM);
             mystrcpy(settings.pwrLEDonFP, &custom_PLD);
+
+            #ifdef HAVE_PM
+            if(havePwrMon) {
+                mystrcpy(settings.usePwrMon, &custom_UPM);
+            }
+            #endif
 
             #ifdef REMOTE_HAVEMQTT
             mystrcpy(settings.useMQTT, &custom_useMQTT);
@@ -1036,6 +1087,12 @@ void wifi_loop()
             strcpyCB(settings.usePwrLED, &custom_uPL);
             strcpyCB(settings.useLvlMtr, &custom_uLM);
             strcpyCB(settings.pwrLEDonFP, &custom_PLD);
+
+            #ifdef HAVE_PM
+            if(havePwrMon) {
+                strcpyCB(settings.usePwrMon, &custom_UPM);
+            }
+            #endif
 
             #ifdef REMOTE_HAVEMQTT
             strcpyCB(settings.useMQTT, &custom_useMQTT);
@@ -1375,7 +1432,7 @@ static void preUpdateCallback()
     wifiAPOffDelay = 0;
     origWiFiOffDelay = 0;
 
-    remdisplay.off();
+    remdisplay.blink(false);
     remledStop.setState(false);
 
     // Unregister from TCD
@@ -1387,6 +1444,7 @@ static void preUpdateCallback()
     flushDelayedSave();
 
     showWaitSequence();
+    remdisplay.on();
 }
 
 // Grab static IP parameters from WiFiManager's server.
@@ -1483,6 +1541,14 @@ void updateConfigPortalValues()
 {
     // Make sure the settings form has the correct values
 
+    #ifdef HAVE_PM
+    if(havePwrMon) {
+        batTypeCustHTML[0] = 0;
+        buildSelectMenu(batTypeCustHTML, batTypeHTMLSrc, 7, settings.batType);
+        custom_bca.setValue(settings.batCap, 5);
+    }
+    #endif
+
     //custom_ssDelay.setValue(settings.ssTimer, 3);
 
     custom_hostName.setValue(settings.hostName, 31);
@@ -1538,6 +1604,12 @@ void updateConfigPortalValues()
     custom_uPL.setValue(settings.usePwrLED, 1);
     custom_uLM.setValue(settings.useLvlMtr, 1);
     custom_PLD.setValue(settings.pwrLEDonFP, 1);
+
+    #ifdef HAVE_PM
+    if(havePwrMon) {
+        custom_UPM.setValue(settings.usePwrMon, 1);
+    }
+    #endif
     
     #ifdef REMOTE_HAVEMQTT
     custom_useMQTT.setValue(settings.useMQTT, 1);
@@ -1588,6 +1660,12 @@ void updateConfigPortalValues()
     setCBVal(&custom_uPL, settings.usePwrLED);
     setCBVal(&custom_uLM, settings.useLvlMtr);
     setCBVal(&custom_PLD, settings.pwrLEDonFP);
+
+    #ifdef HAVE_PM
+    if(havePwrMon) {
+        setCBVal(&custom_UPM, settings.usePwrMon);
+    }
+    #endif
 
     #ifdef REMOTE_HAVEMQTT
     setCBVal(&custom_useMQTT, settings.useMQTT);
@@ -1690,6 +1768,22 @@ void updateConfigPortalVisValues()
     setCBVal(&custom_at, settings.autoThrottle);
     #endif // ---------------------------------------------
 }
+
+#ifdef HAVE_PM
+static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting)
+{
+    int sr = atoi(setting);
+    
+    strcat(target, theHTML[0]);
+    strcat(target, setting);
+    sprintf(target + strlen(target), "' name='%s' id='%s' autocomplete='off'><option value='0'", theHTML[1], theHTML[1]);
+    for(int i = 0; i < cnt - 2; i++) {
+        if(sr == i) strcat(target, custHTMLSel);
+        sprintf(target + strlen(target), 
+            theHTML[i+2], (i == cnt - 3) ? osde : ooe);
+    }
+}
+#endif
 
 /*
  * Audio data uploader
@@ -1894,11 +1988,15 @@ static IPAddress stringToIp(char *str)
 /*
  * Read parameter from server, for customhmtl input
  */
-static void getParam(String name, char *destBuf, size_t length)
+
+static void getParam(String name, char *destBuf, size_t length, int defaultVal)
 {
     memset(destBuf, 0, length+1);
     if(wm.server->hasArg(name)) {
         strncpy(destBuf, wm.server->arg(name).c_str(), length);
+    }
+    if(strlen(destBuf) == 0) {
+        sprintf(destBuf, "%d", defaultVal);
     }
 }
 
