@@ -161,7 +161,9 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 #### Battery monitoring
 
-"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the "BATT+" header next to the STOP headers, or through the JST PH connector on the bottom. When using a battery such as the one I used, the cable can be soldered on to the MH-CD32 in parallel to the wires that lead to the LiLo cells. Watch out for shorts while soldering, you are working with live power!
+"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the "BATT+" header next to the STOP headers, or through the JST PH connector on the bottom. When using a battery with a MH-CD32 booster, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power!
+
+![BatMonConnection](img/batmon1.jpg)
 
 **Important**: The Control Board must be connected to the LiPo battery when said battery is idle, ie not being discharged or charged.
 
