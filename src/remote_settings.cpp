@@ -85,10 +85,10 @@
 #endif
 
 #ifdef REMOTE_HAVEAUDIO
-#define NUM_AUDIOFILES 13
-#define SND_REQ_VERSION "RM05"
+#define NUM_AUDIOFILES 14
+#define SND_REQ_VERSION "RM06"
 #define AC_FMTV 2
-#define AC_TS   388656
+#define AC_TS   429197
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 static const char *CONFN  = "/REMA.bin";
 static const char *CONFND = "/REMA.old";
@@ -315,7 +315,7 @@ void settings_setup()
     if(!loadId()) {
         myRemID = createId();
         #ifdef REMOTE_DBG
-        Serial.printf("Created Remote ID: %x\n", myRemID);
+        Serial.printf("Created Remote ID: 0x%lx\n", myRemID);
         #endif
         saveId();
     }
@@ -422,7 +422,13 @@ static bool read_settings(File configFile)
         wd |= CopyCheckValidNumParm(json["uPLED"], settings.usePwrLED, sizeof(settings.usePwrLED), 0, 1, DEF_USE_PLED);
         wd |= CopyCheckValidNumParm(json["uLvLM"], settings.useLvlMtr, sizeof(settings.useLvlMtr), 0, 1, DEF_USE_LVLMTR);
         wd |= CopyCheckValidNumParm(json["pLEDFP"], settings.pwrLEDonFP, sizeof(settings.pwrLEDonFP), 0, 1, DEF_PLEDFP);
-  
+
+        #ifdef HAVE_PM
+        wd |= CopyCheckValidNumParm(json["uPM"], settings.usePwrMon, sizeof(settings.usePwrMon), 0, 1, DEF_USE_PWRMON);
+        wd |= CopyCheckValidNumParm(json["bTy"], settings.batType, sizeof(settings.batType), 0, 4, DEF_BAT_TYPE);
+        wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, sizeof(settings.batCap), 1000, 6000, DEF_BAT_CAP);
+        #endif
+        
         #ifdef REMOTE_HAVEMQTT
         wd |= CopyCheckValidNumParm(json["useMQTT"], settings.useMQTT, sizeof(settings.useMQTT), 0, 1, 0);
         if(json["mqttServer"]) {
@@ -545,6 +551,12 @@ void write_settings()
     json["uPLED"] = (const char *)settings.usePwrLED;
     json["uLvLM"] = (const char *)settings.useLvlMtr;
     json["pLEDFP"] = (const char *)settings.pwrLEDonFP;
+
+    #ifdef HAVE_PM
+    json["uPM"] = (const char *)settings.usePwrMon;
+    json["bTy"] = (const char *)settings.batType;
+    json["bCa"] = (const char *)settings.batCap;
+    #endif
   
     #ifdef REMOTE_HAVEMQTT
     json["useMQTT"] = (const char *)settings.useMQTT;
@@ -1222,7 +1234,7 @@ static bool loadId()
                 myRemID = (uint32_t)json["ID"];
         
                 #ifdef REMOTE_DBG
-                Serial.printf("Loaded Remote ID: %d\n", myRemID);
+                Serial.printf("Loaded Remote ID: 0x%lx\n", myRemID);
                 #endif
         
                 invalid = (myRemID == 0);

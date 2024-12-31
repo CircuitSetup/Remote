@@ -18,6 +18,7 @@ Firmware features:
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
+- Smart battery monitoring for certain LiPo batteries (requires M-version Control Board, or non-M-board with BatMon add-on)
 
 ## Firmware Installation
 
@@ -115,7 +116,7 @@ For acceleration, there are two modes: Linear mode and "movie mode". In linear m
 
 When the remote hits 88.0mph, the TCD triggers a time travel.
 
-Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad), acceleration will continue to run after briefliy pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
 Buttons and switches:
 
@@ -136,8 +137,10 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td></tr>
-  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address</td></tr>
+  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
 </table>
+
+(* M-board, or non-M-board with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
 
 The throttle of the Remote needs calibration:
 
@@ -282,6 +285,18 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left">Display current IP address</td>
      <td align="left">7090&#9166;</td>
     </tr>   
+  <tr>
+     <td align="left">Display battery charge percentage(*)</td>
+     <td align="left">7091&#9166;</td>
+    </tr>   
+  <tr>
+     <td align="left">Display battery "Time to empty"(*)</td>
+     <td align="left">7092&#9166;</td>
+    </tr>   
+  <tr>
+     <td align="left">Display battery voltage(*)</td>
+     <td align="left">7093&#9166;</td>
+    </tr>   
     <tr>
      <td align="left">Reboot the device</td>
      <td align="left">7064738&#9166;</td>
@@ -291,6 +306,8 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left">7123456&#9166;</td>
     </tr>
 </table>
+
+* M-board, or non-M-board with BatMon Add-on required; only if LiPo battery is properly connected to battery monitor.
 
 ## SD card
 
@@ -567,6 +584,22 @@ If unchecked, the level meter stays at zero, which is the default. If checked, t
 ##### &#9654; Power LED/meter on fake power
 
 If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
+
+#### Battery monitoring
+
+##### &#9654; Battery monitoring/warnings
+
+Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
+
+If the battery charge level is lower than 8 percent, warnings are issued; the display blinks every 30 seconds as long as the charge level is low.
+
+##### &#9654; Battery type
+
+Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
+
+##### &#9654; Capacity per cell (1000-6000)
+
+Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
 
 #### Home Assistant / MQTT settings
 

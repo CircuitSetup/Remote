@@ -96,6 +96,7 @@ class remDisplay {
         bool begin();
         void on();
         void off();
+        void blink(bool bl);
 
         void clearBuf();
 
@@ -122,6 +123,7 @@ class remDisplay {
 
         int8_t _onCache = -1;                   // Cache for on/off
         uint8_t _briCache = 0xfe;               // Cache for brightness
+        uint8_t _blink = 0;
 
         int     _speed = 0;
 

@@ -69,13 +69,13 @@
 #define DISPLAY_ADDR   0x70 // LED segment display
 
                             // rotary encoders / ADC
-#define ADDA4991_ADDR  0x36 // [default]
+#define ADDA4991_ADDR  0x37 // [non-default: A0 closed]
 #define DUPPAV2_ADDR   0x01 // [user configured: A0 closed]
 #define DFRGR360_ADDR  0x54 // [default; SW1=0, SW2=0]
 #define ADS1X15_ADDR   0x48 // Addr->GND
 
                             // rotary encoders for volume
-#define ADDA4991V_ADDR 0x37 // [non-default: A0 closed]
+#define ADDA4991V_ADDR 0x38 // [non-default: A1 closed]
 #define DUPPAV2V_ADDR  0x03 // [user configured: A0+A1 closed]
 #define DFRGR360V_ADDR 0x55 // [SW1=0, SW2=1]
 
@@ -83,6 +83,8 @@
 #define PCA9554A_ADDR  0x38 // all Ax -> GND
 #define PCA8574_ADDR   0x21 // non-default
 #define PCA8574A_ADDR  0x39 // non-default
+
+#define LC709204F_ADDR 0x0b
 
 unsigned long powerupMillis = 0;
 
@@ -93,6 +95,10 @@ remDisplay remdisplay(DISPLAY_ADDR);
 remLED remledStop;
 remLED pwrled;
 remLED bLvLMeter;
+
+#ifdef HAVE_PM
+remPowMon pwrMon(LC709204F_ADDR);
+#endif
 
 // The rotary encoder/ADC object
 REMRotEnc rotEnc(4, 
@@ -138,6 +144,22 @@ static bool pwrLEDonFP = true;
 static bool usePwrLED = false;
 static bool useLvlMtr = false;
 
+// Battery monitor: Hardware support disabled;
+// for future use:
+static bool usePwrMon = false;
+bool        havePwrMon = false;
+static int  battWarn = 0;
+static int  oldBattWarn = 0;
+static unsigned long battWarnBlinkNow = 0;
+static bool battWarnDispBlink = false;
+
+#ifdef HAVE_PM
+static int  dispSOC = 0;
+#ifdef REMOTE_HAVEAUDIO
+static bool battWarnSnd = false;
+#endif
+#endif
+
 static bool powerState = false;
 static bool brakeState = false;
 static bool triggerCompleteUpdate = false;
@@ -153,6 +175,7 @@ bool           autoThrottle = false;
 
 static bool          calibMode = false;
 static bool          calibUp = false;
+static bool          calibIP = true;
 
 static bool          offDisplayTimer = false;
 static unsigned long offDisplayNow = 0;
@@ -371,6 +394,9 @@ static void condPLEDaBLvl(bool sLED, bool sLvl);
 
 static void execute_remote_command();
 
+static void display_ip();
+static bool display_soc_voltage(int type);
+
 static void play_startup();
 
 static void powKeyPressed();
@@ -424,6 +450,9 @@ void main_boot()
 void main_boot2()
 {
     int i = 9;
+    #ifdef HAVE_PM
+    int batType = 0, batCap = 0;
+    #endif
     const int8_t resetanim[10][4] = {
         {  1,  0, 0, 0 },
         { 32,  1, 0, 0 },
@@ -467,6 +496,26 @@ void main_boot2()
         loadBrightness();
     }
 
+    #ifdef HAVE_PM
+    // Init power monitor (if to be used)
+    usePwrMon = (atoi(settings.usePwrMon) > 0);
+    batType = atoi(settings.batType);
+    batCap = atoi(settings.batCap);
+    if(batType < BAT_PROF_01 || batType > BAT_PROF_MAX) {
+        Serial.printf("Bad battery type %d\n", batType);
+        usePwrMon = false;
+    } else if(batCap < 1000 || batCap > 6000) {
+        Serial.printf("Bad battery capacity %d, correcting to limit\n", batCap);
+        if(batCap < 1000) batCap = 1000;
+        if(batCap > 6000) batCap = 6000;
+    }
+    
+    if(!(usePwrMon = pwrMon.begin(usePwrMon, batType, (uint16_t)batCap))) {
+        Serial.println("Battery monitor hardware not found or disabled");
+    }
+    havePwrMon = pwrMon.havePM();
+    #endif
+
     // Allow user to delete static IP data by holding Calibration button
     // while booting and pressing Button A ("O.O") twice within 10 seconds
 
@@ -493,7 +542,7 @@ void main_boot2()
                     seqnow = millis();
                     remdisplay.setText((char *)resetanim[i--]);
                     remdisplay.show();
-                    if(!i) { i = 9; }
+                    if(!i) i = 9;
                 }
 
                 if((ssCount == 4) || (millis() - mnow > 10*1000)) break;
@@ -763,6 +812,76 @@ void main_loop()
         bttfn_remote_send_combined(powerState, brakeState, currSpeed);
     }
 
+    #ifdef HAVE_PM
+    // Scan battery monitor
+    if(!TTrunning && !tcdIsInP0 && !calibMode) {
+        battWarn = pwrMon.loop();
+    }
+    #endif
+   
+    /*
+     * "Battery Low" warning
+     * If PowerLED is used, it blinks.
+     * Else: If Level Meter is used, it is reset to zero; when Fake Power
+     *       is off, "BAT" is displayed every 30 seconds.
+     * Else: If Fake power is off, "BAT" is displayed every 30 seconds,
+     *       Else: Display blinks for 5 seconds every 30 seconds.
+     */
+    if(battWarn) {
+        if(oldBattWarn != battWarn) {
+            if(useLvlMtr) {
+                bLvLMeter.setState(false);
+            }
+            battWarnBlinkNow = 0;
+            battWarnDispBlink = false;
+            #ifdef REMOTE_HAVEAUDIO
+            battWarnSnd = true;
+            #endif
+        }
+        oldBattWarn = battWarn;
+        #ifdef REMOTE_HAVEAUDIO
+        if(battWarnSnd && !TTrunning && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
+            append_file("/pwrlow.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
+            battWarnSnd = false;
+        }
+        #endif
+        if(usePwrLED) {
+            if(now - battWarnBlinkNow > 1000) {
+                pwrled.setState(!pwrled.getState());
+                battWarnBlinkNow = now;
+            }
+        } else if(!useLvlMtr || !FPBUnitIsOn) {
+            if(!FPBUnitIsOn) {
+                if(!calibMode && (now - battWarnBlinkNow > 30000)) {
+                    remdisplay.setText("BAT");
+                    remdisplay.show();
+                    remdisplay.on();
+                    offDisplayTimer = true;
+                    offDisplayNow = now;
+                    battWarnBlinkNow = now;
+                }
+            } else {
+                if(!battWarnDispBlink) {
+                    if((!battWarnBlinkNow) || (now - battWarnBlinkNow > 30000)) {
+                        battWarnBlinkNow = now;
+                        remdisplay.blink(true);
+                        battWarnDispBlink = !battWarnDispBlink;
+                    }
+                } else {
+                    if(now - battWarnBlinkNow > 5000) {
+                        battWarnBlinkNow = now;
+                        remdisplay.blink(false);
+                        battWarnDispBlink = !battWarnDispBlink;
+                    }
+                }
+            }
+        }
+    } else if(oldBattWarn) {
+        condPLEDaBLvl(FPBUnitIsOn, FPBUnitIsOn);
+        remdisplay.blink(false);
+        oldBattWarn = false;
+    }
+
     // Scan power switch
     powerswitch.scan();
     if(isFPBKeyChange) {
@@ -802,6 +921,8 @@ void main_loop()
                 keepCounting = false;
                 triggerTTonThrottle = 0;
 
+                calibIP = true;
+
                 // Re-init brake
                 remledStop.setState(true);
 
@@ -821,6 +942,7 @@ void main_loop()
                     // Do NOT play sound
                 }
 
+                remdisplay.blink(false);
                 remdisplay.on();
                 remdisplay.setSpeed(currSpeedF);
                 remdisplay.show();
@@ -1099,7 +1221,7 @@ void main_loop()
     //          If long-pressed during calib mode, calibration is cancelled
     //    Fake-power on:
     //        Short press: Reset speed to 0
-    // .      Long press:  Display IP address
+    // .      Long press:  First time: Display IP address, subsequently SOC
     calib.scan();
     if(isCalibKeyChange) {
         isCalibKeyChange = false;
@@ -1183,7 +1305,21 @@ void main_loop()
                     }
                 } else if(isCalibKeyLongPressed) {
                     flushDelayedSave();
+                    #ifdef HAVE_PM
+                    if(calibIP) {
+                        display_ip();
+                        if(havePwrMon) calibIP = false;
+                    } else {
+                        if(display_soc_voltage(dispSOC)) {
+                            dispSOC++;
+                            if(dispSOC > 1) dispSOC = 0;
+                        } else {
+                            display_ip();
+                        }
+                    }
+                    #else
                     display_ip();
+                    #endif
                     doForceDispUpd = true;
                     triggerTTonThrottle = 0;
                 }
@@ -1581,7 +1717,8 @@ void main_loop()
         }
     }
 
-    bttfnRemPollInt = (!FPBUnitIsOn && displayGPSMode && (tcdCurrSpeed >= 0)) ? BTTFN_POLL_INT_FAST : BTTFN_POLL_INT;
+    // We get speed via MC now, no need to poll so frequently
+    //bttfnRemPollInt = (!FPBUnitIsOn && displayGPSMode && (tcdCurrSpeed >= 0)) ? BTTFN_POLL_INT_FAST : BTTFN_POLL_INT;
 
     // Poll RotEnv for volume. Don't in calibmode, P0 or during
     // acceleration
@@ -1757,7 +1894,7 @@ static void toggleAutoThrottle()
 
 static void condPLEDaBLvl(bool sLED, bool sLvl)
 {
-    if(pwrLEDonFP) {
+    if(!battWarn && pwrLEDonFP) {
         pwrled.setState(sLED);
         bLvLMeter.setState(sLvl);
     }
@@ -1928,6 +2065,24 @@ static void execute_remote_command()
                 currSpeedOldGPS = -2;   
             }
             break;
+        case 91:                              // 7091: Display battery SOC
+        case 92:                              // 7092: Display battery TTE
+        case 93:                              // 7093: Display battery voltage
+            #ifdef HAVE_PM
+            if(havePwrMon) {
+                flushDelayedSave();
+                if(display_soc_voltage(command - 91)) {
+                    if(FPBUnitIsOn) {
+                        doForceDispUpd = true;
+                    } else {
+                        remdisplay.off();
+                        // force GPS speed display update
+                        currSpeedOldGPS = -2;   
+                    }
+                }
+            }
+            #endif
+            break;
         default:
             if(command >= 50 && command <= 59) {   // 7050-7059: Set music folder number
                 #ifdef REMOTE_HAVEAUDIO
@@ -2034,11 +2189,12 @@ static void execute_remote_command()
     }
 }
 
-void display_ip()
+static void display_ip()
 {
     uint8_t a[4];
     char buf[8];
 
+    remdisplay.blink(false);
     remdisplay.setText("IP");
     remdisplay.show();
 
@@ -2057,6 +2213,73 @@ void display_ip()
     remdisplay.show();
     mydelay(500, true);
 }
+
+#ifdef HAVE_PM
+static bool display_soc_voltage(int type)
+{
+    char buf[8];
+    uint16_t tte;
+    bool blink = false;
+
+    if(havePwrMon) {
+        switch(type) {
+        case 0:
+            if(!pwrMon._haveSOC) {
+                if(!pwrMon.readSOC())
+                    return false;
+            }
+            if(pwrMon._soc >= 100) {
+                buf[0] = 'F';
+                buf[1] = 'U';
+                buf[2] = 'L';
+                buf[3] = 0;
+            } else {
+                sprintf(buf, "%2d&", pwrMon._soc);
+            }
+            break;
+        case 1:
+            if(!pwrMon._haveTTE) {
+                if(!pwrMon.readTimeToEmpty())
+                    return false;
+            }
+            tte = pwrMon._tte;
+            if(!tte || tte == 0xffff) {
+                buf[0] = '-';
+                buf[1] = '-';
+                buf[2] = '-';
+                buf[3] = 0;
+            } else {
+                if(tte > 999) tte = 999;
+                sprintf(buf, "%3d", tte);
+            }
+            if(pwrMon._haveCharging) {
+                blink = pwrMon._charging;
+            }
+            break;
+        default:
+            if(!pwrMon._haveVolt) {
+                if(!pwrMon.readVoltage())
+                    return false;
+            }
+            sprintf(buf, "%4.1f", pwrMon._voltage);
+            break;
+        }
+        #ifdef REMOTE_DBG
+        Serial.printf("[%s]\n", buf);
+        #endif
+        remdisplay.setText(buf);
+        remdisplay.show();
+        remdisplay.blink(blink);
+        mydelay(2000, true);
+        remdisplay.clearBuf();
+        remdisplay.show();
+        if(blink) remdisplay.blink(false);
+        mydelay(500, true);
+        return true;
+    }
+    return false;
+}
+#endif
 
 static void play_startup()
 {    
