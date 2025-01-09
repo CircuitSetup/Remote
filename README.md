@@ -1,4 +1,4 @@
-# Firmware for Remote Control (Delorean Time Machine)
+# Remote Control (Delorean Time Machine)
 
 This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. 
 

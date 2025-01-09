@@ -55,7 +55,7 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part3](img/htof3.jpg)
 
-5) Remove two black screws (5) on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different)
+5) Remove two black screws (5) on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different). Some versions have two additional such screws further up; if present, those need to be unscrewed as well.
 
 ![part4](img/htof4.jpg)
 
