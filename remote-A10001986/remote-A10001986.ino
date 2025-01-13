@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024 Thomas Winischhofer (A10001986)
+ * (C) 2024-2025 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -104,7 +104,7 @@
  *
  * - Go to "Sketch" -> "Upload" to compile and upload the firmware to your ESP32 board.
  *
- * - Install the audio data (only applicable if hardware has audio support): 
+ * - Install the audio data:
  *   Method 1:
  *   - Go to Config Portal, click "Update" and upload the audio data (REMA.bin, extracted
  *     from install/sound-pack-xxxxxxxx.zip) through the bottom file selector.
@@ -136,6 +136,9 @@
 
 /*  Changelog
  *  
+ *  2025/01/13 (A10001986) [1.03]
+ *    - BTTFN: Minor code optimization
+ *    - Fix MQTT message length
  *  2024/12/18-19 (A10001986) [1.02]
  *    - Fixes for LC709204F battery fuel gauge IC support
  *  2024/11/22 (A10001986) [1.01]

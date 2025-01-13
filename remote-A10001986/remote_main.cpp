@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024 Thomas Winischhofer (A10001986)
+ * (C) 2024-2025 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -69,13 +69,13 @@
 #define DISPLAY_ADDR   0x70 // LED segment display
 
                             // rotary encoders / ADC
-#define ADDA4991_ADDR  0x37 // [non-default: A0 closed]
+#define ADDA4991_ADDR  0x36 // [default]
 #define DUPPAV2_ADDR   0x01 // [user configured: A0 closed]
 #define DFRGR360_ADDR  0x54 // [default; SW1=0, SW2=0]
 #define ADS1X15_ADDR   0x48 // Addr->GND
 
                             // rotary encoders for volume
-#define ADDA4991V_ADDR 0x38 // [non-default: A1 closed]
+#define ADDA4991V_ADDR 0x37 // [non-default: A0 closed]
 #define DUPPAV2V_ADDR  0x03 // [user configured: A0+A1 closed]
 #define DFRGR360V_ADDR 0x55 // [SW1=0, SW2=1]
 
@@ -144,8 +144,7 @@ static bool pwrLEDonFP = true;
 static bool usePwrLED = false;
 static bool useLvlMtr = false;
 
-// Battery monitor: Hardware support disabled;
-// for future use:
+// Battery monitor
 static bool usePwrMon = false;
 bool        havePwrMon = false;
 static int  battWarn = 0;
@@ -439,7 +438,7 @@ static bool bttfn_checkmc();
 static bool BTTFNTriggerUpdate();
 static void BTTFNSendPacket();
 static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2);
-static bool BTTFNTriggerTT(bool probe);
+static bool bttfn_trigger_tt(bool probe);
 static void bttfn_remote_keepalive();
 static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t speed);
 
@@ -1068,7 +1067,7 @@ void main_loop()
                             bool playBad = false;
                             #endif
                             if(!triggerTTonThrottle) {
-                                if(BTTFNTriggerTT(true)) {
+                                if(bttfn_trigger_tt(true)) {
                                     triggerTTonThrottle = 1;
                                     #ifdef REMOTE_HAVEAUDIO
                                     play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
@@ -1221,7 +1220,7 @@ void main_loop()
     //          If long-pressed during calib mode, calibration is cancelled
     //    Fake-power on:
     //        Short press: Reset speed to 0
-    // .      Long press:  First time: Display IP address, subsequently SOC
+    // .      Long press:  First time: Display IP address, subsequently SOC and TTE/TTF alternately
     calib.scan();
     if(isCalibKeyChange) {
         isCalibKeyChange = false;
@@ -1363,7 +1362,7 @@ void main_loop()
         if(FPBUnitIsOn && !TTrunning && !tcdIsInP0) {
             if(triggerTTonThrottle == 1 && throttlePos > 0) {
                 triggerTTonThrottle++;
-                BTTFNTriggerTT(false);
+                bttfn_trigger_tt(false);
             }
         }
     } else if(!calibMode && !tcdIsInP0) {
@@ -1476,7 +1475,7 @@ void main_loop()
                 }
             }
 
-            // Network-latency-depended display sync is nice'n'all but latency
+            // Network-latency-depending display sync is nice'n'all but latency
             // measurement is dead as soon as audio comes into play. (1-2 vs 10-13).
             #ifndef REMOTE_HAVEAUDIO
             if(millis() - lastSpeedUpd > bttfnCurrLatency) {
@@ -2571,7 +2570,7 @@ static void mqtt_send_button_on(int i)
     if(!MQTTbuttonOnLen[i] || !FPBUnitIsOn)
         return;
 
-    mqttPublish(settings.mqttbt[i], settings.mqttbo[i], MQTTbuttonOnLen[i] + 1);
+    mqttPublish(settings.mqttbt[i], settings.mqttbo[i], MQTTbuttonOnLen[i]);
 }
 
 static void mqtt_send_button_off(int i)
@@ -2579,7 +2578,7 @@ static void mqtt_send_button_off(int i)
     if(!MQTTbuttonOffLen[i] || !FPBUnitIsOn)
         return;
 
-    mqttPublish(settings.mqttbt[i], settings.mqttbf[i], MQTTbuttonOffLen[i] + 1);
+    mqttPublish(settings.mqttbt[i], settings.mqttbf[i], MQTTbuttonOffLen[i]);
 }
 #endif
 
@@ -2986,16 +2985,12 @@ static bool BTTFNTriggerUpdate()
     return true;
 }
 
-static void BTTFNSendPacket()
+static void BTTFNPreparePacket()
 {
     memset(BTTFUDPBuf, 0, BTTF_PACKET_SIZE);
 
     // ID
     memcpy(BTTFUDPBuf, BTTFUDPHD, 4);
-
-    // Serial
-    BTTFUDPID = (uint32_t)millis();
-    SET32(BTTFUDPBuf, 6, BTTFUDPID);
 
     // Tell the TCD about our hostname (0-term., 13 bytes total)
     strncpy((char *)BTTFUDPBuf + 10, settings.hostName, 12);
@@ -3003,22 +2998,19 @@ static void BTTFNSendPacket()
 
     BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
 
+    // Version, MC-marker
     #ifdef BTTFN_MC
-    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker; // Version, MC-marker
+    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker;  
     #else
     BTTFUDPBuf[4] = BTTFN_VERSION;
     #endif
-    BTTFUDPBuf[5] = bttfnReqStatus;        // Request status & TCD speed
 
-    #ifdef BTTFN_MC
-    if(!haveTCDIP) {
-        BTTFUDPBuf[5] |= 0x80;
-        SET32(BTTFUDPBuf, 31, tcdHostNameHash);
-    }
-    #endif
+    // Remote-ID
+    SET32(BTTFUDPBuf, 35, myRemID);                 
+}
 
-    SET32(BTTFUDPBuf, 35, myRemID);
-
+static void BTTFNDispatch()
+{
     uint8_t a = 0;
     for(int i = 4; i < BTTF_PACKET_SIZE - 1; i++) {
         a += BTTFUDPBuf[i] ^ 0x55;
@@ -3039,11 +3031,32 @@ static void BTTFNSendPacket()
     #endif
     remUDP->write(BTTFUDPBuf, BTTF_PACKET_SIZE);
     remUDP->endPacket();
+}
+
+static void BTTFNSendPacket()
+{
+    BTTFNPreparePacket();
+    
+    // Serial
+    BTTFUDPID = (uint32_t)millis();
+    SET32(BTTFUDPBuf, 6, BTTFUDPID);
+
+    // Request status & TCD speed
+    BTTFUDPBuf[5] = bttfnReqStatus;        
+
+    #ifdef BTTFN_MC
+    if(!haveTCDIP) {
+        BTTFUDPBuf[5] |= 0x80;
+        SET32(BTTFUDPBuf, 31, tcdHostNameHash);
+    }
+    #endif
+
+    BTTFNDispatch();
 
     bttfnPacketSentNow = millis();
 }
 
-static bool BTTFNTriggerTT(bool probe)
+static bool BTTFNConnected()
 {
     if(!useBTTFN)
         return false;
@@ -3059,41 +3072,26 @@ static bool BTTFNTriggerTT(bool probe)
     if(!lastBTTFNpacket)
         return false;
 
+    return true;
+}
+
+static bool bttfn_trigger_tt(bool probe)
+{
+    if(!BTTFNConnected())
+        return false;
+
     if(TTrunning)
         return false;
 
     if(probe)
         return true;
 
-    memset(BTTFUDPBuf, 0, BTTF_PACKET_SIZE);
+    BTTFNPreparePacket();
 
-    // ID
-    memcpy(BTTFUDPBuf, BTTFUDPHD, 4);
+    // Trigger BTTFN-wide TT
+    BTTFUDPBuf[5] = 0x80;
 
-    // Tell the TCD about our hostname (0-term., 13 bytes total)
-    strncpy((char *)BTTFUDPBuf + 10, settings.hostName, 12);
-    BTTFUDPBuf[10+12] = 0;
-
-    BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
-
-    #ifdef BTTFN_MC
-    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker; // Version, MC-marker
-    #else
-    BTTFUDPBuf[4] = BTTFN_VERSION;
-    #endif
-    BTTFUDPBuf[5] = 0x80;                          // Trigger BTTFN-wide TT
-
-    SET32(BTTFUDPBuf, 35, myRemID);
-
-    uint8_t a = 0;
-    for(int i = 4; i < BTTF_PACKET_SIZE - 1; i++) {
-        a += BTTFUDPBuf[i] ^ 0x55;
-    }
-    BTTFUDPBuf[BTTF_PACKET_SIZE - 1] = a;
-        
-    remUDP->beginPacket(bttfnTcdIP, BTTF_DEFAULT_LOCAL_PORT);
-    remUDP->write(BTTFUDPBuf, BTTF_PACKET_SIZE);
-    remUDP->endPacket();
+    BTTFNDispatch();
 
     #ifdef REMOTE_DBG
     Serial.println("Triggered BTTFN-wide TT");
@@ -3104,35 +3102,14 @@ static bool BTTFNTriggerTT(bool probe)
 
 static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2)
 {
-    if(!useBTTFN)
-        return false;
-
-    #ifdef BTTFN_MC
-    if(!haveTCDIP)
-        return false;
-    #endif
-
-    if(WiFi.status() != WL_CONNECTED)
-        return false;
-
-    if(!lastBTTFNpacket)
+    if(!BTTFNConnected())
         return false;
 
     if(!remoteAllowed)
         return false;
 
-    memset(BTTFUDPBuf, 0, BTTF_PACKET_SIZE);
-
-    // ID
-    memcpy(BTTFUDPBuf, BTTFUDPHD, 4);
-
-    // Tell the TCD about our hostname (0-term., 13 bytes total)
-    strncpy((char *)BTTFUDPBuf + 10, settings.hostName, 12);
-    BTTFUDPBuf[10+12] = 0;
-
-    BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
-
-    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker;  // Version
+    BTTFNPreparePacket();
+    
     BTTFUDPBuf[5] = 0x00;
 
     SET32(BTTFUDPBuf, 6, bttfnSeqCnt[cmd]);
@@ -3143,21 +3120,7 @@ static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2)
     BTTFUDPBuf[26] = p1;
     BTTFUDPBuf[27] = p2;
 
-    SET32(BTTFUDPBuf, 35, myRemID);
-    
-    uint8_t a = 0;
-    for(int i = 4; i < BTTF_PACKET_SIZE - 1; i++) {
-        a += BTTFUDPBuf[i] ^ 0x55;
-    }
-    BTTFUDPBuf[BTTF_PACKET_SIZE - 1] = a;
-        
-    remUDP->beginPacket(bttfnTcdIP, BTTF_DEFAULT_LOCAL_PORT);
-    remUDP->write(BTTFUDPBuf, BTTF_PACKET_SIZE);
-    remUDP->endPacket();
-
-    #ifdef REMOTE_DBG
-    Serial.printf("Sent command %d: %d %d\n", cmd, p1, p2);
-    #endif
+    BTTFNDispatch();
 
     lastCommandSent = millis();
 
