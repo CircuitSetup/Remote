@@ -5,11 +5,13 @@ This document contains instructions on how to modify your Futaba remote control.
 Apart from CircuitSetup's display, and the control board, I have used the following additional parts:
 
 - [Unibox model 140](https://www.uniboxinfo.com/standard.html)
-- "ON/OFF" Switch: [Here; ON/ON]()
-- "UP/DOWN" Switch (used as real power switch): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t)
-- Buttons "O.O" and "RESET": [Here, used without the cap, stub cut shorter](https://www.aliexpress.com/item/4000638180002.html?spm=a2g0o.order_list.order_list_main.111.5d7f1c246zk58t)
-- "HOLD" Switch (used as user buttons #1 and #2): [Here, MOM-OFF-MOM](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t)
-- Pot cap in front of Unibox: [Here, "big size"](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t)
+- "ON/OFF" Switch: Miyama MS 500 A-MF with black handle
+- "UP/DOWN" Switch: [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). ON-OFF-ON version.
+- Buttons "O.O" and "RESET": [Here](https://www.aliexpress.com/item/4000638180002.html?spm=a2g0o.order_list.order_list_main.111.5d7f1c246zk58t). Used without the cap, and the stub cut shorter
+- "HOLD" Switch (used as user buttons #1 and #2): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). MOM-ON-MOM version.
+- Pot cap in front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
+- Stop switch: Standard red-handle toggle switch. Google for "Plastic Toggle Switch Red".
+- Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. 
 
 The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
 - [Throttle](throttle-connection) from Futaba
