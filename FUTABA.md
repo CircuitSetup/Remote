@@ -3,7 +3,7 @@
 Apart from CircuitSetup's display, and the control board, I have used the following additional parts:
 
 - [Unibox model 140](https://www.uniboxinfo.com/standard.html)
-- "ON/OFF" Switch: Miyama MS 500 A-MF with black handle. Can by any toggle switch; has a black, flast handle in the movie.
+- "ON/OFF" Switch: Miyama MS 500 A-MF with black handle. Can by any toggle switch; has a black, flat handle in the movie.
 - "UP/DOWN" Switch: [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). ON-ON version.
 - Buttons "O.O" and "RESET": [Here](https://www.aliexpress.com/item/4000638180002.html?spm=a2g0o.order_list.order_list_main.111.5d7f1c246zk58t). Used without the cap, and the stub cut shorter
 - "HOLD" Switch (used as user buttons #1 and #2): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). MOM-ON-MOM version.
