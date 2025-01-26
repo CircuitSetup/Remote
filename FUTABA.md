@@ -12,6 +12,8 @@ Apart from CircuitSetup's display, and the control board, I have used the follow
 - Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. Data for the sticker is in the Labels folder here.
 - White wire to connect stop light and switch
 - Battery clamps: [Here](https://my.rs-online.com/web/p/battery-holders/1913935?gb=s)
+- Standard 9V battery adapters with open wire
+- a small speaker
   
 The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
 - [Throttle](throttle-connection) from Futaba
