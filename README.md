@@ -567,7 +567,7 @@ Check this to play a click sound for each "mph" while accelerating. Uncheck to s
 
 ##### &#9654; Play TCD-alarm sounds
 
-If a TCD is connected via BTTFN or MQTT, the Dash Gauges visually signals when the TCD's alarm sounds. If you want to play an alarm sound, check this option.
+If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TCD's alarm sounds. If you want to play an alarm sound, check this option.
 
 ##### &#9654; Display TCD speed when off
 
