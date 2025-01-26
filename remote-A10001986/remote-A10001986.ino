@@ -136,7 +136,7 @@
 
 /*  Changelog
  *  
- *  2025/01/26 (A10001986) [1.04]
+ *  2025/01/26 (A10001986) [1.05]
  *    - Display battery charge level instead of "Wait" during cold start
  *      (if available).
  *  2025/01/15 (A10001986)
