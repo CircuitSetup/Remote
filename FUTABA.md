@@ -9,7 +9,7 @@ Apart from CircuitSetup's display, and the control board, I have used the follow
 - "HOLD" Switch (used as user buttons #1 and #2): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). MOM-OFF-MOM version, with short handle.
 - Pot cap in front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
 - Stop switch: Standard red-handle toggle switch. Google for "Plastic Toggle Switch Red".
-- Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. Data for the sticker is in the Labels folder here.
+- Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay; go for the RL ("removable lamp") version, they are easier to modify inside. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. Data for the sticker is in the Labels folder here.
 - White wire to connect stop light and switch
 - Battery clamps: [Here](https://my.rs-online.com/web/p/battery-holders/1913935?gb=s)
 - Standard 9V battery adapters with open wire
@@ -181,6 +181,8 @@ The actual power cable for the kit electronics is lead outside, together with th
 **Important**: The Control Board must be connected to the LiPo battery when said battery is idle, ie not being discharged or charged.
 
 ### "Stop" light and switch
+
+The Molex 1820 "Stop" light needs to be modified. A white LED needs to be fitted instead of the lamp. Since those lights are glued shut, you need an exacto knife to pry open the top cover. Then remove the lens (by pulling it out), remove the lamp socket and put a 5mm LED where the lamp would be, and push its wires next to the copper contacts leading to the rear.
 
 Many people use tape (and tape alone) to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I regarded tape alone as insufficient and went for tape plus M2 screws.
 
