@@ -234,7 +234,7 @@ With everything wired up; it looks more chaotic than it is. The black square on 
 
 [<img src="img/box3.jpg">](img/box3l.jpg)
 
-Here are some details of the finished product:
+Here are some details of the mostly finished product (cable ties aren't final on those pics though):
 
 ![det1](img/det1.jpg)
 
