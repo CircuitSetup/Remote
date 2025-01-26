@@ -394,7 +394,7 @@ static void condPLEDaBLvl(bool sLED, bool sLvl);
 static void execute_remote_command();
 
 static void display_ip();
-static bool display_soc_voltage(int type);
+static bool display_soc_voltage(int type, bool displayAndReturn = false);
 
 static void play_startup();
 
@@ -578,7 +578,13 @@ void main_boot2()
         }
     }
 
-    showWaitSequence();
+    #ifdef HAVE_PM
+    if(!display_soc_voltage(0, true)) {
+    #endif
+        showWaitSequence();
+    #ifdef HAVE_PM
+    }
+    #endif
 }
 
 void main_setup()
@@ -2214,7 +2220,7 @@ static void display_ip()
 }
 
 #ifdef HAVE_PM
-static bool display_soc_voltage(int type)
+static bool display_soc_voltage(int type, bool displayAndReturn)
 {
     char buf[8];
     uint16_t tte;
@@ -2269,6 +2275,7 @@ static bool display_soc_voltage(int type)
         remdisplay.setText(buf);
         remdisplay.show();
         remdisplay.blink(blink);
+        if(displayAndReturn) return true;
         mydelay(2000, true);
         remdisplay.clearBuf();
         remdisplay.show();
