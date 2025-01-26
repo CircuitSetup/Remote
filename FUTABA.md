@@ -184,6 +184,8 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 The Molex 1820 "Stop" light needs to be modified. A white LED needs to be fitted instead of the lamp. Since those lights are glued shut, you need an exacto knife to pry open the top cover. Then remove the lens (by pulling it out), remove the lamp socket and put a 5mm LED where the lamp would be, and push its wires next to the copper contacts leading to the rear.
 
+![stop3](img/stoplight3.jpg)
+
 Many people use tape (and tape alone) to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I regarded tape alone as insufficient and went for tape plus M2 screws.
 
 The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
