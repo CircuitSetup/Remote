@@ -234,6 +234,22 @@ With everything wired up; it looks more chaotic than it is. The black square on 
 
 [<img src="img/box3.jpg">](img/box3l.jpg)
 
+Here are some details of the finished product:
+
+![det1](img/det1.jpg)
+
+![det2](img/det2.jpg)
+
+![det3](img/det3.jpg)
+
+![det4](img/det4.jpg)
+
+And here is how it looks from the front:
+
+![total1](img/total1.jpg)
+
+![total2](img/total2.jpg)
+
 _To be continued._
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
