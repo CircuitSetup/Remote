@@ -1,7 +1,20 @@
 ## Hardware
 
-This document contains instructions on how to modify your Futaba remote control.
+Apart from CircuitSetup's display, and the control board, I have used the following additional parts:
 
+- [Unibox model 140](https://www.uniboxinfo.com/standard.html)
+- "ON/OFF" Switch: Miyama MS 500 A-MF with black handle. Can by any toggle switch; has a black, flat handle in the movie.
+- "UP/DOWN" Switch: [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). ON-ON version, with short handle.
+- Buttons "O.O" and "RESET": [Here](https://www.aliexpress.com/item/4000638180002.html?spm=a2g0o.order_list.order_list_main.111.5d7f1c246zk58t). Used without the cap, and the stub cut shorter
+- "HOLD" Switch (used as user buttons #1 and #2): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). MOM-OFF-MOM version, with short handle.
+- Pot cap in front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
+- Stop switch: Standard red-handle toggle switch. Google for "Plastic Toggle Switch Red".
+- Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay; go for the RL ("removable lamp") version, they are easier to modify inside. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. Data for the sticker is in the Labels folder here.
+- White wire to connect stop light and switch
+- Battery clamps: [Here](https://my.rs-online.com/web/p/battery-holders/1913935?gb=s)
+- Standard 9V battery adapters with open wire
+- a small speaker
+  
 The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
 - [Throttle](throttle-connection) from Futaba
 - [Power LED](#power-led) from Futaba
@@ -169,6 +182,10 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 ### "Stop" light and switch
 
+The Molex 1820 "Stop" light needs to be modified. A white LED needs to be fitted instead of the lamp. Since those lights are glued shut, you need an exacto knife to pry open the top cover. Then remove the lens (by pulling it out), remove the lamp socket and put a 5mm LED where the lamp would be, and push its wires next to the copper contacts leading to the rear.
+
+![stop3](img/stoplight3.jpg)
+
 Many people use tape (and tape alone) to attach the Molex light and the switch. Given the small area of contact and the Futaba's checkered surface, I regarded tape alone as insufficient and went for tape plus M2 screws.
 
 The left screw is a machine screw with a nut, the other is a plastic screw (as there is no room for a nut inside the light).
@@ -203,6 +220,8 @@ Apart from the "UP/DOWN" switch (which I use as a real power switch), all switch
 
 ![box1](img/box1.jpg)
 
+The small holes on the right hand side are for the speaker. Additional holes were made for the stop-switch/light (bottom right hand side), and the 9V battery cables (right hand side, near top; bottom, next to hole for stop-wires).
+
 ![box2](img/box2.jpg)
 
 The switches are positioned and rotated as in the movie, as far as I could make out:
@@ -214,6 +233,22 @@ The switches are positioned and rotated as in the movie, as far as I could make 
 With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker.
 
 [<img src="img/box3.jpg">](img/box3l.jpg)
+
+Here are some details of the mostly finished product (cable ties aren't final on those pics though):
+
+![det1](img/det1.jpg)
+
+![det2](img/det2.jpg)
+
+![det3](img/det3.jpg)
+
+![det4](img/det4.jpg)
+
+And here is how it looks from the front:
+
+![total1](img/total1.jpg)
+
+![total2](img/total2.jpg)
 
 _To be continued._
 

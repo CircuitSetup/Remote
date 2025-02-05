@@ -111,12 +111,11 @@ static long     prev_avg, prev_raw, prev_raw2;
 static uint32_t g(uint32_t a, int o) { return a << (PA_MASKA - o); }
 
 static float    curVolFact = 1.0;
-static bool     curChkNM   = false;
 static bool     dynVol     = true;
 static int      sampleCnt = 0;
 
 static bool     throttleup_playing = false;
-uint16_t        key_playing = 0;
+static uint16_t key_playing = 0;
 
 static char     append_audio_file[256];
 static float    append_vol;
@@ -221,10 +220,10 @@ void audio_loop()
             } else if(mpActive) {
                 mp_next(true);
             }
-        } else {
+        } else if(dynVol) {
             sampleCnt++;
             if(sampleCnt > 1) {
-                if(dynVol) out->SetGain(getVolume());
+                out->SetGain(getVolume());
                 sampleCnt = 0;
             }
         }
@@ -237,10 +236,10 @@ void audio_loop()
             } else if(mpActive) {
                 mp_next(true);
             }
-        } else {
+        } else if(dynVol) {
             sampleCnt++;
             if(sampleCnt > 1) {
-                if(dynVol) out->SetGain(getVolume());
+                out->SetGain(getVolume());
                 sampleCnt = 0;
             }
         }
@@ -318,11 +317,16 @@ void play_file(const char *audio_file, uint16_t flags, float volumeFactor)
     }
 
     curVolFact = volumeFactor;
-    curChkNM   = (flags & PA_IGNNM)  ? false : true;
     dynVol     = (flags & PA_DYNVOL) ? true : false;
-
     throttleup_playing = (flags & PA_THRUP) ? true : false;
     key_playing = flags & 0xff80;
+
+    #ifdef REMOTE_HAVEVOLKNOB
+    // Reset vol smoothing
+    // (user might have turned the pot while no sound was played)
+    rawVolIdx = 0;
+    anaReadCount = 0;
+    #endif
     
     out->SetGain(getVolume());
 
@@ -344,7 +348,6 @@ void play_file(const char *audio_file, uint16_t flags, float volumeFactor)
             curSeek = skipID3(buf);
             mySD0L->setStartPos(curSeek);
             mySD0L->seek(curSeek, SEEK_SET);
-    
             mp3->begin(mySD0L, out);
         }
         
@@ -567,13 +570,13 @@ void stopAudio()
 {
     if(mp3->isRunning()) {
         mp3->stop();
-        key_playing = 0;
     }
     if(wav->isRunning()) {
         wav->stop();
-        throttleup_playing = false;
     }
     appendFile = false;   // Clear appended, stop means stop.
+    key_playing = 0;
+    throttleup_playing = false;
 }
 
 void stopAudioAtLoopEnd()
