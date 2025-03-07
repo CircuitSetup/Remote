@@ -13,3 +13,5 @@ To have [JCLPCB](https://jlcpcb.com) make your Futaba Control Board:
 8) Select a "product description" (eg. "Movie prop") and click "Save to cart". Then finalize your order.
 
 JLC probably won't have the battery monitor IC LC709204FXE-01TBG (U4) in stock. Either you pre-order this, or order the board without the battery monitor feature. It is fully functional otherwise.
+
+For battery monitoring, a JST PH connector (S2B-PH-K-S(LF)(SN), LCSC part number C173752) needs to be soldered on the bottom of the PCB.
