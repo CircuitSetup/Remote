@@ -136,6 +136,8 @@
 
 /*  Changelog
  *  
+ *  2025/02/13 (A10001986) [1.05.1]
+ *    - Delete temp file after audio installation
  *  2025/01/26 (A10001986) [1.05]
  *    - Display battery charge level instead of "Wait" during cold start
  *      (if available).
