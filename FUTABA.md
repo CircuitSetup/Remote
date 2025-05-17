@@ -2,7 +2,7 @@
 
 ![My Futaba1](img/total5.jpg)
 
-Apart from CircuitSetup's display, and the control board, I have used the following additional parts:
+Apart from CircuitSetup's display, and the [control board](electronics/), I have used the following additional parts:
 
 - [Unibox model 140](https://www.uniboxinfo.com/standard.html)
 - "ON/OFF" Switch: Miyama MS 500 A-MF with black handle. Can by any toggle switch; has a black, flat handle in the movie.
