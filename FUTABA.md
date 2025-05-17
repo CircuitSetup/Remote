@@ -60,21 +60,21 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part1](img/htof1.jpg)
 
-1) Remove the cover of the adjustment panel (1) on the back
-2) Remove the transmitter module (2); it is held by two clips at top and bottom
-3) Remove the four silver screws (3) on the back and remove back cover
+1) Remove the cover of the adjustment panel [1] on the back
+2) Remove the transmitter module [2]; it is held by two clips at top and bottom
+3) Remove the four silver screws [3] on the back and remove back cover
 
 ![part2](img/htof2.jpg)
 
-4) Remove four black screws (4) on the adjustment panel, and remove the bezel
+4) Remove four black screws [4] on the adjustment panel, and remove the bezel
 
 ![part3](img/htof3.jpg)
 
-5) Remove two black screws (5) on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different). Some versions have two additional such screws further up; if present, those need to be unscrewed as well.
+5) Remove two black screws [5] on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different). Some versions have two additional such screws further up; if present, those need to be unscrewed as well.
 
 ![part4](img/htof4.jpg)
 
-6) Remove four black screws (6) on the bottom
+6) Remove four black screws [6] on the bottom
 
 ![part5](img/htof5.jpg)
 
@@ -82,17 +82,17 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part6](img/htof6.jpg)
 
-9) Remove four silver screws (7) around the antenna, and pull out the antenna as far as the wire permits; you could as well cut off that wire since the antenna isn't used.
+9) Remove four silver screws [7] around the antenna, and pull out the antenna as far as the wire permits; you could as well cut off that wire since the antenna isn't used.
 
 ![part7](img/htof7.jpg)
 
-10) Remove two silver screws (8) on the top of the main PCB
-11) Unplug five ribbon cables (9) on the main PCB
+10) Remove two silver screws [8] on the top of the main PCB
+11) Unplug five ribbon cables [9] on the main PCB
 12) Lift out the main PCB; at this point, it is held by only pin sockets that connect it to other PCBs. 
 
 Now you can access the throttle potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
-Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it. 
+Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a possibly leaking battery in it. 
 
 ### Throttle connection
 
@@ -116,7 +116,7 @@ Important: Do not re-connect the two widest ribbon cables (top two ones) to the 
 
 #### Calibration
 
-The "Fail Safe Set" button on the back makes an excellent "Calibration" button. Desolder the green and yellow wires, and connect your new wires to the Control Board in their place:
+The "Fail Safe Set" button on the back makes an excellent "Calibration" button. In order to use it as such, desolder the green and yellow wires, and connect your new wires to the Control Board in their place:
 
 ![FailSafeSet](img/fss.jpg)
 
@@ -130,7 +130,9 @@ Don't forget to bend the "flying pot" back after soldering, otherwise you can't 
 
 ### Battery Level Meter
 
-Connecting the Control Board to the Futaba's level meter is, of course, optional. As far as I could make out, it is never showing anything but "zero" in the movie. In order to connect it to the Control Board, solder two wires to the meter's contact like shown below.
+Connecting the Control Board to the Futaba's level meter is, of course, optional. As far as I could make out, it is never showing anything but "zero" in the movie. 
+
+If you want to connect it to the Control Board, solder two wires to the meter's contact like shown below.
 
 ![PowerLED](img/blvl1.jpg)
 
@@ -166,7 +168,7 @@ I used this battery, which I sourced from [AliExpress](https://www.aliexpress.co
 
 ![battery](img/battery.jpg)
 
-This is a dual-cell 3.7-4.2V LiPo battery with a MH-CD42 booster board, which shifts the voltage to 5V and provides charging protection. With a simple modification, it has the perfect measurements to fit into the original battery compartment. The booster electronics, which are inside the blue shrink-wrap, need to be put elsewhere, otherwise the battery is too thick. Remove the blue shrink-wrap, the tape below that, and the PCB is free. I taped it on top of the battery compartment:
+This is a dual-cell 3.7-4.2V LiPo battery with a MH-CD42 booster board, which shifts the voltage to 5V and provides charging protection. With a simple modification, this battery has the perfect measurements to fit into the original battery compartment. The booster board, which is inside the blue shrink-wrap, needs to be put elsewhere, otherwise the battery is too thick: Remove the blue shrink-wrap, the tape below that, and the booster board is free. I taped it on top of the battery compartment:
 
 ![battelec](img/battelec.jpg)
 
@@ -176,7 +178,7 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 #### Battery monitoring
 
-"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the JST PH connector on the bottom of the CB, or the "BATT+" header next to the STOP headers. When using a battery with a MH-CD32 booster, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power! (Since GND is common, a wire to the battery's "+" suffices.)
+"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the JST PH connector on the bottom of the CB, or the "BATT+" header next to the STOP headers. When using a battery with a MH-CD32 booster board, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power! (Since GND is common, a wire to the battery's "+" suffices.)
 
 ![BatMonConnection](img/batmon1.jpg)
 
