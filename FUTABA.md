@@ -232,7 +232,7 @@ The switches are positioned and rotated as in the movie, as far as I could make 
 
 ![boxm1](img/switchesm1.jpg)
 
-With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker.
+With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker. (Click for hi-res image)
 
 [<img src="img/box3.jpg">](img/box3l.jpg)
 
@@ -246,7 +246,9 @@ Here are some details of the mostly finished product (cable ties aren't final on
 
 ![det4](img/det4.jpg)
 
-And here is how it looks finished:
+## And here it is
+
+(Click for hi-res images)
 
 [<img src="img/total3.jpg">](img/total3l.jpg)
 
