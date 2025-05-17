@@ -9,7 +9,7 @@ Apart from CircuitSetup's display, and the control board, I have used the follow
 - "UP/DOWN" Switch: [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). ON-ON version, with short handle.
 - Buttons "O.O" and "RESET": [Here](https://www.aliexpress.com/item/4000638180002.html?spm=a2g0o.order_list.order_list_main.111.5d7f1c246zk58t). Used without the cap, and the stub cut shorter
 - "HOLD" Switch (used as user buttons #1 and #2): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). MOM-OFF-MOM version, with short handle.
-- Pot cap in front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
+- Pot cap on front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
 - Stop switch: Standard red-handle toggle switch. Google for "Plastic Toggle Switch Red".
 - Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay; go for the RL ("removable lamp") version, they are easier to modify inside. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. Data for the sticker is in the Labels folder here.
 - White wire to connect stop light and switch
