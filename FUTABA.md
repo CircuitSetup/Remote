@@ -50,7 +50,7 @@ If you are willing to modify your Futaba beyond connecting the throttle pot, you
 
 The User Buttons/Switches in the following schematics are examples. 
 
-![schematics](img/schematics.png)
+![schematics](img/schematics1_6.png)
 
 The switch for User Button 4 and 5 in above example must be a three-position switch with OFF in the middle.
 
