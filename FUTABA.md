@@ -156,7 +156,7 @@ The final step is to take apart the transmission module, and only insert the lid
 
 ![wires](img/wires3.jpg)
 
-### Power supply
+### Power supply and monitoring
 
 The prop is powered by a 5V battery, connected to the USB port of the ESP32 board on top of the Control Board. It should be able to deliver 1A, and have a capacity of >= 2500mAh.
 
