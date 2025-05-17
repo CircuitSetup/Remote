@@ -1,5 +1,7 @@
 ## Hardware
 
+![My Futaba1](img/total5.jpg)
+
 Apart from CircuitSetup's display, and the control board, I have used the following additional parts:
 
 - [Unibox model 140](https://www.uniboxinfo.com/standard.html)
@@ -244,13 +246,17 @@ Here are some details of the mostly finished product (cable ties aren't final on
 
 ![det4](img/det4.jpg)
 
-And here is how it looks from the front:
+And here is how it looks finished:
 
-![total1](img/total1.jpg)
+[<img src="img/total3.jpg">](img/total3l.jpg)
 
-![total2](img/total2.jpg)
+[<img src="img/total4.jpg">](img/total4l.jpg)
 
-_To be continued._
+[<img src="img/total5.jpg">](img/total5l.jpg)
+
+[<img src="img/back1.jpg">](img/back1l.jpg)
+
+[<img src="img/back2.jpg">](img/back2l.jpg)
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
 
