@@ -2,7 +2,7 @@
 
 This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the Stanley display, or a subset of the items listed. 
 
-See [here](FUTABA.md) for information on the hardware.
+See [here](FUTABA.md) for information on the hardware (building instructions).
 
 ![My Futaba1](img/myfutaba1.jpg)
 ![My Futaba2](img/myfutaba2.jpg)
