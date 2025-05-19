@@ -7,8 +7,9 @@ See [here](FUTABA.md) for information on the hardware (parts, disassembly & buil
 ![My Futaba1](img/myfutaba1.jpg)
 ![My Futaba2](img/myfutaba2.jpg)
 
-See it (somewhat) in action: [Here](https://youtu.be/vgmrB-Drxjg?si=3S_lTZPHTAkjYv7N)
-See it controlling the lights and blinds through Home Assistant: [Here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc)
+See it 
+- (somewhat) in action: [Here](https://youtu.be/vgmrB-Drxjg?si=3S_lTZPHTAkjYv7N)
+- controlling the lights and blinds through Home Assistant: [Here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc)
 
 A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
 
