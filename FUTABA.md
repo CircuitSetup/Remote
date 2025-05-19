@@ -142,7 +142,7 @@ If you want to connect it to the Control Board, solder two wires to the meter's 
 
 The wires need to lead out of the Futaba's body. 
 
-Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way, in absense of the "protection" attached to the main PCB.
+Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way, in absence of the "protection" attached to the main PCB.
 
 ![womp1](img/womp1.jpg)
 
