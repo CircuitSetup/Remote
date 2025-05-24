@@ -400,6 +400,8 @@ In the Config Portal, you can configure MQTT topics and messages for "on" and/or
 
 The ON message will be sent when a button has been pressed, the OFF message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the ON message will be sent when the switch is closed, the OFF message when it is opened.
 
+For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc).
+
 ### Control the Remote via MQTT
 
 The Remote can - to some extent - be controlled through messages sent to topic **bttf/remote/cmd**. Support commands are
