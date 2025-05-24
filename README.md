@@ -1,6 +1,6 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the Stanley display, or a subset of the items listed. 
+This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me) with a connected speedo. This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the Stanley display, or a subset of the items listed. 
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
@@ -14,8 +14,8 @@ See it
 A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
 
 Firmware features:
-- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. 
-- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD reaches 88mph, a time travel is triggered.
+- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD-connected speedo. 
+- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD's speedo reaches 88mph, a time travel is triggered.
 - Optional [coasting](#-coasting-when-throttle-in-neutral), optional [auto-throttle](#-auto-throttle)
 - Supports controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
 - Movie-accurate "Stop" light and stop switch behavior
