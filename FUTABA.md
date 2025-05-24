@@ -110,7 +110,7 @@ Note that using the Futaba's original front and top toggle switches is entirely 
 
 If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This common GND wire connects all center pins of all switches to each other and to one of the GND screw connectors on the Control Board.
 
-Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces on the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces on the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independently, otherwise proper operation might be hindered.
 
 Important: Do not re-connect the two widest ribbon cables (top two ones) to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with toggle switch operation.
 
