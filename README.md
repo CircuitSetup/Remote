@@ -194,7 +194,7 @@ Sound playback is mapped as follows:
   <tr><td>Button 8</td><td>Play "<a href="#additional-custom-sounds">key9.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key9l.mp3</a>"</td></tr>
 </table>
 
-> 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2' and 'key5' cannot be played back through a TCD keypad command.
+> 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2', 'key5' as well as the 'keyXl' sounds cannot be played back through a TCD keypad command.
 
 If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option **_Maintained: Audio on ON only_** is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
 
