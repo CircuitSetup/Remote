@@ -1,14 +1,23 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me). This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the LED segment display, or a subset of the items listed. 
+This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit, meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me) with a connected speedo. Of course, the Remote can also be used stand-alone.
 
-See [here](FUTABA.md) for information on the hardware. 
+This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the Stanley display, or a subset of the items listed.
+
+See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
+
+![My Futaba1](img/myfutaba1.jpg)
+![My Futaba2](img/myfutaba2.jpg)
+
+See it 
+- (somewhat) in action: [Here](https://youtu.be/vgmrB-Drxjg?si=3S_lTZPHTAkjYv7N)
+- controlling the lights and blinds through Home Assistant: [Here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc)
 
 A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
 
 Firmware features:
-- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD. 
-- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD reaches 88mph, a time travel is triggered.
+- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD-connected speedo. 
+- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD's speedo reaches 88mph, a time travel is triggered.
 - Optional [coasting](#-coasting-when-throttle-in-neutral), optional [auto-throttle](#-auto-throttle)
 - Supports controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
 - Movie-accurate "Stop" light and stop switch behavior
@@ -187,7 +196,7 @@ Sound playback is mapped as follows:
   <tr><td>Button 8</td><td>Play "<a href="#additional-custom-sounds">key9.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key9l.mp3</a>"</td></tr>
 </table>
 
-> 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2' and 'key5' cannot be played back through a TCD keypad command.
+> 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2', 'key5' as well as the 'keyXl' sounds cannot be played back through a TCD keypad command.
 
 If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option **_Maintained: Audio on ON only_** is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
 
@@ -332,8 +341,8 @@ The firmware supports some additional user-provided sound effects, which it will
 
 - "poweroff.mp3": Played when the Remote is (fake)-powered off.
 - "brakeoff.mp3": Played when the brake is switched off.
-- "key1.mp3", "key2.mp3", ""key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), and by typing 700x on the TCD's keypad (connected through BTTFN).
-- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons).
+- "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
+- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintaied switches.
 
 > The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the MusicPlayer occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
 
@@ -355,7 +364,7 @@ By default, the songs are played in order, starting at 000.mp3, followed by 001.
 
 See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
 
-While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, sound and stop the music player.
+While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
 
 ## Connecting a Time Circuits Display
 
@@ -390,6 +399,8 @@ The Remote supports the MQTT protocol version 3.1.1 for the following features:
 In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight User buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm. You could switch HA-integrated lights on or off, or send TIMETRAVEL to your [Time Circuits Display](https://tcd.out-a-ti.me) (bttf/tcd/cmd), or REFILL to your [Dash Gauges](https://dg.out-a-ti.me) (bttf/dg/cmd).
 
 The ON message will be sent when a button has been pressed, the OFF message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the ON message will be sent when the switch is closed, the OFF message when it is opened.
+
+For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc).
 
 ### Control the Remote via MQTT
 

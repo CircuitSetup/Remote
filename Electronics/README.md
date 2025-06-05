@@ -2,6 +2,8 @@
 
 For detailed information of connectors and features, see [here](../FUTABA.md)
 
+![schematics](../img/schematics1_6.png)
+
 To have [JCLPCB](https://jlcpcb.com) make your Futaba Control Board:
 1) Create an account at jlcpcb.com
 2) Click "Upload Gerber file" or "order now"

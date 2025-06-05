@@ -1,13 +1,15 @@
 ## Hardware
 
-Apart from CircuitSetup's display, and the control board, I have used the following additional parts:
+![My Futaba1](img/total5.jpg)
+
+Apart from CircuitSetup's display, and the [control board](Electronics/), I have used the following additional parts:
 
 - [Unibox model 140](https://www.uniboxinfo.com/standard.html)
 - "ON/OFF" Switch: Miyama MS 500 A-MF with black handle. Can by any toggle switch; has a black, flat handle in the movie.
 - "UP/DOWN" Switch: [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). ON-ON version, with short handle.
 - Buttons "O.O" and "RESET": [Here](https://www.aliexpress.com/item/4000638180002.html?spm=a2g0o.order_list.order_list_main.111.5d7f1c246zk58t). Used without the cap, and the stub cut shorter
 - "HOLD" Switch (used as user buttons #1 and #2): [Here](https://www.aliexpress.com/item/4000512396094.html?spm=a2g0o.order_list.order_list_main.115.5d7f1c246zk58t). MOM-OFF-MOM version, with short handle.
-- Pot cap in front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
+- Pot cap on front of Unibox: [Here](https://www.aliexpress.com/item/1005004403102400.html?spm=a2g0o.order_list.order_list_main.144.5d7f1c246zk58t). "Big size" version.
 - Stop switch: Standard red-handle toggle switch. Google for "Plastic Toggle Switch Red".
 - Stop light: Molex 1820 light. This is a bit hard to find, let alone a red one. Clear (white) ones are on ebay; go for the RL ("removable lamp") version, they are easier to modify inside. You can paint the lens using transparent red color, and put a "stop" sticker on top of it. Data for the sticker is in the Labels folder here.
 - White wire to connect stop light and switch
@@ -48,7 +50,7 @@ If you are willing to modify your Futaba beyond connecting the throttle pot, you
 
 The User Buttons/Switches in the following schematics are examples. 
 
-![schematics](img/schematics.png)
+![schematics](img/schematics1_6.png)
 
 The switch for User Button 4 and 5 in above example must be a three-position switch with OFF in the middle.
 
@@ -58,21 +60,21 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part1](img/htof1.jpg)
 
-1) Remove the cover of the adjustment panel (1) on the back
-2) Remove the transmitter module (2); it is held by two clips at top and bottom
-3) Remove the four silver screws (3) on the back and remove back cover
+1) Remove the cover of the adjustment panel [1] on the back
+2) Remove the transmitter module [2]; it is held by two clips at top and bottom
+3) Remove the four silver screws [3] on the back and remove back cover
 
 ![part2](img/htof2.jpg)
 
-4) Remove four black screws (4) on the adjustment panel, and remove the bezel
+4) Remove four black screws [4] on the adjustment panel, and remove the bezel
 
 ![part3](img/htof3.jpg)
 
-5) Remove two black screws (5) on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different). Some versions have two additional such screws further up; if present, those need to be unscrewed as well.
+5) Remove two black screws [5] on the front, in the outer corners of the lever controls, and note which screw goes into which hole (they are different). Some versions have two additional such screws further up; if present, those need to be unscrewed as well.
 
 ![part4](img/htof4.jpg)
 
-6) Remove four black screws (6) on the bottom
+6) Remove four black screws [6] on the bottom
 
 ![part5](img/htof5.jpg)
 
@@ -80,17 +82,17 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 ![part6](img/htof6.jpg)
 
-9) Remove four silver screws (7) around the antenna, and pull out the antenna as far as the wire permits; you could as well cut off that wire since the antenna isn't used.
+9) Remove four silver screws [7] around the antenna, and pull out the antenna as far as the wire permits; you could as well cut off that wire since the antenna isn't used.
 
 ![part7](img/htof7.jpg)
 
-10) Remove two silver screws (8) on the top of the main PCB
-11) Unplug five ribbon cables (9) on the main PCB
+10) Remove two silver screws [8] on the top of the main PCB
+11) Unplug five ribbon cables [9] on the main PCB
 12) Lift out the main PCB; at this point, it is held by only pin sockets that connect it to other PCBs. 
 
 Now you can access the throttle potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
-Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a battery in it. 
+Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a possibly leaking battery in it. 
 
 ### Throttle connection
 
@@ -108,13 +110,13 @@ Note that using the Futaba's original front and top toggle switches is entirely 
 
 If you want to wire the toggle switches from the Futaba remote control to the Control Board, it is recommended to use a common GND wire. This common GND wire connects all center pins of all switches to each other and to one of the GND screw connectors on the Control Board.
 
-Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces on the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independingly, otherwise proper operation might be hindered.
+Some of the toggle switches on the Futaba are interconnected through their PCBs, such as the ones on top, left hand side (when viewed from the back). Check the traces on the PCBs, desoldering or cutting-off components or wire bridges might be required. The switches must be working independently, otherwise proper operation might be hindered.
 
 Important: Do not re-connect the two widest ribbon cables (top two ones) to the main PCB when re-assembling the remote; other parts of the original circuit might interfere with toggle switch operation.
 
 #### Calibration
 
-The "Fail Safe Set" button on the back makes an excellent "Calibration" button. Desolder the green and yellow wires, and connect your new wires to the Control Board in their place:
+The "Fail Safe Set" button on the back makes an excellent "Calibration" button. In order to use it as such, desolder the green and yellow wires, and connect your new wires to the Control Board in their place:
 
 ![FailSafeSet](img/fss.jpg)
 
@@ -128,7 +130,9 @@ Don't forget to bend the "flying pot" back after soldering, otherwise you can't 
 
 ### Battery Level Meter
 
-Connecting the Control Board to the Futaba's level meter is, of course, optional. As far as I could make out, it is never showing anything but "zero" in the movie. In order to connect it to the Control Board, solder two wires to the meter's contact like shown below.
+Connecting the Control Board to the Futaba's level meter is, of course, optional. As far as I could make out, it is never showing anything but "zero" in the movie. 
+
+If you want to connect it to the Control Board, solder two wires to the meter's contact like shown below.
 
 ![PowerLED](img/blvl1.jpg)
 
@@ -138,7 +142,7 @@ Connecting the Control Board to the Futaba's level meter is, of course, optional
 
 The wires need to lead out of the Futaba's body. 
 
-Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way, in absense of the "protection" attached to the main PCB.
+Since I needed some space for my battery's charging electronics (see below), I decided to leave out the main PCB entirely. This has one caveat: The antenna needs unobstructed space for movement, which means you need to take care of all the wires that might come in the way, in absence of the "protection" attached to the main PCB.
 
 ![womp1](img/womp1.jpg)
 
@@ -154,7 +158,7 @@ The final step is to take apart the transmission module, and only insert the lid
 
 ![wires](img/wires3.jpg)
 
-### Power supply
+### Power supply and monitoring
 
 The prop is powered by a 5V battery, connected to the USB port of the ESP32 board on top of the Control Board. It should be able to deliver 1A, and have a capacity of >= 2500mAh.
 
@@ -164,7 +168,7 @@ I used this battery, which I sourced from [AliExpress](https://www.aliexpress.co
 
 ![battery](img/battery.jpg)
 
-This is a dual-cell 3.7-4.2V LiPo battery with a MH-CD42 booster board, which shifts the voltage to 5V and provides charging protection. With a simple modification, it has the perfect measurements to fit into the original battery compartment. The booster electronics, which are inside the blue shrink-wrap, need to be put elsewhere, otherwise the battery is too thick. Remove the blue shrink-wrap, the tape below that, and the PCB is free. I taped it on top of the battery compartment:
+This is a dual-cell 3.7-4.2V LiPo battery with a MH-CD42 booster board, which shifts the voltage to 5V and provides charging protection. With a simple modification, this battery has the perfect measurements to fit into the original battery compartment. The booster board, which is inside the blue shrink-wrap, needs to be put elsewhere, otherwise the battery is too thick: Remove the blue shrink-wrap, the tape below that, and the booster board is free. I taped it on top of the battery compartment:
 
 ![battelec](img/battelec.jpg)
 
@@ -174,9 +178,17 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 #### Battery monitoring
 
-"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the "BATT+" header next to the STOP headers, or through the JST PH connector on the bottom. When using a battery with a MH-CD32 booster, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power!
+"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the JST PH connector on the bottom of the CB, or the "BATT+" header next to the STOP headers. When using a battery with a MH-CD32 booster board, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power! (Since GND is common, a wire to the battery's "+" suffices.)
 
 ![BatMonConnection](img/batmon1.jpg)
+
+Battery connector for monitoring on bottom of Control Board:
+
+![BatMonConnection](img/battmon1.jpg)
+
+Battery header for monitoring on top of the Control Board: (Only + needed, GND is common)
+
+![BatMonConnection](img/battmon2.jpg)
 
 **Important**: The Control Board must be connected to the LiPo battery when said battery is idle, ie not being discharged or charged.
 
@@ -230,7 +242,7 @@ The switches are positioned and rotated as in the movie, as far as I could make 
 
 ![boxm1](img/switchesm1.jpg)
 
-With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker.
+With everything wired up; it looks more chaotic than it is. The black square on the right hand side is the speaker. (Click for hi-res image)
 
 [<img src="img/box3.jpg">](img/box3l.jpg)
 
@@ -244,13 +256,19 @@ Here are some details of the mostly finished product (cable ties aren't final on
 
 ![det4](img/det4.jpg)
 
-And here is how it looks from the front:
+## And here it is
 
-![total1](img/total1.jpg)
+(Click for hi-res images)
 
-![total2](img/total2.jpg)
+[<img src="img/total3.jpg">](img/total3l.jpg)
 
-_To be continued._
+[<img src="img/total4.jpg">](img/total4l.jpg)
+
+[<img src="img/total5.jpg">](img/total5l.jpg)
+
+[<img src="img/back1.jpg">](img/back1l.jpg)
+
+[<img src="img/back2.jpg">](img/back2l.jpg)
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ Source: https://remote.out-a-ti.me
 
