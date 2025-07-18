@@ -1,8 +1,6 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://remote.out-a-ti.me) holds the most current firmware for a Futaba remote control kit, meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me) with a connected speedo. Of course, the Remote can also be used stand-alone.
-
-This kit, which is not available for purchase yet, might consist of the grey box (Unibox), a control board, light and switch for "Stop" and the Stanley display, or a subset of the items listed.
+This [repository](https://remote.out-a-ti.me) holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me) with a connected speedo. Of course, the Remote can also be used stand-alone.
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
