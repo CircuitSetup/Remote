@@ -127,5 +127,6 @@ void mydelay(unsigned long mydel, bool withBTTFN = false);
 
 void bttfn_loop();
 void bttfn_remote_unregister();
+void fakePower(bool on);
 
 #endif
