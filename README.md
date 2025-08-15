@@ -65,7 +65,7 @@ The first step is to establish access to the Remote's configuration web site ("C
 
 As long as the device is unconfigured, it creates a WiFi network of its own named "REM-AP". This is called "Access point mode", or "AP-mode". In this mode, other WiFi devices can connect to the Remote.
 
-It is ok to leave the Remote in this mode if it run stand-alone. Typically, you'll use the Remote together with a [Time Circuits Display](https://tcd.out-a-ti.me). This requires the TCD and the Remote to be in the same WiFi network. If you have your TCD mounted in a car, you might want to connect the Remote to the TCD's very own WiFi network "TCD-AP"; see [here](#car-setup).
+It is ok to leave the Remote in this mode if it is run stand-alone. Typically, you'll use the Remote together with a [Time Circuits Display](https://tcd.out-a-ti.me). This, however, requires the TCD and the Remote to be in the same WiFi network. If you have your TCD mounted in a car, you might want to connect the Remote to the TCD's very own WiFi network "TCD-AP"; see [here](#car-setup).
 
 In order to connect your Remote to a WiFi network, click on "Configure WiFi". The bare minimum is to select an SSID (WiFi network name) and a WiFi password.
 
