@@ -493,7 +493,7 @@ Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi conf
 
 ##### &#9654; Coasting when throttle in neutral
 
-Normally, when this is unchecked, keeping the throttle in neutral (center) position hold the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
+Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
 ##### &#9654; Auto throttle
 
