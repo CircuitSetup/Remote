@@ -314,7 +314,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
     </tr>
 </table>
 
-* M-board, or non-M-board with BatMon Add-on required; only if LiPo battery is properly connected to battery monitor.
+* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
 ## SD card
 
