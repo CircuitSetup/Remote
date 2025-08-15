@@ -147,7 +147,7 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
   <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
 </table>
 
-(* M-board, or non-M-board with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
+(* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
 
 The throttle of the Remote needs calibration:
 
