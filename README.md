@@ -169,7 +169,7 @@ When fake power is on:
   <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
 </table>
 
-When fake power is off, the buttons are used to set up audio volume and brightness:
+When fake power is off, the buttons are used to set up audio volume and display brightness:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td>Volume up</td><td>Brightness up</td></tr>
