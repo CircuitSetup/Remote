@@ -1,4 +1,4 @@
-## Hardware
+## DTM Futaba Remote Control Hardware & Build Information
 
 ![My Futaba1](img/total5.jpg)
 
