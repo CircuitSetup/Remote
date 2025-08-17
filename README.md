@@ -7,6 +7,12 @@ See [here](FUTABA.md) for information on the hardware (parts, disassembly & buil
 ![My Futaba1](img/myfutaba1.jpg)
 ![My Futaba2](img/myfutaba2.jpg)
 
+| [![Watch the video](https://img.youtube.com/vi/lTZPHTAkjYv7N/0.jpg)](https://youtu.be/lTZPHTAkjYv7N) |
+|:--:|
+| Click to watch the video |
+
+
+
 See it 
 - (somewhat) in action: [Here](https://youtu.be/vgmrB-Drxjg?si=3S_lTZPHTAkjYv7N)
 - controlling the lights and blinds through Home Assistant: [Here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc)
