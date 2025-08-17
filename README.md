@@ -9,8 +9,13 @@ See [here](FUTABA.md) for information on the hardware (parts, disassembly & buil
 
 | [![Watch the video](https://img.youtube.com/vi/vgmrB-Drxjg/0.jpg)](https://youtu.be/vgmrB-Drxjg) |
 |:--:|
-| Click to watch the video |
+| See it in action. Click to watch the video |
 
+See it controlling the lights and blinds through Home Assistant:
+
+| [![Watch the video](https://img.youtube.com/vi/SbuL2Bv5uqA/0.jpg)](https://youtu.be/SbuL2Bv5uqA) |
+|:--:|
+| Click to watch the video |
 
 
 See it 
