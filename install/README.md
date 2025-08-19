@@ -8,7 +8,7 @@ If a previous version of the Remote firmware is installed on your device, you ca
 
 If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://github.com/realA10001986/Remote/blob/main/remote-A10001986/remote-A10001986.ino) for detailed build and upload information, or, if you don't want to deal with source code, compilers and all that nerd stuff, go [here](https://install.out-a-ti.me) and follow the instructions.
 
- *Important: After a firmware update, ... for short while after reboot. Do NOT unplug the device during this time.*
+ *Important: After a firmware update, the "wait" symbol might be shown a while longer. Do NOT unplug or switch off the device during this time.*
 
 ## Audio data installation
 
