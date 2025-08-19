@@ -7,9 +7,15 @@ See [here](FUTABA.md) for information on the hardware (parts, disassembly & buil
 ![My Futaba1](img/myfutaba1.jpg)
 ![My Futaba2](img/myfutaba2.jpg)
 
-See it 
-- (somewhat) in action: [Here](https://youtu.be/vgmrB-Drxjg?si=3S_lTZPHTAkjYv7N)
-- controlling the lights and blinds through Home Assistant: [Here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc)
+| [![Watch the video](https://img.youtube.com/vi/vgmrB-Drxjg/0.jpg)](https://youtu.be/vgmrB-Drxjg) |
+|:--:|
+| See it in action. Click to watch the video |
+
+See it controlling the lights and blinds through Home Assistant:
+
+| [![Watch the video](https://img.youtube.com/vi/SbuL2Bv5uqA/0.jpg)](https://youtu.be/SbuL2Bv5uqA) |
+|:--:|
+| Click to watch the video |
 
 A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
 
@@ -65,7 +71,7 @@ The first step is to establish access to the Remote's configuration web site ("C
 
 As long as the device is unconfigured, it creates a WiFi network of its own named "REM-AP". This is called "Access point mode", or "AP-mode". In this mode, other WiFi devices can connect to the Remote.
 
-It is ok to leave the Remote in this mode if it run stand-alone. Typically, you'll use the Remote together with a [Time Circuits Display](https://tcd.out-a-ti.me). This requires the TCD and the Remote to be in the same WiFi network. If you have your TCD mounted in a car, you might want to connect the Remote to the TCD's very own WiFi network "TCD-AP"; see [here](#car-setup).
+It is ok to leave the Remote in this mode if it is run stand-alone. Typically, you'll use the Remote together with a [Time Circuits Display](https://tcd.out-a-ti.me). This, however, requires the TCD and the Remote to be in the same WiFi network (e.g. your home WiFi network). If you have your TCD mounted in a car and running in car-mode, you will want to connect the Remote to the TCD's very own WiFi network "TCD-AP", see [here](#car-setup).
 
 In order to connect your Remote to a WiFi network, click on "Configure WiFi". The bare minimum is to select an SSID (WiFi network name) and a WiFi password.
 
@@ -79,6 +85,7 @@ In order to connect your Remote to a WiFi network, click on "Configure WiFi". Th
 >- then release the Calibration button.
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
+
 After saving the WiFi network settings, the Remote reboots and tries to connect to your configured WiFi network. If that fails, it will again start in access point mode.
 
 After completing this step, your Remote is basically ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
@@ -147,7 +154,7 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
   <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
 </table>
 
-(* M-board, or non-M-board with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
+(* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
 
 The throttle of the Remote needs calibration:
 
@@ -169,7 +176,7 @@ When fake power is on:
   <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
 </table>
 
-When fake power is off, the buttons are used to set up audio volume and brightness:
+When fake power is off, the buttons are used to set up audio volume and display brightness:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td>Volume up</td><td>Brightness up</td></tr>
@@ -314,7 +321,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
     </tr>
 </table>
 
-* M-board, or non-M-board with BatMon Add-on required; only if LiPo battery is properly connected to battery monitor.
+* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
 ## SD card
 
@@ -493,7 +500,7 @@ Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi conf
 
 ##### &#9654; Coasting when throttle in neutral
 
-Normally, when this is unchecked, keeping the throttle in neutral (center) position hold the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
+Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
 ##### &#9654; Auto throttle
 
