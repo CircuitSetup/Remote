@@ -85,6 +85,7 @@ In order to connect your Remote to a WiFi network, click on "Configure WiFi". Th
 >- then release the Calibration button.
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
+
 After saving the WiFi network settings, the Remote reboots and tries to connect to your configured WiFi network. If that fails, it will again start in access point mode.
 
 After completing this step, your Remote is basically ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
