@@ -12,7 +12,7 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 ## Audio data installation
 
-The audio data is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install the audio data when you update the firmware. Only if either a the Remote puts up a respective signal at startup, or your device is quiet after a firmware update, a re-installation is needed.
+The audio data is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install the audio data when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation is needed.
 
 The first step is to download "install/sound-pack-xxxxxxxx.zip" and extract it. It contains one file named "REMA.bin".
 
