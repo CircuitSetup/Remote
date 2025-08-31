@@ -32,6 +32,7 @@ Firmware features:
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
 - Smart battery monitoring for certain LiPo batteries (requires M-version Control Board, or non-M-board with BatMon add-on)
+- Built-in OTA installer for firmware updates and audio files
 
 ## Firmware Installation
 
