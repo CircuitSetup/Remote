@@ -209,7 +209,7 @@ If a "button" is configured as a maintained switch in the Config Portal, keyX wi
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
 
-### WiFi connection:
+### WiFi connection
 
 If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up.
 
