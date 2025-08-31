@@ -567,7 +567,7 @@ Number of seconds before a timeout occurs when connecting to a WiFi network. Whe
 
 ##### &#9654; IP address or hostname of TCD
 
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the IP address of the TCD here. You can also enter the TCD's hostname here instead (eg. 'timecircuits').
+In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
 
 If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
 
