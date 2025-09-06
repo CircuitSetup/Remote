@@ -234,6 +234,8 @@ Apart from the "UP/DOWN" switch (which I use as a real power switch), all switch
 
 The small holes on the right hand side are for the speaker. Additional holes were made for the stop-switch/light (bottom right hand side), and the 9V battery cables (right hand side, near top; bottom, next to hole for stop-wires).
 
+![box2top](img/box2t.jpg)
+
 ![box2](img/box2.jpg)
 
 The switches are positioned and rotated as in the movie, as far as I could make out:
