@@ -230,7 +230,7 @@ The vertical position in the movie:
 
 Apart from the "UP/DOWN" switch (which I use as a real power switch), all switches and buttons have a common ground (black). The two red wires are from the "UP/DOWN" switch and will be connected to + of the ESP32, and + from the battery.
 
-![box1](img/box1.jpg)
+[<img src="img/box1.jpg">](img/box1l.jpg)
 
 The small holes on the right hand side are for the speaker. Additional holes were made for the stop-switch/light (bottom right hand side), and the 9V battery cables (right hand side, near top; bottom, next to hole for stop-wires).
 
