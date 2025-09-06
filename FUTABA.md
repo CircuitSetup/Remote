@@ -17,6 +17,8 @@ Apart from CircuitSetup's display, and the [control board](Electronics/), I have
 - Standard 9V battery adapters with open wire
 - a small speaker
 - a male [micro-USB plug with open wire cable](https://www.amazon.com/Maixbomr-Micro-Bare-Wire-Cable/dp/B0BZWMDB15) to turn the "tachometer" header into the charging port
+
+![Parts](img/parts.jpg)
   
 The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
 - [Throttle](throttle-connection) from Futaba
