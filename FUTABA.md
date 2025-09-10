@@ -18,6 +18,8 @@ Apart from CircuitSetup's display, and the [control board](Electronics/), I have
 - a small speaker
 - a male [micro-USB plug with open wire cable](https://www.amazon.com/Maixbomr-Micro-Bare-Wire-Cable/dp/B0BZWMDB15) to turn the "tachometer" header into the charging port
 
+Luckily, CircuitSetup's kit includes a "STOP" light (and ATM this is even an original Molex light/button), so that's one off that list to start with.
+
 ![Parts](img/parts.jpg)
   
 The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
