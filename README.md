@@ -66,19 +66,27 @@ After installation, the SD card can be re-used for [other purposes](#sd-card).
 
 The first step is to establish access to the Remote's configuration web site ("Config Portal") in order to configure your device:
 
-- Power up the Remote and wait until it has finished booting.
+- Power up your Remote and wait until it has finished booting.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://drmremote.local or http://192.168.4.1 to enter the Config Portal.
 
 #### Connecting to a WiFi network
 
-As long as the device is unconfigured, it creates a WiFi network of its own named "REM-AP". This is called "Access point mode", or "AP-mode". In this mode, other WiFi devices can connect to the Remote.
+Your Remote knows two ways of WiFi operation: Either it creates its own WiFi network, or it connects to a pre-existing WiFi network.
 
-It is ok to leave the Remote in this mode if it is run stand-alone. Typically, you'll use the Remote together with a [Time Circuits Display](https://tcd.out-a-ti.me). This, however, requires the TCD and the Remote to be in the same WiFi network (e.g. your home WiFi network). If you have your TCD mounted in a car and running in car-mode, you will want to connect the Remote to the TCD's very own WiFi network "TCD-AP", see [here](#car-setup).
+As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "Access point mode", or "AP-mode". 
 
-In order to connect your Remote to a WiFi network, click on "Configure WiFi". The bare minimum is to select an SSID (WiFi network name) and a WiFi password.
+It is ok to leave it in AP-mode, predominantly if used stand-alone.
 
->Note that the device requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
+>For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same ip network, regardless of how they take part in it: They can be can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
+
+##### &#9654; Home setup with a pre-existing local WiFi network
+
+In this case, you can connect your Remote to your home WiFi network: Click on "Connect to WiFi" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password.
+
+>If you have a [Time Circuits Display](https://tcd.out-a-ti.me) note that in order to have both Remote and TCD communicate with each other, your Remote must be connected to the same network your TCD is connected to. In order to use MQTT, your Remote must be connected to the same network your broker is connected to.
+
+>Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
 >- hold the Calibration button,
 >- power-up the device (while still holding the Calibration button)
@@ -89,9 +97,19 @@ In order to connect your Remote to a WiFi network, click on "Configure WiFi". Th
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
-After saving the WiFi network settings, the Remote reboots and tries to connect to your configured WiFi network. If that fails, it will again start in access point mode.
+After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
 
-After completing this step, your Remote is basically ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
+##### &#9654; Places without a WiFi network
+
+If no TCD is present, keep your Remote operating in AP-mode.
+
+If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network. 
+
+Click on "Connect to WiFi" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *WiFi network name (SSID)*. If you password-proteced your TCD-AP, enter this password below.
+
+See [here](#car-setup) for more details.
+
+After completing WiFi setup, your Remote is basically ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
 ## The Config Portal
 
@@ -110,7 +128,7 @@ It can be accessed as follows:
 
 #### If Remote is connected to WiFi network
 
-- Connect your hand-held/computer to the same WiFi network to which the Remote is connected, and
+- Connect your hand-held/computer to the same WiFi network to which your Remote is connected, and
 - navigate your browser to http://dtmremote.local
 
   Accessing the Config Portal through this address requires the operating system of your hand-held/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
@@ -127,7 +145,7 @@ A full reference of the Config Portal is [here](#appendix-a-the-config-portal).
 
 ## Basic Operation
 
-After [calibration](#calibration), the Remote is ready for use. After power-on and fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
+After [calibration](#calibration), your Remote is ready for use. After power-on and fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
 
 For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds.
 
