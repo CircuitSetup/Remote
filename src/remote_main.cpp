@@ -2162,12 +2162,7 @@ static void execute_remote_command()
         switch(command) {
         case 64738:                               // 7064738: reboot
             bttfn_remote_unregister();
-            remdisplay.off();
-            remledStop.setState(false);
-            mp_stop();
-            stopAudio();
-            flushDelayedSave();
-            unmount_fs();
+            prepareReboot();
             delay(500);
             esp_restart();
             break;
@@ -2303,6 +2298,28 @@ static void play_startup()
 
     remdisplay.setSpeed(0);
     remdisplay.show();
+}
+
+void allOff()
+{
+    remdisplay.off();
+    remledStop.setState(false);
+}
+
+void prepareReboot()
+{
+    #ifdef REMOTE_HAVEAUDIO
+    mp_stop();
+    stopAudio();
+    #endif
+    
+    allOff();
+        
+    flushDelayedSave();
+   
+    delay(500);
+    unmount_fs();
+    delay(100);
 }
 
 #ifdef REMOTE_HAVEAUDIO

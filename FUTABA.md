@@ -16,6 +16,11 @@ Apart from CircuitSetup's display, and the [control board](Electronics/), I have
 - Battery clamps: [Here](https://my.rs-online.com/web/p/battery-holders/1913935?gb=s)
 - Standard 9V battery adapters with open wire
 - a small speaker
+- a male [micro-USB plug with open wire cable](https://www.amazon.com/Maixbomr-Micro-Bare-Wire-Cable/dp/B0BZWMDB15) to turn the "tachometer" header into the charging port
+
+Luckily, CircuitSetup's kit includes a "STOP" light (and ATM this is even an original Molex light/button), so that's one off that list to start with.
+
+![Parts](img/parts.jpg)
   
 The Control Board, which is put in the grey box ("Unibox"), has the following connectors:
 - [Throttle](throttle-connection) from Futaba
@@ -230,9 +235,11 @@ The vertical position in the movie:
 
 Apart from the "UP/DOWN" switch (which I use as a real power switch), all switches and buttons have a common ground (black). The two red wires are from the "UP/DOWN" switch and will be connected to + of the ESP32, and + from the battery.
 
-![box1](img/box1.jpg)
+[<img src="img/box1.jpg">](img/box1l.jpg)
 
 The small holes on the right hand side are for the speaker. Additional holes were made for the stop-switch/light (bottom right hand side), and the 9V battery cables (right hand side, near top; bottom, next to hole for stop-wires).
+
+![box2top](img/box2t.jpg)
 
 ![box2](img/box2.jpg)
 

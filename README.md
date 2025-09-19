@@ -32,12 +32,15 @@ Firmware features:
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
 - Smart battery monitoring for certain LiPo batteries (requires M-version Control Board, or non-M-board with BatMon add-on)
+- Built-in OTA installer for firmware updates and audio files
 
 ## Firmware Installation
 
 If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on "Update" and select the pre-compiled binary file provided in this repository ([install/remote-A10001986.ino.nodemcu-32s.bin](https://github.com/realA10001986/Remote/blob/main/install/remote-A10001986.ino.nodemcu-32s.bin)). 
 
 If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://github.com/realA10001986/Remote/blob/main/remote-A10001986/remote-A10001986.ino) for detailed build and upload information, or, if you don't want to deal with source code, compilers and all that nerd stuff, go [here](https://install.out-a-ti.me) and follow the instructions.
+
+*Important: After a firmware update, the "wait" symbol might be shown a while longer while booting. Do NOT unplug or switch off the device during this time.*
 
 ### Audio data installation
 
@@ -63,19 +66,27 @@ After installation, the SD card can be re-used for [other purposes](#sd-card).
 
 The first step is to establish access to the Remote's configuration web site ("Config Portal") in order to configure your device:
 
-- Power up the Remote and wait until it has finished booting.
+- Power up your Remote and wait until it has finished booting.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://drmremote.local or http://192.168.4.1 to enter the Config Portal.
 
 #### Connecting to a WiFi network
 
-As long as the device is unconfigured, it creates a WiFi network of its own named "REM-AP". This is called "Access point mode", or "AP-mode". In this mode, other WiFi devices can connect to the Remote.
+Your Remote knows two ways of WiFi operation: Either it creates its own WiFi network, or it connects to a pre-existing WiFi network.
 
-It is ok to leave the Remote in this mode if it is run stand-alone. Typically, you'll use the Remote together with a [Time Circuits Display](https://tcd.out-a-ti.me). This, however, requires the TCD and the Remote to be in the same WiFi network (e.g. your home WiFi network). If you have your TCD mounted in a car and running in car-mode, you will want to connect the Remote to the TCD's very own WiFi network "TCD-AP", see [here](#car-setup).
+As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "Access point mode", or "AP-mode". 
 
-In order to connect your Remote to a WiFi network, click on "Configure WiFi". The bare minimum is to select an SSID (WiFi network name) and a WiFi password.
+It is ok to leave it in AP-mode, predominantly if used stand-alone. (To operate your Remote in AP-mode, do not configure a WiFi network as described below, or click on "Erase WiFi config" on the Config Portal's main page.)
 
->Note that the device requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
+>For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same ip network, regardless of how they take part in it: They can be can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
+
+##### &#9654; Home setup with a pre-existing local WiFi network
+
+In this case, you can connect your Remote to your home WiFi network: Click on "Connect to WiFi" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
+
+>If you have a [Time Circuits Display](https://tcd.out-a-ti.me) note that in order to have both Remote and TCD communicate with each other, your Remote must be connected to the same network your TCD is connected to. In order to use MQTT, your Remote must be connected to the same network your broker is connected to.
+
+>Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
 >- hold the Calibration button,
 >- power-up the device (while still holding the Calibration button)
@@ -86,9 +97,13 @@ In order to connect your Remote to a WiFi network, click on "Configure WiFi". Th
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
-After saving the WiFi network settings, the Remote reboots and tries to connect to your configured WiFi network. If that fails, it will again start in access point mode.
+##### &#9654; Places without a WiFi network
 
-After completing this step, your Remote is basically ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
+If no TCD is present, keep your Remote operating in AP-mode.
+
+If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Click on "Connect to WiFi" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *WiFi network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+
+After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
 ## The Config Portal
 
@@ -107,7 +122,7 @@ It can be accessed as follows:
 
 #### If Remote is connected to WiFi network
 
-- Connect your hand-held/computer to the same WiFi network to which the Remote is connected, and
+- Connect your hand-held/computer to the same WiFi network to which your Remote is connected, and
 - navigate your browser to http://dtmremote.local
 
   Accessing the Config Portal through this address requires the operating system of your hand-held/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
@@ -124,7 +139,7 @@ A full reference of the Config Portal is [here](#appendix-a-the-config-portal).
 
 ## Basic Operation
 
-After [calibration](#calibration), the Remote is ready for use. After power-on and fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
+After [calibration](#calibration), your Remote is ready for use. After power-on and fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
 
 For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds.
 
@@ -207,7 +222,7 @@ If a "button" is configured as a maintained switch in the Config Portal, keyX wi
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
 
-### WiFi connection:
+### WiFi connection
 
 If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up.
 
@@ -323,11 +338,13 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 
 * M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
+[Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
+
 ## SD card
 
 Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend SDHC cards work fine in my experience.
 
-The SD card, apart from being required for [installing](#audio-data-installation) of the built-in audio data, can be used for substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
+The SD card, apart from being required for [installing](#audio-data-installation) of the built-in audio data, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
 Note that the SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
 
@@ -347,11 +364,23 @@ The firmware supports some additional user-provided sound effects, which it will
 - "poweroff.mp3": Played when the Remote is (fake)-powered off.
 - "brakeoff.mp3": Played when the brake is switched off.
 - "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
-- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintaied switches.
+- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintained switches.
 
 > The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the MusicPlayer occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
 
 Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
+
+### Installing Custom & Replacement Audio Files
+
+As of version 1.06 of the Remote firmware, above mentioned audio files (both replacements and custom sounds) can either be copied to the SD card using a computer, or uploaded through the Config Portal.
+
+Uploading through the Config Portal works exactly like [installing the default audio files](#audio-data-installation); on the main menu, click "UPDATE". Afterwards choose the file to upload in the bottom file selector, and click "UPLOAD". The firmware recognizes mp3 files, and stores them on the SD card. (Unlike with the default files, no further "installation" takes place.)
+
+In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key1.mp3" from the SD card, either rename your "key1.mp3" into "delete-key1.mp3", or create a new file named "delete-key1.mp3", and upload this file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key1.mp3" from the SD card.
+
+For technical reasons, the Remote must reboot after a file is uploaded in this way.
+
+Please remember that the maximum bitrate for mp3 files is 128kbps. Also note that the uploaded file is stored to the root folder of the SD card, so this way of uploading cannot be used to upload songs for the Music Player. 
 
 ## The Music Player
 
@@ -446,17 +475,17 @@ If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, t
 #### Remote
 
 Enter the Config Portal on the Remote, click on *Setup* and
-  - enter *192.168.4.1* into the field **_IP address or hostname of TCD_**
+  - enter *192.168.4.1* into the field **_IP address or hostname of TCD_** under BTTFN settings;
   - click on *Save*.
 
 After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
-  - click on *Configure WiFi*,
-  - select the TCD's access point name in the list at the top or enter *TCD-AP* into the *SSID* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
+  - click on *Connect to WiFi*,
+  - select the TCD's access point name in the list at the top ("TCD-AP") or enter *TCD-AP* into the *WiFi network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
-Using this setup enables the Remote to communicate with your TCD wirelessly, and to query the TCD for data. Also, the TCD keypad can be used to remote-control the Remote.
-
 In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
+
+This "car setup" can also be used in a home setup with no local WiFi network present.
 
 ## Flash Wear
 
@@ -468,11 +497,13 @@ In order to reduce the number of write operations and thereby prolong the life o
 
 ### Main page
 
-##### &#9654; Configure WiFi
+##### &#9654; Connect to WiFi
 
-Clicking this leads to the WiFi configuration page. On that page, you can connect your Remote to your WiFi network by selecting/entering the SSID (WiFi network name) as well as a password (WPA2). By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty.
+Click this to connect your Remote to your local WiFi network (which can also be provided by your [Time Circuits Display](https://tcd.out-a-ti.me) operating in AP mode/car mode). All you need to do is either to click on one of the networks listed at the top or to enter a WiFi network name (SSID), and optionally a passwort (WPAx).
 
-Note that this page has nothing to do with Access Point mode; it is strictly for connecting your Remote to an existing WiFi network as a client.
+>By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
+
+Note that this page is strictly for connecting your Remote to an existing WiFi network. If your Remote is supposed to operate stand-alone, it runs in "access point mode" (AP-Mode). Settings for AP mode are on the *Setup* page.
 
 ##### &#9654; Setup
 
@@ -488,9 +519,11 @@ You can also install the Remote's audio data on this page; download the current 
 
 Note that either a firmware or audio data can be uploaded at once, not both at the same time.
 
+Finally, this page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card. Select an mp3 file in the bottom file selector and click upload. (Requires firmware 1.06 or later.)
+
 ##### &#9654; Erase WiFi Config
 
-Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi configuration (WiFi network and password) and reboots the device; it will restart in "access point" mode. See [here](#short-summary-of-first-steps).
+Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi connection configuration (as set up through the *Connect to WiFi* page) and reboots the device; it will restart in "access point" (AP) mode. See [here](#short-summary-of-first-steps).
 
 ---
 
@@ -563,7 +596,7 @@ Number of seconds before a timeout occurs when connecting to a WiFi network. Whe
 
 ##### &#9654; IP address or hostname of TCD
 
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the IP address of the TCD here. You can also enter the TCD's hostname here instead (eg. 'timecircuits').
+In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
 
 If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
 
@@ -677,5 +710,5 @@ You might want use one or more switches of the Futaba remote for sound effects a
 If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
 
-_Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me
-
+_Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
+_Other props: [Time Circuits Display](https://tcd.out-a-ti.me) ... [Flux Capacitor](https://fc.out-a-ti.me) ... [SID](https://sid.out-a-ti.me) ... [Dash Gauges](https://dg.out-a-ti.me) ... [VSR](https://vsr.out-a-ti.me) ... [TFC](https://tfc.out-a-ti.me)_

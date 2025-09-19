@@ -113,6 +113,9 @@ void showWaitSequence();
 void endWaitSequence();
 void showCopyError();
 
+void allOff();
+void prepareReboot();
+
 void prepareTT();
 void wakeup();
 
