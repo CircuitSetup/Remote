@@ -1431,7 +1431,7 @@ void main_loop()
             }
             if(etmr && millis() - enow > 5000) {
                 etmr = false;
-                play_file("/tmd.mp3", PA_ALLOWSD, 1.0);
+                play_file("/tmd.mp3", 0, 1.0);
             }
             #endif
             
@@ -1445,7 +1445,7 @@ void main_loop()
                             if(haveThUp) {
                                 play_file(throttleUpSnd, PA_THRUP|PA_INTRMUS|PA_ALLOWSD, 1.0);
                             } else {
-                                play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV|PA_ALLOWSD, 1.0);
+                                play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV, 1.0);
                             }
                         }
                         #endif
@@ -1526,7 +1526,7 @@ void main_loop()
                     if(haveThUp) {
                         play_file(throttleUpSnd, PA_THRUP|PA_INTRMUS|PA_ALLOWSD, 1.0);
                     } else {
-                        play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV|PA_ALLOWSD, 1.0);
+                        play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV, 1.0);
                     }
                 } else if(tcdSpeedP0 > 0 && (!tcdClickNow || millis() - tcdClickNow > 25)) {
                     tcdClickNow = millis();
