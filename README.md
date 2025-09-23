@@ -571,7 +571,7 @@ When this is checked, the Remote (when fake-powered off) shows whatever the TCD 
 
 This selects brightness level for the LED display. 
 
-This can also be done through buttons "O.O" and "RESET", as well as the TCD (7400-7415); a change through buttons or TCD is saved 10 seconds after it occurred.
+This can also be done through buttons ["O.O" and "RESET"](#buttons-oo-and-reset), as well as the TCD (7400-7415); a change through buttons or TCD is saved 10 seconds after it occurred.
 
 #### <ins>Volume settings</ins>
 
