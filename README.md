@@ -149,7 +149,9 @@ For acceleration, there are two modes: Linear mode and "movie mode". In linear m
 
 When the remote hits 88.0mph, the TCD triggers a time travel.
 
-Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+Auto-throttle: If this option is checked in the Config Portal (or Auto-Throttle is enabled through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+
+Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the trottle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
 
 Buttons and switches:
 
