@@ -10,9 +10,9 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
  *Important: After a firmware update, the "wait" symbol might be shown a while longer while booting. Do NOT unplug or switch off the device during this time.*
 
-## Audio data installation
+## Sound-pack installation
 
-The audio data is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install the audio data when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation is needed.
+The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update is needed.
 
 The first step is to download "install/sound-pack-xxxxxxxx.zip" and extract it. It contains one file named "REMA.bin".
 
@@ -26,4 +26,4 @@ Then there are two alternative ways to proceed. Note that both methods *require 
 - insert this SD card into the slot and 
 - power up the Remote; the audio data will be installed automatically.
 
-See also [here](https://github.com/realA10001986/Remote/blob/main/README.md#audio-data-installation).
+See also [here](https://github.com/realA10001986/Remote/blob/main/README.md#sound-pack-installation).
