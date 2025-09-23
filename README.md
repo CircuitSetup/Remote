@@ -56,7 +56,7 @@ Then there are two alternative ways to proceed. Note that both methods *require 
 - Copy "REMA.bin" to the root directory of of a FAT32 formatted SD card;
 - power down the Remote,
 - insert this SD card into the slot and 
-- power up the Remote; the audio data will be installed automatically.
+- power up the Remote; the sound-pack will be installed automatically.
 
 After installation, the SD card can be re-used for [other purposes](#sd-card).
 
