@@ -315,15 +315,15 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left">7090&#9166;</td>
     </tr>   
   <tr>
-     <td align="left">Display battery charge percentage(*)</td>
+     <td align="left">Display battery charge percentage<sup>1</sup></td>
      <td align="left">7091&#9166;</td>
     </tr>   
   <tr>
-     <td align="left">Display battery "Time to empty"(*)</td>
+     <td align="left">Display battery "Time to empty"<sup>1</sup></td>
      <td align="left">7092&#9166;</td>
     </tr>   
   <tr>
-     <td align="left">Display battery voltage(*)</td>
+     <td align="left">Display battery voltage<sup>1</sup></td>
      <td align="left">7093&#9166;</td>
     </tr>   
     <tr>
@@ -336,7 +336,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
     </tr>
 </table>
 
-* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
+1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
 
