@@ -547,7 +547,7 @@ If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is the
 
 If unchecked, O.O is part of Music Player control and jumps to the previous song.
 
-##### &#9654; Movie-mode acceleration
+##### &#9654; Movie-like acceleration
 
 The Remote knows to modes of acceleration: "Movie mode" and "linear".
 
@@ -563,7 +563,7 @@ Check this to play a click sound for each "mph" while accelerating. Uncheck to s
 
 If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TCD's alarm sounds. If you want to play an alarm sound, check this option.
 
-##### &#9654; Display TCD speed when off
+##### &#9654; Display TCD speed when fake-off
 
 When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
 
