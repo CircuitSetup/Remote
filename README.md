@@ -579,7 +579,7 @@ This can also be done through buttons "O.O" and "RESET", as well as the TCD (740
 
 Enter a value between 0 (mute) or 19 (very loud) here. 
 
-You can also change the volume using buttons "O.O" and "RESET", and via TCD (7300-7319); a change through buttons or TCD is saved 10 seconds after it occurred.
+You can also change the volume using buttons ["O.O" and "RESET"](#buttons-oo-and-reset), and via TCD (7300-7319); a change through buttons or TCD is saved 10 seconds after it occurred.
 
 #### <ins>Music Player settings</ins>
 
@@ -593,7 +593,7 @@ This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such 
 
 When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
 
-Shuffle mode can be changed at any time through the Remote's "RESET" button or via TCD (7222/7555); however, a change through buttons or TCD is not saved.
+Shuffle mode can be changed at any time through the Remote's ["RESET" button](#buttons-oo-and-reset) or via TCD (7222/7555); however, a change through button or TCD is not saved.
 
 #### <ins>Network settings</ins>
 
