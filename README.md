@@ -141,15 +141,15 @@ A full reference of the Config Portal is [here](#appendix-a-the-config-portal).
 
 After [calibration](#calibration), your Remote is ready for use. 
 
-If battery monitoring is available, the battery state (in percent) is shown briefly upon (real) power-on.
+If battery monitoring is available, the battery state (in percent, or "FUL") is shown briefly upon (real) power-on.
 
 After fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
 
-For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds.
+For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds. The mode can be selected in the Config Portal, or through the TCD's keypad (7060)
 
 When the remote hits 88.0mph, the TCD triggers a time travel.
 
-Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad |7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
 Buttons and switches:
 
@@ -746,6 +746,7 @@ Battery monitoring requires knowledge about the cell capacity. Note that the cap
 - "BAT": Battery is low
 - "CAL", "UP", "DN": Shown during [calibration](#calibration)
 - "ERR": Error while installing the sound-pack, or during calibration. Please try again.
+- "FUL": Battery is full, ie 100% charged
 - "IP": IP address is going to be shown.
 - "RST": WiFi password temporarily cleared; static IP permanently deleted
 
