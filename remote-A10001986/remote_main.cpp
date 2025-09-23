@@ -154,9 +154,7 @@ static bool battWarnDispBlink = false;
 
 #ifdef HAVE_PM
 static int  dispSOC = 0;
-#ifdef REMOTE_HAVEAUDIO
 static bool battWarnSnd = false;
-#endif
 #endif
 
 static bool powerState = false;
@@ -271,7 +269,6 @@ static unsigned long justBootedNow = 0;
 static bool          bootFlag = false;
 static bool          sendBootStatus = false;
 
-#ifdef REMOTE_HAVEAUDIO
 static bool          havePOFFsnd = false;
 static bool          haveBOFFsnd = false;
 static bool          haveThUp = false;
@@ -280,7 +277,6 @@ static const char    *powerOffSnd = "/poweroff.mp3";  // No default sound
 static const char    *brakeOnSnd  = "/brakeon.mp3";   // Default provided
 static const char    *brakeOffSnd = "/brakeoff.mp3";  // No default sound
 static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
-#endif
 
 // BTTF network
 #define BTTFN_VERSION              1
@@ -382,9 +378,7 @@ static uint32_t commandQueue[16] = { 0 };
     ((a)[(b)+2]) = ((uint32_t)(c)) >> 16;   \
     ((a)[(b)+3]) = ((uint32_t)(c)) >> 24;  
 
-#ifdef REMOTE_HAVEAUDIO
 static void displayVolume();
-#endif
 static void increaseBrightness();
 static void decreaseBrightness();
 static void displayBrightness();
@@ -423,9 +417,7 @@ static void mqtt_send_button_on(int i);
 static void mqtt_send_button_off(int i);
 #endif
 
-#ifdef REMOTE_HAVEAUDIO
 static void re_vol_reset();
-#endif
 
 static void myloop(bool withBTTFN);
 
@@ -603,9 +595,7 @@ void main_setup()
     updateConfigPortalBriValues();
 
     doCoast = (atoi(settings.coast) > 0);
-    #ifdef REMOTE_HAVEAUDIO
     ooTT = (atoi(settings.ooTT) > 0);
-    #endif
 
     for(int i = 0; i < BTTFN_REM_MAX_COMMAND+1; i++) {
         bttfnSeqCnt[i] = 1;
@@ -620,7 +610,6 @@ void main_setup()
     buttonPackMomentary[6] = !(atoi(settings.bPb6Maint) > 0);
     buttonPackMomentary[7] = !(atoi(settings.bPb7Maint) > 0);
 
-    #ifdef REMOTE_HAVEAUDIO
     buttonPackMtOnOnly[0] = (atoi(settings.bPb0MtO) > 0);
     buttonPackMtOnOnly[1] = (atoi(settings.bPb1MtO) > 0);
     buttonPackMtOnOnly[2] = (atoi(settings.bPb2MtO) > 0);
@@ -629,7 +618,6 @@ void main_setup()
     buttonPackMtOnOnly[5] = (atoi(settings.bPb5MtO) > 0);
     buttonPackMtOnOnly[6] = (atoi(settings.bPb6MtO) > 0);
     buttonPackMtOnOnly[7] = (atoi(settings.bPb7MtO) > 0);
-    #endif
 
     #ifdef REMOTE_HAVEMQTT
     for(int i = 0; i < PACK_SIZE; i++) {
@@ -646,7 +634,6 @@ void main_setup()
     #endif
 
     // Invoke audio file installer if SD content qualifies
-    #ifdef REMOTE_HAVEAUDIO
     #ifdef REMOTE_DBG
     Serial.println(F("Probing for audio data on SD"));
     #endif
@@ -659,15 +646,12 @@ void main_setup()
         doCopyAudioFiles();
         // We never return here. The ESP is rebooted.
     }
-    #endif
 
-    #ifdef REMOTE_HAVEAUDIO
     playClicks = (atoi(settings.playClick) > 0);
 
     havePOFFsnd = check_file_SD(powerOffSnd);
     haveBOFFsnd = check_file_SD(brakeOffSnd);
     haveThUp = check_file_SD(throttleUpSnd);
-    #endif
 
     // Initialize throttle
     if(rotEnc.begin()) {
@@ -680,13 +664,11 @@ void main_setup()
     // Check for secondary RotEnc for volume on secondary i2c addresses
     // Not used - buttons for vol control suffice
     #if 0
-    #ifdef REMOTE_HAVEAUDIO
     if(rotEncV.begin(false)) {
         useRotEncVol = true;
         rotEncVol = &rotEncV;
         re_vol_reset();
     }
-    #endif
     #endif
 
     // Initialize switches and buttons
@@ -764,7 +746,6 @@ void main_setup()
     
     now = millis();
 
-    #ifdef REMOTE_HAVEAUDIO
     if(!haveAudioFiles) {
         #ifdef REMOTE_DBG
         Serial.println(F("Current audio data not installed"));
@@ -776,7 +757,6 @@ void main_setup()
         remdisplay.clearBuf();
         remdisplay.show();
     }
-    #endif
 
     // Initialize BTTF network
     bttfn_setup();
@@ -839,17 +819,13 @@ void main_loop()
             }
             battWarnBlinkNow = 0;
             battWarnDispBlink = false;
-            #ifdef REMOTE_HAVEAUDIO
             battWarnSnd = true;
-            #endif
         }
         oldBattWarn = battWarn;
-        #ifdef REMOTE_HAVEAUDIO
         if(battWarnSnd && !TTrunning && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
             append_file("/pwrlow.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
             battWarnSnd = false;
         }
-        #endif
         if(usePwrLED) {
             if(now - battWarnBlinkNow > 1000) {
                 pwrled.setState(!pwrled.getState());
@@ -962,9 +938,7 @@ void main_loop()
 
                 bttfn_remote_send_combined(powerState, brakeState, currSpeed);
 
-                #ifdef REMOTE_HAVEAUDIO
                 play_file(powerOnSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
-                #endif
     
                 // FIXME - anything else?
             }
@@ -979,10 +953,8 @@ void main_loop()
                 condPLEDaBLvl(false, false);
 
                 // Stop musicplayer & audio in general
-                #ifdef REMOTE_HAVEAUDIO
                 mp_stop();
                 stopAudio();
-                #endif
 
                 remledStop.setState(false);                
 
@@ -998,11 +970,9 @@ void main_loop()
 
                 bttfn_remote_send_combined(powerState, brakeState, currSpeed);
 
-                #ifdef REMOTE_HAVEAUDIO
                 if(havePOFFsnd) {
                     play_file(powerOffSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
                 }
-                #endif
 
                 // FIXME - anything else?
             }
@@ -1027,7 +997,6 @@ void main_loop()
             bttfn_remote_send_combined(powerState, brakeState, currSpeed);
             sendBootStatus = false;
 
-            #ifdef REMOTE_HAVEAUDIO
             if(brakeState) {
                 play_file(brakeOnSnd, PA_ALLOWSD|PA_DYNVOL, 1.0);
             } else {
@@ -1035,7 +1004,6 @@ void main_loop()
                     play_file(brakeOffSnd, PA_ALLOWSD|PA_DYNVOL, 1.0);
                 }
             }
-            #endif
         }
     }
 
@@ -1069,43 +1037,30 @@ void main_loop()
                 if(isbuttonAKeyPressed) {
                     if(ooTT) {
                         if(!TTrunning && !tcdIsInP0) {
-                            #ifdef REMOTE_HAVEAUDIO
                             bool playBad = false;
-                            #endif
                             if(!triggerTTonThrottle) {
                                 if(bttfn_trigger_tt(true)) {
                                     triggerTTonThrottle = 1;
-                                    #ifdef REMOTE_HAVEAUDIO
                                     play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
-                                    #endif
                                 } else {
-                                    #ifdef REMOTE_HAVEAUDIO
                                     playBad = true;
-                                    #endif
                                 }
                             } else if(triggerTTonThrottle == 1) {
                                 triggerTTonThrottle = 0;
-                                #ifdef REMOTE_HAVEAUDIO
                                 playBad = true;
-                                #endif
                             }
-                            #ifdef REMOTE_HAVEAUDIO
                             if(playBad) {
                                 play_bad();
                             }
-                            #endif
                         }
                     } else {
-                        #ifdef REMOTE_HAVEAUDIO
                         if(haveMusic) {
                             mp_prev(mpActive);
                         } else {
                             play_bad();
                         }
-                        #endif
                     }
                 } else if(isbuttonAKeyLongPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         if(mpActive) {
                             mp_stop();
@@ -1115,16 +1070,12 @@ void main_loop()
                     } else {
                         play_bad();
                     }
-                    #endif
                 }
             #ifdef ALLOW_DIS_UB
             } else {
                 if(isbuttonAKeyPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     play_key(3);
-                    #endif
                 } else if(isbuttonAKeyLongPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         if(mpActive) {
                             mp_stop();
@@ -1134,20 +1085,17 @@ void main_loop()
                     } else {
                         play_bad();
                     }
-                    #endif
                 }
             #endif  // ALLOW_DIS_UB
             }
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonAKeyPressed) {
-                #ifdef REMOTE_HAVEAUDIO
                 if(increaseVolume()) {
                     displayVolume();
                     offDisplayTimer = true;
                     offDisplayNow = millis();
                 }
                 play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
-                #endif
             } else if(isbuttonAKeyLongPressed) {
                 increaseBrightness();
                 displayBrightness();
@@ -1162,50 +1110,40 @@ void main_loop()
         if(FPBUnitIsOn) {
             if(useBPack) {
                 if(isbuttonBKeyPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         mp_next(mpActive);
                     } else {
                         play_bad();
                     }
-                    #endif
                 } else if(isbuttonBKeyLongPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         mp_makeShuffle(!mpShuffle);
                         play_file(mpShuffle ? "/shufon.mp3" : "/shufoff.mp3", PA_ALLOWSD, 1.0);
                     } else {
                         play_bad();
                     }
-                    #endif
                 }
             #ifdef ALLOW_DIS_UB
             } else {
                 if(isbuttonBKeyPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     play_key(6);
-                    #endif
                 } else if(isbuttonBKeyLongPressed) {
-                    #ifdef REMOTE_HAVEAUDIO
                     if(haveMusic) {
                         mp_next(mpActive);
                     } else {
                         play_bad();
                     }
-                    #endif
                 }
             #endif  // ALLOW_DIS_UB
             }
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonBKeyPressed) {
-                #ifdef REMOTE_HAVEAUDIO
                 if(decreaseVolume()) {
                     displayVolume();
                     offDisplayTimer = true;
                     offDisplayNow = millis();
                 }
                 play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
-                #endif
             } else if(isbuttonBKeyLongPressed) {
                 decreaseBrightness();
                 displayBrightness();
@@ -1422,7 +1360,6 @@ void main_loop()
 
             }
 
-            #ifdef REMOTE_HAVEAUDIO
             if(tidx < tas - 1 || throttlePos >= 0 || currSpeedF) {
                 etmr = false;
             } else if(!etmr) {
@@ -1433,14 +1370,12 @@ void main_loop()
                 etmr = false;
                 play_file("/tmd.mp3", 0, 1.0);
             }
-            #endif
             
             if(!lockThrottle) {
                 if(millis() - lastSpeedUpd > accelDelay) {
                     int sbf = currSpeedF;
                     int sb  = sbf / 10;
                     if(throttlePos > 0) {
-                        #ifdef REMOTE_HAVEAUDIO
                         if(!currSpeedF) {
                             if(haveThUp) {
                                 play_file(throttleUpSnd, PA_THRUP|PA_INTRMUS|PA_ALLOWSD, 1.0);
@@ -1448,7 +1383,6 @@ void main_loop()
                                 play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV, 1.0);
                             }
                         }
-                        #endif
                         currSpeedF += accelStep;
                         if(currSpeedF > 880) {
                             currSpeedF = 880;
@@ -1466,32 +1400,23 @@ void main_loop()
                         currSpeed = currSpeedF / 10;
                         if(currSpeed != sb) {
                             bttfn_remote_send_combined(powerState, brakeState, currSpeed);
-                            #ifdef REMOTE_HAVEAUDIO
                             if(throttlePos > 0) {
                                 play_click();
                             }
-                            #endif
                         }
                         lastSpeedUpd = millis();                
                         remdisplay.setSpeed(currSpeedF);
-                        #ifdef REMOTE_HAVEAUDIO
                         remdisplay.show();
-                        #endif
                     }
                 }
             }
 
             // Network-latency-depending display sync is nice'n'all but latency
             // measurement is dead as soon as audio comes into play. (1-2 vs 10-13).
-            #ifndef REMOTE_HAVEAUDIO
-            if(millis() - lastSpeedUpd > bttfnCurrLatency) {
-                remdisplay.show();
-            }
             #ifdef REMOTE_DBG
             if(bttfnCurrLatency > 10) {
                 Serial.printf("latency %d\n", bttfnCurrLatency);
             }
-            #endif
             #endif
         }
         if(!FPBUnitIsOn && !calibMode && !offDisplayTimer) {
@@ -1521,7 +1446,6 @@ void main_loop()
                 #endif
             }
             if(FPBUnitIsOn) {
-                #ifdef REMOTE_HAVEAUDIO
                 if(!tcdSpeedP0) {
                     if(haveThUp) {
                         play_file(throttleUpSnd, PA_THRUP|PA_INTRMUS|PA_ALLOWSD, 1.0);
@@ -1532,7 +1456,6 @@ void main_loop()
                     tcdClickNow = millis();
                     play_click();
                 }
-                #endif
                 remdisplay.on();
                 remdisplay.setSpeed(tcdSpeedP0 * 10);
                 remdisplay.show();
@@ -1667,9 +1590,7 @@ void main_loop()
         }
         if(TTP2) {   // Reentry - up to us
 
-              #ifdef REMOTE_HAVEAUDIO
               if(TTFlag || networkAbort) {
-              #endif
               
                   // Lock accel until lever is in zero-pos
                   lockThrottle = true;
@@ -1682,14 +1603,12 @@ void main_loop()
                   TTP2 = false;
                   TTrunning = false;
 
-              #ifdef REMOTE_HAVEAUDIO
               } else if(millis() - TTstart > 6400) {
                 
                   play_file("/reentry.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                   TTFlag = true;
 
               }
-              #endif
             
         }
 
@@ -1699,11 +1618,9 @@ void main_loop()
 
             networkAlarm = false;
 
-            #ifdef REMOTE_HAVEAUDIO
             if(atoi(settings.playALsnd) > 0) {
                 play_file("/alarm.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
             }
-            #endif
         
         } 
         
@@ -1744,12 +1661,10 @@ void main_loop()
             brichanged = false;
             saveBrightness();
         }
-        #ifdef REMOTE_HAVEAUDIO
         if(volchanged && (now - volchgnow > 10000)) {
             volchanged = false;
             saveCurVolume();
         }
-        #endif
         if(vischanged && (now - vischgnow > 10000)) {
             vischanged = false;
             saveVis();
@@ -1772,19 +1687,16 @@ void flushDelayedSave()
         brichanged = false;
         saveBrightness();
     }
-    #ifdef REMOTE_HAVEAUDIO
     if(volchanged) {
         volchanged = false;
         saveCurVolume();
     }
-    #endif
     if(vischanged) {
         vischanged = false;
         saveVis();
     }
 }
 
-#ifdef REMOTE_HAVEAUDIO
 static bool chgVolume(int d)
 {
     #ifdef REMOTE_HAVEVOLKNOB
@@ -1823,7 +1735,6 @@ static void displayVolume()
     remdisplay.show();
     remdisplay.on();
 }
-#endif
 
 static void changeBrightness(int d)
 {
@@ -1988,30 +1899,21 @@ static void execute_remote_command()
             return;
 
         switch(command) {
-        case 1:
-            #ifdef REMOTE_HAVEAUDIO                   // 7001: play "key1.mp3"
+        case 1:                                       // 7001: play "key1.mp3"
             play_key(1);
-            #endif
             break;
-        case 2:
-            #ifdef REMOTE_HAVEAUDIO
+        case 2:                                       // 7002: Prev song
             if(haveMusic) {
-                mp_prev(mpActive);                    // 7002: Prev song
+                mp_prev(mpActive);                    
             }
-            #endif
             break;
-        case 3:
-            #ifdef REMOTE_HAVEAUDIO                   // 7003: play "key3.mp3"
+        case 3:                                       // 7003: play "key3.mp3"
             play_key(3);
-            #endif
             break;
-        case 4:
-            #ifdef REMOTE_HAVEAUDIO                   // 7004: play "key4.mp3"
+        case 4:                                       // 7004: play "key4.mp3"
             play_key(4);
-            #endif
             break;
         case 5:                                       // 7005: Play/stop
-            #ifdef REMOTE_HAVEAUDIO
             if(haveMusic) {
                 if(mpActive) {
                     mp_stop();
@@ -2019,29 +1921,20 @@ static void execute_remote_command()
                     mp_play();
                 }
             }
-            #endif
             break;
         case 6:                                       // 7006: Play "key6.mp3"
-            #ifdef REMOTE_HAVEAUDIO
             play_key(6);
-            #endif
             break;
-        case 7:
-            #ifdef REMOTE_HAVEAUDIO                   // 7007: play "key7.mp3"
+        case 7:                                       // 7007: play "key7.mp3"
             play_key(7);
-            #endif
             break;
         case 8:                                       // 7008: Next song
-            #ifdef REMOTE_HAVEAUDIO
             if(haveMusic) {
                 mp_next(mpActive);
             }
-            #endif
             break;
-        case 9:
-            #ifdef REMOTE_HAVEAUDIO                   // 7009: play "key9.mp3"
+        case 9:                                       // 7009: play "key9.mp3"
             play_key(9);
-            #endif
             break;
         }
       
@@ -2090,11 +1983,9 @@ static void execute_remote_command()
             break;
         default:
             if(command >= 50 && command <= 59) {   // 7050-7059: Set music folder number
-                #ifdef REMOTE_HAVEAUDIO
                 if(haveSD) {
                     switchMusicFolder((uint8_t)command - 50);
                 }
-                #endif
             }
             
         }
@@ -2103,7 +1994,6 @@ static void execute_remote_command()
 
         if(command >= 300 && command <= 399) {
 
-            #ifdef REMOTE_HAVEAUDIO
             command -= 300;                           // 7300-7319/7399: Set fixed volume level / enable knob
             if(command == 99) {
                 #ifdef REMOTE_HAVEVOLKNOB
@@ -2122,7 +2012,6 @@ static void execute_remote_command()
             } else if(command == 50 || command == 51) { // 7350/7351: Enable/disable acceleration click sound
                 playClicks = (command == 50);
             }
-            #endif
 
         } else if(command >= 400 && command <= 415) {
 
@@ -2141,18 +2030,14 @@ static void execute_remote_command()
             switch(command) {
             case 222:                                 // 7222/7555 Disable/enable shuffle
             case 555:
-                #ifdef REMOTE_HAVEAUDIO
                 if(haveMusic) {
                     mp_makeShuffle((command == 555));
                 }
-                #endif
                 break;
             case 888:                                 // 7888 go to song #0
-                #ifdef REMOTE_HAVEAUDIO
                 if(haveMusic) {
                     mp_gotonum(0, mpActive);
                 }
-                #endif
                 break;
             }
         }
@@ -2175,14 +2060,12 @@ static void execute_remote_command()
             }
             break;
         default:                                  // 7888xxx: goto song #xxx
-            #ifdef REMOTE_HAVEAUDIO
             if((command / 1000) == 888) {
                 if(FPBUnitIsOn) {
                     uint16_t num = command - 888000;
                     num = mp_gotonum(num, mpActive);
                 }
             }
-            #endif
             break;
         }
 
@@ -2308,10 +2191,8 @@ void allOff()
 
 void prepareReboot()
 {
-    #ifdef REMOTE_HAVEAUDIO
     mp_stop();
     stopAudio();
-    #endif
     
     allOff();
         
@@ -2322,7 +2203,6 @@ void prepareReboot()
     delay(100);
 }
 
-#ifdef REMOTE_HAVEAUDIO
 void switchMusicFolder(uint8_t nmf)
 {
     bool waitShown = false;
@@ -2362,7 +2242,6 @@ void waitAudioDone(bool withBTTFN)
         mydelay(10, withBTTFN);
     }
 }
-#endif
 
 static void powKeyPressed()
 {
@@ -2500,44 +2379,28 @@ static void buttonPackActionPress(int i, bool stopOnly)
 {
     switch(i) {
     case 0:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(1, false, stopOnly);
-        #endif
         break;
     case 1:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(2, false, stopOnly);
-        #endif
         break;
     case 2:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(3, false, stopOnly);
-        #endif
         break;
     case 3:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(4, false, stopOnly);
-        #endif
         break;
     case 4:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(5, false, stopOnly);
-        #endif
         break;
     case 5:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(6, false, stopOnly);
-        #endif
         break;
     case 6:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(7, false, stopOnly);
-        #endif
         break;
     case 7:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(9, false, stopOnly);    // yes, 9
-        #endif
         break;
     }
 }
@@ -2546,44 +2409,28 @@ static void buttonPackActionLongPress(int i)
 {
     switch(i) {
     case 0:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(1, true);
-        #endif
         break;
     case 1:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(2, true);
-        #endif
         break;
     case 2:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(3, true);
-        #endif
         break;
     case 3:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(4, true);
-        #endif
         break;
     case 4:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(5, true);
-        #endif
         break;
     case 5:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(6, true);
-        #endif
         break;
     case 6:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(7, true);
-        #endif
         break;
     case 7:
-        #ifdef REMOTE_HAVEAUDIO
         play_key(9, true);      // yes, 9
-        #endif
         break;
     }
 }
@@ -2606,7 +2453,6 @@ static void mqtt_send_button_off(int i)
 }
 #endif
 
-#ifdef REMOTE_HAVEAUDIO
 static void re_vol_reset()
 {
     if(useRotEncVol) {
@@ -2617,7 +2463,6 @@ static void re_vol_reset()
         #endif
     }
 }
-#endif
 
 /*
  *  Do this whenever we are caught in a while() loop

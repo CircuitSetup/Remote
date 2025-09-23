@@ -102,10 +102,8 @@ void main_setup();
 void main_loop();
 
 void flushDelayedSave();
-#ifdef REMOTE_HAVEAUDIO
 bool increaseVolume();
 bool decreaseVolume();
-#endif
 
 void timeTravel(uint16_t P0Dur = P0_DUR, uint16_t P1Dur = P1_DUR);
 
@@ -121,10 +119,8 @@ void wakeup();
 
 void updateVisMode();
 
-#ifdef REMOTE_HAVEAUDIO
 void switchMusicFolder(uint8_t nmf);
 void waitAudioDone(bool withBTTFN = false);
-#endif
 
 void mydelay(unsigned long mydel, bool withBTTFN = false);
 

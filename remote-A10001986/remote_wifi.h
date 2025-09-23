@@ -73,10 +73,8 @@ void wifiStartCP();
 
 void updateConfigPortalValues();
 void updateConfigPortalBriValues();
-#ifdef REMOTE_HAVEAUDIO
 void updateConfigPortalVolValues();
 void updateConfigPortalMFValues();
-#endif
 void updateConfigPortalVisValues();
 
 bool wifi_getIP(uint8_t& a, uint8_t& b, uint8_t& c, uint8_t& d);

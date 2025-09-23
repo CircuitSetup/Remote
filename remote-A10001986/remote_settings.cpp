@@ -84,7 +84,6 @@
 #define DECLARE_D_JSON(x,n) DynamicJsonDocument n(x);
 #endif
 
-#ifdef REMOTE_HAVEAUDIO
 #define NUM_AUDIOFILES 14
 #define SND_REQ_VERSION "RM06"
 #define AC_FMTV 2
@@ -98,7 +97,6 @@ static bool       ic = false;
 static uint8_t*   f(uint8_t *d, uint32_t m, int y) { return d; }
 static char       *uploadFileNames[MAX_SIM_UPLOADS] = { NULL };
 static char       *uploadRealFileNames[MAX_SIM_UPLOADS] = { NULL };
-#endif
 
 static const char *idName     = "/remid.json";       // Remote ID (flash)
 static const char *cfgName    = "/remconfig.json";   // Main config (flash)
@@ -106,10 +104,8 @@ static const char *ipCfgName  = "/remipcfg.json";    // IP config (flash)
 static const char *caCfgName  = "/remcacfg.json";    // Calibration config (flash/SD)
 static const char *briCfgName = "/rembricfg.json";   // Brightness config (flash/SD)
 static const char *visCfgName = "/remviscfg.json";   // Visual config (SD only)
-#ifdef REMOTE_HAVEAUDIO
 static const char *volCfgName = "/remvolcfg.json";   // Volume config (flash/SD)
 static const char *musCfgName = "/remmcfg.json";     // Music config (SD only)
-#endif
 
 static const char *fsNoAvail = "Filesystem not available";
 static const char *failFileWrite = "Failed to open file for writing";
@@ -139,10 +135,8 @@ uint8_t musFolderNum = 0;
 /* Cache */
 static uint16_t  prevSavedVIS = 0;
 static uint8_t   prevSavedBri = 12;
-#ifdef REMOTE_HAVEAUDIO
 static uint8_t   prevSavedVol = 255;
 static uint8_t*  (*r)(uint8_t *, uint32_t, int);
-#endif
 
 static bool read_settings(File configFile);
 
@@ -152,13 +146,11 @@ static bool checkValidNumParm(char *text, int lowerLim, int upperLim, int setDef
 static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float setDefault);
 static bool handleMQTTButton(const char *json, char *text, uint8_t psize);
 
-#ifdef REMOTE_HAVEAUDIO
 static bool copy_audio_files(bool& delIDfile);
 static void open_and_copy(const char *fn, int& haveErr, int& haveWriteErr);
 static bool filecopy(File source, File dest, int& haveWriteErr);
 static void cfc(File& sfile, bool doCopy, int& haveErr, int& haveWriteErr);
 static bool audio_files_present();
-#endif
 
 static void formatFlashFS();
 static void rewriteSecondarySettings();
@@ -325,7 +317,6 @@ void settings_setup()
     // Determine if secondary settings are to be stored on SD
     configOnSD = (haveSD && ((settings.CfgOnSD[0] != '0') || FlashROMode));
 
-    #ifdef REMOTE_HAVEAUDIO
     // Check if(current) audio data is installed
     haveAudioFiles = audio_files_present();
   
@@ -337,7 +328,6 @@ void settings_setup()
     for(int i = 0; i < MAX_SIM_UPLOADS; i++) {
         uploadFileNames[i] = uploadRealFileNames[i] = NULL;
     }
-    #endif
 }
 
 void unmount_fs()
@@ -388,52 +378,42 @@ static bool read_settings(File configFile)
 
     if(!error) {
 
-        wd |= CopyCheckValidNumParm(json["coast"], settings.coast, sizeof(settings.coast), 0, 1, DEF_COAST);
+        // movieMode, dTDSpd, autoThrottle are overruled by loadVis later (if present)
         wd |= CopyCheckValidNumParm(json["at"], settings.autoThrottle, sizeof(settings.autoThrottle), 0, 1, DEF_AT);
-        autoThrottle = (settings.autoThrottle[0] == '1');
+        wd |= CopyCheckValidNumParm(json["coast"], settings.coast, sizeof(settings.coast), 0, 1, DEF_COAST);
         wd |= CopyCheckValidNumParm(json["oott"], settings.ooTT, sizeof(settings.ooTT), 0, 1, DEF_OO_TT);
-        //wd |= CopyCheckValidNumParm(json["ssTimer"], settings.ssTimer, sizeof(settings.ssTimer), 0, 999, DEF_SS_TIMER);
-    
+        wd |= CopyCheckValidNumParm(json["movieMode"], settings.movieMode, sizeof(settings.movieMode), 0, 1, DEF_MOV_MD);
+        wd |= CopyCheckValidNumParm(json["playClick"], settings.playClick, sizeof(settings.playClick), 0, 1, DEF_PLAY_CLK);
+        wd |= CopyCheckValidNumParm(json["playALsnd"], settings.playALsnd, sizeof(settings.playALsnd), 0, 1, DEF_PLAY_ALM_SND);
+        wd |= CopyCheckValidNumParm(json["dTCDSpd"], settings.dgps, sizeof(settings.dgps), 0, 1, DEF_DISP_GPS);
+
+        autoThrottle = (settings.autoThrottle[0] == '1');
+        movieMode = (settings.movieMode[0] == '1');
+        displayGPSMode = (settings.dgps[0] == '1');
+
+        wd |= CopyCheckValidNumParm(json["shuffle"], settings.shuffle, sizeof(settings.shuffle), 0, 1, DEF_SHUFFLE);
+
         if(json["hostName"]) {
             memset(settings.hostName, 0, sizeof(settings.hostName));
             strncpy(settings.hostName, json["hostName"], sizeof(settings.hostName) - 1);
         } else wd = true;
+        wd |= CopyCheckValidNumParm(json["wifiConRetries"], settings.wifiConRetries, sizeof(settings.wifiConRetries), 1, 10, DEF_WIFI_RETRY);
+        wd |= CopyCheckValidNumParm(json["wifiConTimeout"], settings.wifiConTimeout, sizeof(settings.wifiConTimeout), 7, 25, DEF_WIFI_TIMEOUT);
+    
         if(json["systemID"]) {
             memset(settings.systemID, 0, sizeof(settings.systemID));
             strncpy(settings.systemID, json["systemID"], sizeof(settings.systemID) - 1);
         } else wd = true;
-    
         if(json["appw"]) {
             memset(settings.appw, 0, sizeof(settings.appw));
             strncpy(settings.appw, json["appw"], sizeof(settings.appw) - 1);
         } else wd = true;
     
-        wd |= CopyCheckValidNumParm(json["wifiConRetries"], settings.wifiConRetries, sizeof(settings.wifiConRetries), 1, 10, DEF_WIFI_RETRY);
-        wd |= CopyCheckValidNumParm(json["wifiConTimeout"], settings.wifiConTimeout, sizeof(settings.wifiConTimeout), 7, 25, DEF_WIFI_TIMEOUT);
-    
+        
         if(json["tcdIP"]) {
             memset(settings.tcdIP, 0, sizeof(settings.tcdIP));
             strncpy(settings.tcdIP, json["tcdIP"], sizeof(settings.tcdIP) - 1);
         } else wd = true;
-
-        // movieMode, dTDSpd, autoThrottle are overruled by loadVis later (if present)
-        wd |= CopyCheckValidNumParm(json["movieMode"], settings.movieMode, sizeof(settings.movieMode), 0, 1, DEF_MOV_MD);
-        movieMode = (settings.movieMode[0] == '1');
-        #ifdef REMOTE_HAVEAUDIO
-        wd |= CopyCheckValidNumParm(json["playClick"], settings.playClick, sizeof(settings.playClick), 0, 1, DEF_PLAY_CLK);
-        wd |= CopyCheckValidNumParm(json["playALsnd"], settings.playALsnd, sizeof(settings.playALsnd), 0, 1, DEF_PLAY_ALM_SND);
-        #endif
-        wd |= CopyCheckValidNumParm(json["dTCDSpd"], settings.dgps, sizeof(settings.dgps), 0, 1, DEF_DISP_GPS);
-        displayGPSMode = (settings.dgps[0] == '1');
-        wd |= CopyCheckValidNumParm(json["uPLED"], settings.usePwrLED, sizeof(settings.usePwrLED), 0, 1, DEF_USE_PLED);
-        wd |= CopyCheckValidNumParm(json["uLvLM"], settings.useLvlMtr, sizeof(settings.useLvlMtr), 0, 1, DEF_USE_LVLMTR);
-        wd |= CopyCheckValidNumParm(json["pLEDFP"], settings.pwrLEDonFP, sizeof(settings.pwrLEDonFP), 0, 1, DEF_PLEDFP);
-
-        #ifdef HAVE_PM
-        wd |= CopyCheckValidNumParm(json["uPM"], settings.usePwrMon, sizeof(settings.usePwrMon), 0, 1, DEF_USE_PWRMON);
-        wd |= CopyCheckValidNumParm(json["bTy"], settings.batType, sizeof(settings.batType), 0, 4, DEF_BAT_TYPE);
-        wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, sizeof(settings.batCap), 1000, 6000, DEF_BAT_CAP);
-        #endif
         
         #ifdef REMOTE_HAVEMQTT
         wd |= CopyCheckValidNumParm(json["useMQTT"], settings.useMQTT, sizeof(settings.useMQTT), 0, 1, 0);
@@ -471,10 +451,6 @@ static bool read_settings(File configFile)
         wd |= handleMQTTButton(json["mqttb8f"], settings.mqttbf[7], sizeof(settings.mqttbf[0]) - 1);
         #endif
   
-        #ifdef REMOTE_HAVEAUDIO
-        wd |= CopyCheckValidNumParm(json["shuffle"], settings.shuffle, sizeof(settings.shuffle), 0, 1, DEF_SHUFFLE);
-        #endif
-  
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
 
@@ -491,7 +467,6 @@ static bool read_settings(File configFile)
         wd |= CopyCheckValidNumParm(json["b6Mt"], settings.bPb6Maint, sizeof(settings.bPb6Maint), 0, 1, DEF_BPMAINT);
         wd |= CopyCheckValidNumParm(json["b7Mt"], settings.bPb7Maint, sizeof(settings.bPb7Maint), 0, 1, DEF_BPMAINT);
 
-        #ifdef REMOTE_HAVEAUDIO
         wd |= CopyCheckValidNumParm(json["b0MtO"], settings.bPb0MtO, sizeof(settings.bPb0MtO), 0, 1, DEF_BPMTOO);
         wd |= CopyCheckValidNumParm(json["b1MtO"], settings.bPb1MtO, sizeof(settings.bPb1MtO), 0, 1, DEF_BPMTOO);
         wd |= CopyCheckValidNumParm(json["b2MtO"], settings.bPb2MtO, sizeof(settings.bPb2MtO), 0, 1, DEF_BPMTOO);
@@ -500,6 +475,15 @@ static bool read_settings(File configFile)
         wd |= CopyCheckValidNumParm(json["b5MtO"], settings.bPb5MtO, sizeof(settings.bPb5MtO), 0, 1, DEF_BPMTOO);
         wd |= CopyCheckValidNumParm(json["b6MtO"], settings.bPb6MtO, sizeof(settings.bPb6MtO), 0, 1, DEF_BPMTOO);
         wd |= CopyCheckValidNumParm(json["b7MtO"], settings.bPb7MtO, sizeof(settings.bPb7MtO), 0, 1, DEF_BPMTOO);
+
+        wd |= CopyCheckValidNumParm(json["uPLED"], settings.usePwrLED, sizeof(settings.usePwrLED), 0, 1, DEF_USE_PLED);
+        wd |= CopyCheckValidNumParm(json["uLvLM"], settings.useLvlMtr, sizeof(settings.useLvlMtr), 0, 1, DEF_USE_LVLMTR);
+        wd |= CopyCheckValidNumParm(json["pLEDFP"], settings.pwrLEDonFP, sizeof(settings.pwrLEDonFP), 0, 1, DEF_PLEDFP);
+
+        #ifdef HAVE_PM
+        wd |= CopyCheckValidNumParm(json["uPM"], settings.usePwrMon, sizeof(settings.usePwrMon), 0, 1, DEF_USE_PWRMON);
+        wd |= CopyCheckValidNumParm(json["bTy"], settings.batType, sizeof(settings.batType), 0, 4, DEF_BAT_TYPE);
+        wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, sizeof(settings.batCap), 1000, 6000, DEF_BAT_CAP);
         #endif
   
         // Convert separately saved flags into visMode
@@ -532,38 +516,29 @@ void write_settings()
     Serial.printf("%s: Writing config file\n", funcName);
     #endif
 
-    json["coast"] = (const char *)settings.coast;
     sprintf(settings.autoThrottle, "%d", autoThrottle ? 1 : 0);
-    json["at"] = (const char *)settings.autoThrottle;
-    json["oott"] = (const char *)settings.ooTT;
-    //json["ssTimer"] = (const char *)settings.ssTimer;
-
-    json["hostName"] = (const char *)settings.hostName;
-    json["systemID"] = (const char *)settings.systemID;
-    json["appw"] = (const char *)settings.appw;
-    json["wifiConRetries"] = (const char *)settings.wifiConRetries;
-    json["wifiConTimeout"] = (const char *)settings.wifiConTimeout;
-  
-    json["tcdIP"] = (const char *)settings.tcdIP;
-
     sprintf(settings.movieMode, "%d", movieMode ? 1 : 0);
+    sprintf(settings.dgps, "%d", displayGPSMode ? 1 : 0);
+    
+    json["at"] = (const char *)settings.autoThrottle;
+    json["coast"] = (const char *)settings.coast;
+    json["oott"] = (const char *)settings.ooTT;
     json["movieMode"] = (const char *)settings.movieMode;
-    #ifdef REMOTE_HAVEAUDIO
     json["playClick"] = (const char *)settings.playClick;
     json["playALsnd"] = (const char *)settings.playALsnd;
-    #endif
-    sprintf(settings.dgps, "%d", displayGPSMode ? 1 : 0);
     json["dTCDSpd"] = (const char *)settings.dgps;
-    json["uPLED"] = (const char *)settings.usePwrLED;
-    json["uLvLM"] = (const char *)settings.useLvlMtr;
-    json["pLEDFP"] = (const char *)settings.pwrLEDonFP;
 
-    #ifdef HAVE_PM
-    json["uPM"] = (const char *)settings.usePwrMon;
-    json["bTy"] = (const char *)settings.batType;
-    json["bCa"] = (const char *)settings.batCap;
-    #endif
-  
+    json["shuffle"] = (const char *)settings.shuffle;
+
+    json["hostName"] = (const char *)settings.hostName;
+    json["wifiConRetries"] = (const char *)settings.wifiConRetries;
+    json["wifiConTimeout"] = (const char *)settings.wifiConTimeout;
+    
+    json["systemID"] = (const char *)settings.systemID;
+    json["appw"] = (const char *)settings.appw;
+
+    json["tcdIP"] = (const char *)settings.tcdIP;
+
     #ifdef REMOTE_HAVEMQTT
     json["useMQTT"] = (const char *)settings.useMQTT;
     json["mqttServer"] = (const char *)settings.mqttServer;
@@ -593,11 +568,7 @@ void write_settings()
     json["mqttb8o"] = (const char *)settings.mqttbo[7];
     json["mqttb8f"] = (const char *)settings.mqttbf[7];
     #endif
-  
-    #ifdef REMOTE_HAVEAUDIO
-    json["shuffle"] = (const char *)settings.shuffle;
-    #endif
-  
+
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
 
@@ -614,7 +585,6 @@ void write_settings()
     json["b6Mt"] = (const char *)settings.bPb6Maint;
     json["b7Mt"] = (const char *)settings.bPb7Maint;
 
-    #ifdef REMOTE_HAVEAUDIO
     json["b0MtO"] = (const char *)settings.bPb0MtO;
     json["b1MtO"] = (const char *)settings.bPb1MtO;
     json["b2MtO"] = (const char *)settings.bPb2MtO;
@@ -623,6 +593,15 @@ void write_settings()
     json["b5MtO"] = (const char *)settings.bPb5MtO;
     json["b6MtO"] = (const char *)settings.bPb6MtO;
     json["b7MtO"] = (const char *)settings.bPb7MtO;
+
+    json["uPLED"] = (const char *)settings.usePwrLED;
+    json["uLvLM"] = (const char *)settings.useLvlMtr;
+    json["pLEDFP"] = (const char *)settings.pwrLEDonFP;
+
+    #ifdef HAVE_PM
+    json["uPM"] = (const char *)settings.usePwrMon;
+    json["bTy"] = (const char *)settings.batType;
+    json["bCa"] = (const char *)settings.batCap;
     #endif
   
     writeJSONCfgFile(json, cfgName, FlashROMode, funcName);
@@ -903,7 +882,6 @@ void saveBrightness(bool useCache)
 /*
  *  Load/save the Volume
  */
-#ifdef REMOTE_HAVEAUDIO
 
 #ifdef REMOTE_HAVEVOLKNOB
 #define T_V_MAX 255
@@ -978,13 +956,10 @@ void saveCurVolume(bool useCache)
 
 #undef T_V_MAX
 
-#endif
-
 
 /*
    Load/save Music Folder Number (SD only)
 */
-#ifdef REMOTE_HAVEAUDIO
 bool loadMusFoldNum()
 {
     bool writedefault = true;
@@ -1033,7 +1008,6 @@ void saveMusFoldNum()
 
     writeJSONCfgFile(json, musCfgName, true, funcName);
 }
-#endif
 
 /*
  *  Load/save the visual config (SD only)
@@ -1294,7 +1268,6 @@ static void saveId()
    customize your sounds, put them on a FAT32 formatted
    SD card and leave this SD card in the slot.
 */
-#ifdef REMOTE_HAVEAUDIO
 bool check_allow_CPA()
 {
     return allowCPA;
@@ -1522,7 +1495,6 @@ void delete_ID_file()
         SD.rename(CONFN, CONFND);
     }
 }
-#endif // REMOTE_HAVEAUDIO
 
 /*
    Various helpers
@@ -1552,9 +1524,7 @@ void copySettings()
         #endif
         saveCalib();
         saveBrightness(false);
-        #ifdef REMOTE_HAVEAUDIO
         saveCurVolume(false);
-        #endif
     }
 
     configOnSD = !configOnSD;
@@ -1581,9 +1551,7 @@ static void rewriteSecondarySettings()
 
     saveCalib();
     saveBrightness(false);
-    #ifdef REMOTE_HAVEAUDIO
     saveCurVolume(false);
-    #endif
     
     configOnSD = oldconfigOnSD;
 }
@@ -1686,7 +1654,6 @@ static bool writeFileToFS(const char *fn, uint8_t *buf, int len)
         return false;
 }
 
-#ifdef REMOTE_HAVEAUDIO
 static char *allocateUploadFileName(const char *fn, int idx)
 {
     char *t = NULL;
@@ -1846,5 +1813,3 @@ void renameUploadFile(int idx)
         free(t);
     }
 }
-
-#endif
