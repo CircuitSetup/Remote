@@ -523,21 +523,21 @@ Finally, this page is also for uploading [custom or replacement sound files](#in
 
 ##### &#9654; Erase WiFi Config
 
-Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi connection configuration (as set up through the *Connect to WiFi* page) and reboots the device; it will restart in "access point" (AP) mode. See [here](#short-summary-of-first-steps).
+Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi connection configuration (as set up through the *Connect to WiFi* page) and reboots the device; it will restart in "access point" (AP) mode. See [here](#initial-configuration).
 
 ---
 
 ### Setup page
 
-#### Basic settings
-
-##### &#9654; Coasting when throttle in neutral
-
-Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
+#### <ins>Basic settings</ins>
 
 ##### &#9654; Auto throttle
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+
+##### &#9654; Coasting when throttle in neutral
+
+Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
 ##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
 
@@ -546,61 +546,6 @@ This option selects the function of the O.O button:
 If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
 
 If unchecked, O.O is part of Music Player control and jumps to the previous song.
-
-##### &#9654; Brightness level
-
-This selects brightness level for the LED display. This can also be done through buttons "O.O" and "RESET", as well as the TCD (74xx).
-
-#### Hardware configuration settings
-
-##### Volume level (0-19)
-
-Enter a value between 0 (mute) or 19 (very loud) here. This is your starting point; you can change the volume using Buttons "O.O" and "RESET", and via TCD (73xx) and that new volume will also be saved (and appear in this field when the page is reloaded in your browser).
-
-#### Network settings
-
-##### &#9654; Hostname
-
-The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
-
-If you have several Remotes in your local network, please give them unique hostnames. Needless to say, only one Remote can be used with a TCD at a time.
-
-##### &#9654; AP Mode: Network name appendix
-
-By default, if the Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
-
-##### &#9654; AP Mode: WiFi password
-
-By default, and if this field is empty, the Remote's own WiFi network ("AP-mode") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
-
-If you forget this password and are thereby locked out of your Remote, 
-- power-down the device,
-- hold the Calibration button,
-- power-up the device (while still holding the Calibration button)
-- wait until the display shows a counter-clockwise circle animation,
-- press Button "O.O" twice within 10 seconds,
-- wait until the display shows "RST",
-- then release the Calibration button.
-
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
-
-##### &#9654; WiFi connection attempts
-
-Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#short-summary-of-first-steps)
-
-##### &#9654; WiFi connection timeout
-
-Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#short-summary-of-first-steps)
-
-#### Settings for prop communication/synchronization
-
-##### &#9654; IP address or hostname of TCD
-
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
-
-If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
-
-#### Audio-visual options
 
 ##### &#9654; Movie-mode acceleration
 
@@ -622,35 +567,80 @@ If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TC
 
 When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
 
-##### &#9654; Use Power LED
+##### &#9654; Brightness level
 
-If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
+This selects brightness level for the LED display. 
 
-##### &#9654; Use Battery Level Meter
+This can also be done through buttons "O.O" and "RESET", as well as the TCD (7400-7415); a change through buttons or TCD is saved 10 seconds after it occurred.
 
-If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75% on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below. Please note that the meter does not show actual battery level.
+#### <ins>Volume settings</ins>
 
-##### &#9654; Power LED/meter on fake power
+##### Volume level (0-19)
 
-If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
+Enter a value between 0 (mute) or 19 (very loud) here. 
 
-#### Battery monitoring
+You can also change the volume using buttons "O.O" and "RESET", and via TCD (7300-7319); a change through buttons or TCD is saved 10 seconds after it occurred.
 
-##### &#9654; Battery monitoring/warnings
+#### <ins>Music Player settings</ins>
 
-Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
+##### &#9654; Music folder
 
-If the battery charge level is lower than 8 percent, warnings are issued; the display blinks every 30 seconds as long as the charge level is low.
+Selects the current music folder, can be 0 through 9. 
 
-##### &#9654; Battery type
+This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such a change will be saved immediately.
 
-Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
+##### &#9654; Shuffle at startup
 
-##### &#9654; Capacity per cell (1000-6000)
+When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
 
-Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
+Shuffle mode can be changed at any time through the Remote's "RESET" button or via TCD (7222/7555); however, a change through buttons or TCD is not saved.
 
-#### Home Assistant / MQTT settings
+#### <ins>Network settings</ins>
+
+##### &#9654; Hostname
+
+The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
+
+This setting applies to both AP-mode and when your Remote is connected to a WiFi network. If you have several Remotes in your local network, please give them unique hostnames. Needless to say, only one Remote can be used with a TCD at a time.
+
+##### &#9654; WiFi connection attempts
+
+Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#initial-configuration)
+
+##### &#9654; WiFi connection timeout
+
+Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#initial-configuration)
+
+#### <ins>Network settings for AP-mode</ins>
+
+##### &#9654; Network name (SSID) appendix
+
+By default, when your Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
+
+##### &#9654; Password
+
+By default, and if this field is empty, the Remote's own WiFi network ("AP-mode") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
+
+If you forget this password and are thereby locked out of your Remote, 
+- power-down the device,
+- hold the Calibration button,
+- power-up the device (while still holding the Calibration button)
+- wait until the display shows a counter-clockwise circle animation,
+- press Button "O.O" twice within 10 seconds,
+- wait until the display shows "RST",
+- then release the Calibration button.
+
+This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
+
+#### <ins>Settings for BTTFN communication</ins>
+
+##### &#9654; IP address or hostname of TCD
+
+In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
+
+If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
+
+#### <ins>Home Assistant / MQTT settings</ins>
 
 ##### &#9654; Use Home Assistant (MQTT 3.1.1)
 
@@ -672,17 +662,7 @@ The MQTT topic for on/off messages. Nothing is published/sent if the topic is em
 
 The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
-#### Music Player settings
-
-##### &#9654; Music folder
-
-Selects the current music folder, can be 0 through 9. This can also be set/changed through a TCD keypad via BTTFN (705x).
-
-##### &#9654; Shuffle at startup
-
-When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
-
-#### Other settings
+#### <ins>Other settings</ins>
 
 ##### &#9654; Save secondary settings on SD
 
@@ -699,7 +679,7 @@ If you want copy settings from one SD card to another, do as follows:
 
 This procedure ensures that all your settings are copied from the old to the new SD card.
 
-#### Hardware settings
+#### <ins>Hardware configuration settings</ins>
 
 ##### &#9654; Button x is maintained
 
@@ -709,6 +689,39 @@ You might want use one or more switches of the Futaba remote for sound effects a
 
 If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
+##### &#9654; Use Power LED
+
+This setting is for using the Futaba's original power LED. If this LED isn't connected to the control board, this setting has no effect.
+
+If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
+
+##### &#9654; Use Battery Level Meter
+
+This setting is for using the Futaba's original battery level meter. If this meter isn't connected to the control board, this setting has no effect.
+
+If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75% on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below. 
+
+Please note that the meter does not show actual battery level; the built-in battery monitor, as described below, only works through the Stanley display.
+
+##### &#9654; Power LED/meter on fake power
+
+If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
+
+#### <ins>Battery monitoring</ins>
+
+##### &#9654; Battery monitoring/warnings
+
+Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
+
+If the battery charge level is lower than 8 percent, warnings are issued; the display blinks every 30 seconds as long as the charge level is low.
+
+##### &#9654; Battery type
+
+Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
+
+##### &#9654; Capacity per cell (1000-6000)
+
+Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
 _Other props: [Time Circuits Display](https://tcd.out-a-ti.me) ... [Flux Capacitor](https://fc.out-a-ti.me) ... [SID](https://sid.out-a-ti.me) ... [Dash Gauges](https://dg.out-a-ti.me) ... [VSR](https://vsr.out-a-ti.me) ... [TFC](https://tfc.out-a-ti.me)_
