@@ -139,7 +139,11 @@ A full reference of the Config Portal is [here](#appendix-a-the-config-portal).
 
 ## Basic Operation
 
-After [calibration](#calibration), your Remote is ready for use. After power-on and fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
+After [calibration](#calibration), your Remote is ready for use. 
+
+If battery monitoring is available, the battery state (in percent) is shown briefly upon (real) power-on.
+
+After fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
 
 For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds.
 
@@ -399,6 +403,19 @@ By default, the songs are played in order, starting at 000.mp3, followed by 001.
 See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
 
 While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
+
+## Battery monitoring
+
+If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
+
+Monitoring can be done through the [Calibration button](#calibration) and the TCD (7091/7092).
+
+The "low battery" warning is given as follows:
+
+- A sound is played once
+- If the Futaba's battery level meter is connected and enabled, it is switched off (= it reads 0).
+- If the Futaba's original power LED is connected and enabled, it blinks.
+- If the power LED is disabled, depending on fake power, either "BAT" is displayed periodically, or the display blinks periodically.
 
 ## Connecting a Time Circuits Display
 
@@ -713,7 +730,7 @@ If unchecked, the power LED and the battery level meter come to life on real pow
 
 Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
 
-If the battery charge level is lower than 8 percent, warnings are issued; the display blinks every 30 seconds as long as the charge level is low.
+If the battery level is lower than 8 percent, a warning is issued. The way it is given depends on hardware and software settings, see [here](#battery-monitoring).
 
 ##### &#9654; Battery type
 
@@ -722,6 +739,15 @@ Battery monitoring only works reliably with the LiPo batteries listed. Select th
 ##### &#9654; Capacity per cell (1000-6000)
 
 Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
+
+## Appendix B: Display messages
+
+- "AUD": Please install/update the sound pack
+- "BAT": Battery is low
+- "CAL", "UP", "DN": Shown during [calibration](#calibration)
+- "ERR": Error while installing the sound-pack, or during calibration. Please try again.
+- "IP": IP address is going to be shown.
+- "RST": WiFi password temporarily cleared; static IP permanently deleted
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
 _Other props: [Time Circuits Display](https://tcd.out-a-ti.me) ... [Flux Capacitor](https://fc.out-a-ti.me) ... [SID](https://sid.out-a-ti.me) ... [Dash Gauges](https://dg.out-a-ti.me) ... [VSR](https://vsr.out-a-ti.me) ... [TFC](https://tfc.out-a-ti.me)_
