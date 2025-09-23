@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.07"
-#define REMOTE_VERSION_EXTRA "SEP192025"
+#define REMOTE_VERSION "V1.08"
+#define REMOTE_VERSION_EXTRA "SEP222025"
 
 //#define REMOTE_DBG              // debug output on Serial
 
@@ -36,8 +36,7 @@
  ***             Configuration for hardware/peripherals                ***
  *************************************************************************/
 
-// Uncomment for audio support
-#define REMOTE_HAVEAUDIO
+// Nix...
 
 /*************************************************************************
  ***                           Miscellaneous                           ***

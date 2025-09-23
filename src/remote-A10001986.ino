@@ -136,7 +136,13 @@
 
 /*  Changelog
  *  
- *  2025/09/19 (A10001986)
+ *  2025/09/22 (A10001986) [1.08]
+ *    - Config Portal: Re-order settings; remove non-checkbox-code
+ *    - Fix TCD hostname length field
+ *  2025/09/20 (A10001986)
+ *    - Config Portal: Add "install sound pack" banner to main menu
+ *    - Remove HAVE_AUDIO conditional
+ *  2025/09/19 (A10001986) [1.07]
  *    - Extend mp3 upload by allowing multiple (max 16) mp3 files to be uploaded
  *      at once. The REMA.bin file can be uploaded at the same time as well.
  *  2025/09/17 (A10001986)

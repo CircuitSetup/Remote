@@ -68,26 +68,19 @@ extern uint8_t musFolderNum;
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
 #define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
+#define DEF_MOV_MD          1     // 1: (mostly) movie-accurate accel pace, 0: linear and faster
+#define DEF_PLAY_CLK        1     // 1: Play accel-clicks, 0: Do not
+#define DEF_PLAY_ALM_SND    0     // 1: Play TCD-alarm sound, 0: do not
+#define DEF_DISP_GPS        0     // 1: Display TCD speed (GPS, RotEnc) when fake-off, 0: Do not
 #define DEF_BRI             15    // Default display brightness
+
+#define DEF_SHUFFLE         0     // Music Player: Do not shuffle by default
 
 #define DEF_HOSTNAME        "dtmremote"
 #define DEF_WIFI_RETRY      3     // 1-10; Default: 3 retries
 #define DEF_WIFI_TIMEOUT    7     // 7-25; Default: 7 seconds
 
 #define DEF_TCD_IP          ""    // TCD ip address or hostname for networked polling
-
-#define DEF_MOV_MD          1     // 1: (mostly) movie-accurate accel pace, 0: linear and faster
-#define DEF_PLAY_CLK        1     // 1: Play accel-clicks, 0: Do not
-#define DEF_PLAY_ALM_SND    0     // 1: Play TCD-alarm sound, 0: do not
-#define DEF_DISP_GPS        0     // 1: Display TCD speed (GPS, RotEnc) when fake-off, 0: Do not
-#define DEF_USE_PLED        0     // 1: Use power LED, 0: do not, leave dark (like mostly in movie)
-#define DEF_USE_LVLMTR      0     // 1: Use Batt. Level Meter, 0: do not, leave at zero (like in movie)
-#define DEF_PLEDFP          1     // 1: Power LED/Meter on fake power, 0: on real power
-#define DEF_USE_PWRMON      1     // 1: Use Power Monitor (if present), 0: do not
-#define DEF_BAT_TYPE        0     // 0=3.7/4.2V
-#define DEF_BAT_CAP         2000  // battery capacity per cell
-
-#define DEF_SHUFFLE         0     // Music Player: Do not shuffle by default
 
 #define DEF_CFG_ON_SD       1     // Save secondary settings on SD card. Default: Yes (1)
 #define DEF_SD_FREQ         0     // SD/SPI frequency: Default 16MHz
@@ -96,31 +89,34 @@ extern uint8_t musFolderNum;
 #define DEF_BPMAINT         0     // ButtonPack button is momentary (0) or maintained (1)
 #define DEF_BPMTOO          0     // Maintained switch: Play audio on ON only (1), or on each flip (0)
 
+#define DEF_USE_PLED        0     // 1: Use power LED, 0: do not, leave dark (like mostly in movie)
+#define DEF_USE_LVLMTR      0     // 1: Use Batt. Level Meter, 0: do not, leave at zero (like in movie)
+#define DEF_PLEDFP          1     // 1: Power LED/Meter on fake power, 0: on real power
+
+#define DEF_USE_PWRMON      1     // 1: Use Power Monitor (if present), 0: do not
+#define DEF_BAT_TYPE        0     // 0=3.7/4.2V
+#define DEF_BAT_CAP         2000  // battery capacity per cell
+
+
 struct Settings {
     char coast[4]           = MS(DEF_COAST);
     char autoThrottle[4]    = MS(DEF_AT);
     char ooTT[4]            = MS(DEF_OO_TT);
-
-    char hostName[32]       = DEF_HOSTNAME;
-    char systemID[8]        = "";
-    char appw[10]           = "";
-    char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
-    char wifiConTimeout[4]  = MS(DEF_WIFI_TIMEOUT);
-
-    char tcdIP[16]          = DEF_TCD_IP;
-        
     char movieMode[4]       = MS(DEF_MOV_MD);       // saved, but overruled by vis config file
     char playClick[4]       = MS(DEF_PLAY_CLK);
     char playALsnd[4]       = MS(DEF_PLAY_ALM_SND);
     char dgps[4]            = MS(DEF_DISP_GPS);     // saved, but overruled by vis config file
-    char usePwrLED[4]       = MS(DEF_USE_PLED);
-    char useLvlMtr[4]       = MS(DEF_USE_LVLMTR);
-    char pwrLEDonFP[4]      = MS(DEF_PLEDFP);
-#ifdef HAVE_PM
-    char usePwrMon[4]       = MS(DEF_USE_PWRMON);
-    char batType[4]         = MS(DEF_BAT_TYPE);
-    char batCap[8]          = MS(DEF_BAT_CAP);
-#endif
+
+    char shuffle[4]         = MS(DEF_SHUFFLE);
+    
+    char hostName[32]       = DEF_HOSTNAME;
+    char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
+    char wifiConTimeout[4]  = MS(DEF_WIFI_TIMEOUT);
+    
+    char systemID[8]        = "";
+    char appw[10]           = "";
+
+    char tcdIP[32]          = DEF_TCD_IP;
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";
@@ -129,9 +125,7 @@ struct Settings {
     char mqttbt[8][256]     = { 0 };  // buttons topics (UTF8)
     char mqttbo[8][128]     = { 0 };  // buttons on message (UTF8)
     char mqttbf[8][128]     = { 0 };  // buttons off message (UTF8)
-#endif     
-
-    char shuffle[4]         = MS(DEF_SHUFFLE);
+#endif
 
     char CfgOnSD[4]         = MS(DEF_CFG_ON_SD);
     char sdFreq[4]          = MS(DEF_SD_FREQ);
@@ -156,6 +150,15 @@ struct Settings {
     char bPb5MtO[4]         = MS(DEF_BPMTOO);
     char bPb6MtO[4]         = MS(DEF_BPMTOO);
     char bPb7MtO[4]         = MS(DEF_BPMTOO);
+
+    char usePwrLED[4]       = MS(DEF_USE_PLED);
+    char useLvlMtr[4]       = MS(DEF_USE_LVLMTR);
+    char pwrLEDonFP[4]      = MS(DEF_PLEDFP);
+#ifdef HAVE_PM
+    char usePwrMon[4]       = MS(DEF_USE_PWRMON);
+    char batType[4]         = MS(DEF_BAT_TYPE);
+    char batCap[8]          = MS(DEF_BAT_CAP);
+#endif    
    
     char Vol[6];
     char musicFolder[6];
@@ -188,13 +191,11 @@ void saveVis(bool useCache = true);
 bool loadBrightness();
 void saveBrightness(bool useCache = true);
 
-#ifdef REMOTE_HAVEAUDIO
 bool loadCurVolume();
 void saveCurVolume(bool useCache = true);
 
 bool loadMusFoldNum();
 void saveMusFoldNum();
-#endif
 
 bool loadVis();
 void saveVis(bool useCache);
@@ -205,16 +206,13 @@ void deleteIpSettings();
 
 void copySettings();
 
-#ifdef REMOTE_HAVEAUDIO
 bool check_if_default_audio_present();
 bool prepareCopyAudioFiles();
 void doCopyAudioFiles();
 
 bool check_allow_CPA();
 void delete_ID_file();
-#endif
 
-#ifdef REMOTE_HAVEAUDIO
 #define MAX_SIM_UPLOADS 16
 #define UPL_OPENERR 1
 #define UPL_NOSDERR 2
@@ -232,6 +230,5 @@ void   renameUploadFile(int idx);
 char   *getUploadFileName(int idx);
 int    getUploadFileNameLen(int idx);
 void   freeUploadFileNames();
-#endif
 
 #endif

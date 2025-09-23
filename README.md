@@ -42,9 +42,9 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 *Important: After a firmware update, the "wait" symbol might be shown a while longer while booting. Do NOT unplug or switch off the device during this time.*
 
-### Audio data installation
+### Sound-pack installation
 
-The firmware comes with some audio data ("sound-pack") which needs to be installed separately. The audio data is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install the audio data when you update the firmware. Only if the Remote displays "AUD" briefly during boot, an update of the audio data is needed.
+The firmware comes with some audio data ("sound-pack") which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update of the sound-pack is needed.
 
 The first step is to download "install/sound-pack-xxxxxxxx.zip" and extract it. It contains one file named "REMA.bin".
 
@@ -56,7 +56,7 @@ Then there are two alternative ways to proceed. Note that both methods *require 
 - Copy "REMA.bin" to the root directory of of a FAT32 formatted SD card;
 - power down the Remote,
 - insert this SD card into the slot and 
-- power up the Remote; the audio data will be installed automatically.
+- power up the Remote; the sound-pack will be installed automatically.
 
 After installation, the SD card can be re-used for [other purposes](#sd-card).
 
@@ -139,13 +139,19 @@ A full reference of the Config Portal is [here](#appendix-a-the-config-portal).
 
 ## Basic Operation
 
-After [calibration](#calibration), your Remote is ready for use. After power-on and fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
+After [calibration](#calibration), your Remote is ready for use. 
 
-For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds.
+If battery monitoring is available, the battery state (in percent, or "FUL") is shown briefly upon (real) power-on.
+
+After fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
+
+For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds. The mode can be selected in the Config Portal, or through the TCD's keypad (7060).
 
 When the remote hits 88.0mph, the TCD triggers a time travel.
 
-Auto-throttle: If this option is checked in the Config Portal (or the Auto-Throttle is enabled through the TCD keypad), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+Auto-throttle: If this option is checked in the Config Portal (or Auto-Throttle is enabled through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+
+Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the trottle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
 
 Buttons and switches:
 
@@ -315,15 +321,15 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
      <td align="left">7090&#9166;</td>
     </tr>   
   <tr>
-     <td align="left">Display battery charge percentage(*)</td>
+     <td align="left">Display battery charge percentage<sup>1</sup></td>
      <td align="left">7091&#9166;</td>
     </tr>   
   <tr>
-     <td align="left">Display battery "Time to empty"(*)</td>
+     <td align="left">Display battery "Time to empty"<sup>1</sup></td>
      <td align="left">7092&#9166;</td>
     </tr>   
   <tr>
-     <td align="left">Display battery voltage(*)</td>
+     <td align="left">Display battery voltage<sup>1</sup></td>
      <td align="left">7093&#9166;</td>
     </tr>   
     <tr>
@@ -336,7 +342,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
     </tr>
 </table>
 
-* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
+1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
 
@@ -344,7 +350,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 
 Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend SDHC cards work fine in my experience.
 
-The SD card, apart from being required for [installing](#audio-data-installation) of the built-in audio data, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
+The SD card, apart from being required for [installing](#sound-pack-installation) of the built-in audio data, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
 Note that the SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
 
@@ -374,7 +380,7 @@ Those files are not provided here. You can use any mp3, with a bitrate of 128kpb
 
 As of version 1.06 of the Remote firmware, above mentioned audio files (both replacements and custom sounds) can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
 
-Uploading through the Config Portal works exactly like [installing the default audio files](#audio-data-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
+Uploading through the Config Portal works exactly like [installing the default audio files](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
 In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key1.mp3" from the SD card, either rename your "key1.mp3" into "delete-key1.mp3", or create a new file named "delete-key1.mp3", and upload this file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key1.mp3" from the SD card.
 
@@ -399,6 +405,19 @@ By default, the songs are played in order, starting at 000.mp3, followed by 001.
 See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
 
 While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
+
+## Battery monitoring
+
+If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
+
+Monitoring can be done through the [Calibration button](#calibration) and the TCD (7091/7092).
+
+The "low battery" warning is given as follows:
+
+- A sound is played once
+- If the Futaba's battery level meter is connected and enabled, it is switched off (= it reads 0).
+- If the Futaba's original power LED is connected and enabled, it blinks.
+- If the power LED is disabled, depending on fake power, either "BAT" is displayed periodically, or the display blinks periodically.
 
 ## Connecting a Time Circuits Display
 
@@ -523,21 +542,21 @@ Finally, this page is also for uploading [custom or replacement sound files](#in
 
 ##### &#9654; Erase WiFi Config
 
-Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi connection configuration (as set up through the *Connect to WiFi* page) and reboots the device; it will restart in "access point" (AP) mode. See [here](#short-summary-of-first-steps).
+Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi connection configuration (as set up through the *Connect to WiFi* page) and reboots the device; it will restart in "access point" (AP) mode. See [here](#connecting-to-a-wifi-network).
 
 ---
 
 ### Setup page
 
-#### Basic settings
-
-##### &#9654; Coasting when throttle in neutral
-
-Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
+#### <ins>Basic settings</ins>
 
 ##### &#9654; Auto throttle
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+
+##### &#9654; Coasting when throttle in neutral
+
+Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
 ##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
 
@@ -547,62 +566,7 @@ If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is the
 
 If unchecked, O.O is part of Music Player control and jumps to the previous song.
 
-##### &#9654; Brightness level
-
-This selects brightness level for the LED display. This can also be done through buttons "O.O" and "RESET", as well as the TCD (74xx).
-
-#### Hardware configuration settings
-
-##### Volume level (0-19)
-
-Enter a value between 0 (mute) or 19 (very loud) here. This is your starting point; you can change the volume using Buttons "O.O" and "RESET", and via TCD (73xx) and that new volume will also be saved (and appear in this field when the page is reloaded in your browser).
-
-#### Network settings
-
-##### &#9654; Hostname
-
-The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
-
-If you have several Remotes in your local network, please give them unique hostnames. Needless to say, only one Remote can be used with a TCD at a time.
-
-##### &#9654; AP Mode: Network name appendix
-
-By default, if the Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
-
-##### &#9654; AP Mode: WiFi password
-
-By default, and if this field is empty, the Remote's own WiFi network ("AP-mode") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
-
-If you forget this password and are thereby locked out of your Remote, 
-- power-down the device,
-- hold the Calibration button,
-- power-up the device (while still holding the Calibration button)
-- wait until the display shows a counter-clockwise circle animation,
-- press Button "O.O" twice within 10 seconds,
-- wait until the display shows "RST",
-- then release the Calibration button.
-
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
-
-##### &#9654; WiFi connection attempts
-
-Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#short-summary-of-first-steps)
-
-##### &#9654; WiFi connection timeout
-
-Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#short-summary-of-first-steps)
-
-#### Settings for prop communication/synchronization
-
-##### &#9654; IP address or hostname of TCD
-
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
-
-If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
-
-#### Audio-visual options
-
-##### &#9654; Movie-mode acceleration
+##### &#9654; Movie-like acceleration
 
 The Remote knows to modes of acceleration: "Movie mode" and "linear".
 
@@ -618,39 +582,84 @@ Check this to play a click sound for each "mph" while accelerating. Uncheck to s
 
 If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TCD's alarm sounds. If you want to play an alarm sound, check this option.
 
-##### &#9654; Display TCD speed when off
+##### &#9654; Display TCD speed when fake-off
 
 When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
 
-##### &#9654; Use Power LED
+##### &#9654; Brightness level
 
-If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
+This selects brightness level for the LED display. 
 
-##### &#9654; Use Battery Level Meter
+This can also be done through buttons ["O.O" and "RESET"](#buttons-oo-and-reset), as well as the TCD (7400-7415); a change through buttons or TCD is saved 10 seconds after it occurred.
 
-If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75% on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below. Please note that the meter does not show actual battery level.
+#### <ins>Volume settings</ins>
 
-##### &#9654; Power LED/meter on fake power
+##### Volume level (0-19)
 
-If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
+Enter a value between 0 (mute) or 19 (very loud) here. 
 
-#### Battery monitoring
+You can also change the volume using buttons ["O.O" and "RESET"](#buttons-oo-and-reset), and via TCD (7300-7319); a change through buttons or TCD is saved 10 seconds after it occurred.
 
-##### &#9654; Battery monitoring/warnings
+#### <ins>Music Player settings</ins>
 
-Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
+##### &#9654; Music folder
 
-If the battery charge level is lower than 8 percent, warnings are issued; the display blinks every 30 seconds as long as the charge level is low.
+Selects the current music folder, can be 0 through 9. 
 
-##### &#9654; Battery type
+This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such a change will be saved immediately.
 
-Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
+##### &#9654; Shuffle at startup
 
-##### &#9654; Capacity per cell (1000-6000)
+When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
 
-Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
+Shuffle mode can be changed at any time through the Remote's ["RESET" button](#buttons-oo-and-reset) or via TCD (7222/7555); however, a change through button or TCD is not saved.
 
-#### Home Assistant / MQTT settings
+#### <ins>Network settings</ins>
+
+##### &#9654; Hostname
+
+The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
+
+This setting applies to both AP-mode and when your Remote is connected to a WiFi network. If you have several Remotes in your local network, please give them unique hostnames. Needless to say, only one Remote can be used with a TCD at a time.
+
+##### &#9654; WiFi connection attempts
+
+Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#connecting-to-a-wifi-network)
+
+##### &#9654; WiFi connection timeout
+
+Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#connecting-to-a-wifi-network)
+
+#### <ins>Network settings for AP-mode</ins>
+
+##### &#9654; Network name (SSID) appendix
+
+By default, when your Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
+
+##### &#9654; Password
+
+By default, and if this field is empty, the Remote's own WiFi network ("AP-mode") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
+
+If you forget this password and are thereby locked out of your Remote, 
+- power-down the device,
+- hold the Calibration button,
+- power-up the device (while still holding the Calibration button)
+- wait until the display shows a counter-clockwise circle animation,
+- press Button "O.O" twice within 10 seconds,
+- wait until the display shows "RST",
+- then release the Calibration button.
+
+This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
+
+#### <ins>Settings for BTTFN communication</ins>
+
+##### &#9654; IP address or hostname of TCD
+
+In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
+
+If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
+
+#### <ins>Home Assistant / MQTT settings</ins>
 
 ##### &#9654; Use Home Assistant (MQTT 3.1.1)
 
@@ -672,17 +681,7 @@ The MQTT topic for on/off messages. Nothing is published/sent if the topic is em
 
 The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
-#### Music Player settings
-
-##### &#9654; Music folder
-
-Selects the current music folder, can be 0 through 9. This can also be set/changed through a TCD keypad via BTTFN (705x).
-
-##### &#9654; Shuffle at startup
-
-When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
-
-#### Other settings
+#### <ins>Other settings</ins>
 
 ##### &#9654; Save secondary settings on SD
 
@@ -699,7 +698,7 @@ If you want copy settings from one SD card to another, do as follows:
 
 This procedure ensures that all your settings are copied from the old to the new SD card.
 
-#### Hardware settings
+#### <ins>Hardware configuration settings</ins>
 
 ##### &#9654; Button x is maintained
 
@@ -709,6 +708,49 @@ You might want use one or more switches of the Futaba remote for sound effects a
 
 If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
+##### &#9654; Use Power LED
+
+This setting is for using the Futaba's original power LED. If this LED isn't connected to the control board, this setting has no effect.
+
+If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
+
+##### &#9654; Use Battery Level Meter
+
+This setting is for using the Futaba's original battery level meter. If this meter isn't connected to the control board, this setting has no effect.
+
+If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75% on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below. 
+
+Please note that the meter does not show actual battery level; the built-in battery monitor, as described below, only works through the Stanley display.
+
+##### &#9654; Power LED/meter on fake power
+
+If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
+
+#### <ins>Battery monitoring</ins>
+
+##### &#9654; Battery monitoring/warnings
+
+Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
+
+If the battery level is lower than 8 percent, a warning is issued. The way it is given depends on hardware and software settings, see [here](#battery-monitoring).
+
+##### &#9654; Battery type
+
+Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
+
+##### &#9654; Capacity per cell (1000-6000)
+
+Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
+
+## Appendix B: Display messages
+
+- "AUD": Please install/update the sound pack
+- "BAT": Battery is low
+- "CAL", "UP", "DN": Shown during [calibration](#calibration)
+- "ERR": Error while installing the sound-pack, or during calibration. Please try again.
+- "FUL": Battery is full, ie 100% charged
+- "IP": IP address is going to be shown.
+- "RST": WiFi password temporarily cleared; static IP permanently deleted
 
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
 _Other props: [Time Circuits Display](https://tcd.out-a-ti.me) ... [Flux Capacitor](https://fc.out-a-ti.me) ... [SID](https://sid.out-a-ti.me) ... [Dash Gauges](https://dg.out-a-ti.me) ... [VSR](https://vsr.out-a-ti.me) ... [TFC](https://tfc.out-a-ti.me)_
