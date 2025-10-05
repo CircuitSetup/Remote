@@ -94,7 +94,10 @@ extern bool networkAlarm;
 extern uint16_t networkLead;
 extern uint16_t networkP1;
 
+extern bool     calibMode;
 extern uint16_t tcdIsInP0;
+extern int32_t  throttlePos;
+extern bool     keepCounting;
 
 void main_boot();
 void main_boot2();

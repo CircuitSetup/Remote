@@ -65,6 +65,11 @@ extern uint8_t musFolderNum;
 
 // Default settings
 
+#define DEF_HOSTNAME        "dtmremote"
+#define DEF_WIFI_RETRY      3     // 1-10; Default: 3 retries
+#define DEF_WIFI_TIMEOUT    7     // 7-25; Default: 7 seconds
+#define DEF_AP_CHANNEL      1     // 1-13; 0 = random(1-13)
+
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
 #define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
@@ -75,10 +80,6 @@ extern uint8_t musFolderNum;
 #define DEF_BRI             15    // Default display brightness
 
 #define DEF_SHUFFLE         0     // Music Player: Do not shuffle by default
-
-#define DEF_HOSTNAME        "dtmremote"
-#define DEF_WIFI_RETRY      3     // 1-10; Default: 3 retries
-#define DEF_WIFI_TIMEOUT    7     // 7-25; Default: 7 seconds
 
 #define DEF_TCD_IP          ""    // TCD ip address or hostname for networked polling
 
@@ -99,6 +100,16 @@ extern uint8_t musFolderNum;
 
 
 struct Settings {
+    char ssid[34]           = "";
+    char pass[66]           = "";
+
+    char hostName[32]       = DEF_HOSTNAME;
+    char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
+    char wifiConTimeout[4]  = MS(DEF_WIFI_TIMEOUT);
+    char systemID[8]        = "";
+    char appw[10]           = "";
+    char apChnl[4]          = MS(DEF_AP_CHANNEL);
+    
     char coast[4]           = MS(DEF_COAST);
     char autoThrottle[4]    = MS(DEF_AT);
     char ooTT[4]            = MS(DEF_OO_TT);
@@ -108,13 +119,6 @@ struct Settings {
     char dgps[4]            = MS(DEF_DISP_GPS);     // saved, but overruled by vis config file
 
     char shuffle[4]         = MS(DEF_SHUFFLE);
-    
-    char hostName[32]       = DEF_HOSTNAME;
-    char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
-    char wifiConTimeout[4]  = MS(DEF_WIFI_TIMEOUT);
-    
-    char systemID[8]        = "";
-    char appw[10]           = "";
 
     char tcdIP[32]          = DEF_TCD_IP;
 
