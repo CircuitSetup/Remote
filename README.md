@@ -76,7 +76,7 @@ Your Remote knows two ways of WiFi operation: Either it creates its own WiFi net
 
 As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "Access point mode", or "AP-mode". 
 
-It is ok to leave it in AP-mode, predominantly if used stand-alone. (To operate your Remote in AP-mode, do not configure a WiFi network as described below, or click on "Erase WiFi config" on the Config Portal's main page.)
+It is ok to leave it in AP-mode, predominantly if used stand-alone. (To operate your Remote in AP-mode, do not configure a WiFi network as described below, or click on "Forget saved WiFi network" on the Config Portal's "WiFi Configuration" page.)
 
 >Please do not leave computers/hand helds permanently connected to the Remote's AP. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to packet loss and disruptions.
 
@@ -84,7 +84,7 @@ It is ok to leave it in AP-mode, predominantly if used stand-alone. (To operate 
 
 ##### &#9654; Home setup with a pre-existing local WiFi network
 
-In this case, you can connect your Remote to your home WiFi network: Click on "Connect to WiFi" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
+In this case, you can connect your Remote to your home WiFi network: Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
 
 >If you have a [Time Circuits Display](https://tcd.out-a-ti.me) note that in order to have both Remote and TCD communicate with each other, your Remote must be connected to the same network your TCD is connected to. In order to use MQTT, your Remote must be connected to the same network your broker is connected to.
 
@@ -103,7 +103,7 @@ In this case, you can connect your Remote to your home WiFi network: Click on "C
 
 If no TCD is present, keep your Remote operating in AP-mode.
 
-If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Click on "Connect to WiFi" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *WiFi network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
@@ -132,7 +132,7 @@ It can be accessed as follows:
 
   If connecting to http://dtmremote.local fails due to a name resolution error, you need to find out the Remote's IP address: Power up and fake-power-up the Remote and hold the Calibration button for 2 seconds. The Remote will display its current IP address (a. - b. - c. - d). Then, on your handheld or computer, navigate to http://a.b.c.d (a.b.c.d being the IP address as displayed on the Remote) in order to enter the Config Portal.
 
-In the main menu, click on "Setup" to configure your Remote. 
+In the main menu, click on "Settings" to configure your Remote. 
 
 | [<img src="img/cps-frag.png">](img/cp_setup.png) |
 |:--:| 
@@ -503,8 +503,8 @@ Enter the Config Portal on the Remote, click on *Setup* and
   - click on *Save*.
 
 After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
-  - click on *Connect to WiFi*,
-  - select the TCD's access point name in the list at the top ("TCD-AP") or enter *TCD-AP* into the *WiFi network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
+  - click on *WiFi Configuration*,
+  - select the TCD's access point name in the list at the top ("TCD-AP") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
 In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
@@ -520,6 +520,13 @@ In order to reduce the number of write operations and thereby prolong the life o
 ## Appendix A: The Config Portal
 
 ### Main page
+
+
+
+
+
+
+
 
 ##### &#9654; Connect to WiFi
 
