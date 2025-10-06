@@ -101,9 +101,9 @@ In this case, you can connect your Remote to your home WiFi network: Click on "W
 
 ##### &#9654; Places without a WiFi network
 
-If no TCD is present, keep your Remote operating in AP-mode.
+In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
-If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
@@ -123,9 +123,9 @@ It can be accessed as follows:
 - Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 - (For proper operation, please disconnect your computer or handheld from REM-AP when you are done with configuring your Remote. These devices can cause high network traffic, resulting in severe performance penalties.)
 
-#### If Remote is connected to WiFi network
+#### If Remote is connected to a WiFi network
 
-- Connect your hand-held/computer to the same WiFi network to which your Remote is connected, and
+- Connect your hand-held/computer to the same (WiFi) network to which your Remote is connected, and
 - navigate your browser to http://dtmremote.local
 
   Accessing the Config Portal through this address requires the operating system of your hand-held/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
