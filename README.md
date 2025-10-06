@@ -68,7 +68,7 @@ The first step is to establish access to the Remote's configuration web site ("C
 
 - Power up your Remote and wait until it has finished booting.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
-- Navigate your browser to http://drmremote.local or http://192.168.4.1 to enter the Config Portal.
+- Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 
 #### Connecting to a WiFi network
 
