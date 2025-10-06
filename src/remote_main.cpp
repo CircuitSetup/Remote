@@ -161,16 +161,17 @@ static bool powerState = false;
 static bool brakeState = false;
 static bool triggerCompleteUpdate = false;
 
-static int32_t throttlePos = 0, oldThrottlePos = 0;
+int32_t        throttlePos = 0;
+static int32_t oldThrottlePos = 0;
 static int     currSpeedF = 0;
 static int     currSpeed = 0;
 static unsigned long lastSpeedUpd = 0;
 static bool    lockThrottle = false;
 static bool    doCoast = false;
-static bool    keepCounting = false;
+bool           keepCounting = false;
 bool           autoThrottle = false;
 
-static bool          calibMode = false;
+bool                 calibMode = false;
 static bool          calibUp = false;
 static bool          calibIP = true;
 
@@ -584,7 +585,7 @@ void main_setup()
     unsigned long now;
     bool initScanBP = false;
     
-    Serial.println(F("DTM Remote Control version " REMOTE_VERSION " " REMOTE_VERSION_EXTRA));
+    Serial.println("DTM Remote Control version " REMOTE_VERSION " " REMOTE_VERSION_EXTRA);
 
     if(loadVis()) {                 // load visMode
         movieMode = !!(visMode & 0x01);
@@ -635,7 +636,7 @@ void main_setup()
 
     // Invoke audio file installer if SD content qualifies
     #ifdef REMOTE_DBG
-    Serial.println(F("Probing for audio data on SD"));
+    Serial.println("Probing for audio data on SD");
     #endif
     if(check_allow_CPA()) {
         showWaitSequence();
@@ -748,7 +749,7 @@ void main_setup()
 
     if(!haveAudioFiles) {
         #ifdef REMOTE_DBG
-        Serial.println(F("Current audio data not installed"));
+        Serial.println("Current audio data not installed");
         #endif
         remdisplay.on();
         remdisplay.setText("AUD");

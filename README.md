@@ -44,13 +44,13 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 ### Sound-pack installation
 
-The firmware comes with some audio data ("sound-pack") which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update of the sound-pack is needed.
+The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update of the sound-pack is needed.
 
 The first step is to download "install/sound-pack-xxxxxxxx.zip" and extract it. It contains one file named "REMA.bin".
 
 Then there are two alternative ways to proceed. Note that both methods *require an SD card*.
 
-1) Through the [Config Portal](#the-config-portal). Click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*. Note that an SD card must be in the slot during this operation.
+1) Through the [Config Portal](#the-config-portal). Click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*.
 
 2) Via SD card:
 - Copy "REMA.bin" to the root directory of of a FAT32 formatted SD card;
@@ -68,21 +68,23 @@ The first step is to establish access to the Remote's configuration web site ("C
 
 - Power up your Remote and wait until it has finished booting.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
-- Navigate your browser to http://drmremote.local or http://192.168.4.1 to enter the Config Portal.
+- Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 
 #### Connecting to a WiFi network
 
 Your Remote knows two ways of WiFi operation: Either it creates its own WiFi network, or it connects to a pre-existing WiFi network.
 
-As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "Access point mode", or "AP-mode". 
+As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "**Access point mode**", or "AP-mode". 
 
-It is ok to leave it in AP-mode, predominantly if used stand-alone. (To operate your Remote in AP-mode, do not configure a WiFi network as described below, or click on "Erase WiFi config" on the Config Portal's main page.)
+It is ok to leave it in AP-mode, predominantly if used stand-alone. (To keep operating your Remote in AP-mode, do not configure a WiFi network as described below, or click on "Forget saved WiFi network" on the Config Portal's "WiFi Configuration" page.)
+
+>Please do not leave computers/hand helds permanently connected to the Remote's AP. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to packet loss and disruptions.
 
 >For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same ip network, regardless of how they take part in it: They can be can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
 
 ##### &#9654; Home setup with a pre-existing local WiFi network
 
-In this case, you can connect your Remote to your home WiFi network: Click on "Connect to WiFi" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
+In this case, you can connect your Remote to your home WiFi network: Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
 
 >If you have a [Time Circuits Display](https://tcd.out-a-ti.me) note that in order to have both Remote and TCD communicate with each other, your Remote must be connected to the same network your TCD is connected to. In order to use MQTT, your Remote must be connected to the same network your broker is connected to.
 
@@ -99,9 +101,9 @@ In this case, you can connect your Remote to your home WiFi network: Click on "C
 
 ##### &#9654; Places without a WiFi network
 
-If no TCD is present, keep your Remote operating in AP-mode.
+In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
-If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Click on "Connect to WiFi" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *WiFi network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
@@ -119,17 +121,18 @@ It can be accessed as follows:
 
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
+- (For proper operation, please disconnect your computer or handheld from REM-AP when you are done with configuring your Remote. These devices can cause high network traffic, resulting in severe performance penalties.)
 
-#### If Remote is connected to WiFi network
+#### If Remote is connected to a WiFi network
 
-- Connect your hand-held/computer to the same WiFi network to which your Remote is connected, and
+- Connect your hand-held/computer to the same (WiFi) network to which your Remote is connected, and
 - navigate your browser to http://dtmremote.local
 
   Accessing the Config Portal through this address requires the operating system of your hand-held/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
 
   If connecting to http://dtmremote.local fails due to a name resolution error, you need to find out the Remote's IP address: Power up and fake-power-up the Remote and hold the Calibration button for 2 seconds. The Remote will display its current IP address (a. - b. - c. - d). Then, on your handheld or computer, navigate to http://a.b.c.d (a.b.c.d being the IP address as displayed on the Remote) in order to enter the Config Portal.
 
-In the main menu, click on "Setup" to configure your Remote. 
+In the main menu, click on "Settings" to configure your Remote. 
 
 | [<img src="img/cps-frag.png">](img/cp_setup.png) |
 |:--:| 
@@ -350,7 +353,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 
 Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend SDHC cards work fine in my experience.
 
-The SD card, apart from being required for [installing](#sound-pack-installation) of the built-in audio data, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
+The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
 Note that the SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
 
@@ -480,6 +483,8 @@ In order to connect to a MQTT network, a "broker" (such as [mosquitto](https://m
 
 If your broker does not allow anonymous logins, a username and password can be specified.
 
+Note that MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
+
 Limitations: MQTT Protocol version 3.1.1; TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. 
 
 ## Car setup
@@ -489,7 +494,7 @@ If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, t
 #### TCD
 
 - Run your TCD in [*car mode*](https://tcd.out-a-ti.me/#car-mode);
-- disable WiFi power-saving on the TCD by setting **_WiFi power save timer (AP-mode)_** to 0 (zero).
+- disable WiFi power-saving on the TCD by setting **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the WiFi Configuration page.
 
 #### Remote
 
@@ -498,8 +503,8 @@ Enter the Config Portal on the Remote, click on *Setup* and
   - click on *Save*.
 
 After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
-  - click on *Connect to WiFi*,
-  - select the TCD's access point name in the list at the top ("TCD-AP") or enter *TCD-AP* into the *WiFi network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
+  - click on *WiFi Configuration*,
+  - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "WiFi Scan") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
 In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
@@ -516,17 +521,15 @@ In order to reduce the number of write operations and thereby prolong the life o
 
 ### Main page
 
-##### &#9654; Connect to WiFi
+### Main page
 
-Click this to connect your Remote to your local WiFi network (which can also be provided by your [Time Circuits Display](https://tcd.out-a-ti.me) operating in AP mode/car mode). All you need to do is either to click on one of the networks listed at the top or to enter a WiFi network name (SSID), and optionally a passwort (WPAx).
+##### &#9654; WiFi Configuration
 
->By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
+This leads to the [WiFi configuration page](#wifi-configuration)
 
-Note that this page is strictly for connecting your Remote to an existing WiFi network. If your Remote is supposed to operate stand-alone, it runs in "access point mode" (AP-Mode). Settings for AP mode are on the *Setup* page.
+##### &#9654; Settings
 
-##### &#9654; Setup
-
-This leads to the [Setup page](#setup-page).
+This leads to the [Settings page](#settings).
 
 ##### &#9654; Update
 
@@ -534,19 +537,70 @@ This leads to the firmware and audio update page.
 
 In order to upload a new firmware binary (such as the ones published here in the install/ folder), select that image file in the top file selector and click "Update".
 
-You can also install the Remote's audio data on this page; download the current sound-pack, extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click "Upload". Note that an SD card is required for this operation.
+You can also install the Remote's sound-pack on this page; download the current sound-pack, extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click "Upload". Note that an SD card is required for this operation.
 
-Note that either a firmware or audio data can be uploaded at once, not both at the same time.
-
-Finally, this page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card. Select an mp3 file in the bottom file selector and click upload. (Requires firmware 1.06 or later.)
-
-##### &#9654; Erase WiFi Config
-
-Clicking this (and saying "yes" in the confirmation dialog) erases the WiFi connection configuration (as set up through the *Connect to WiFi* page) and reboots the device; it will restart in "access point" (AP) mode. See [here](#connecting-to-a-wifi-network).
+Finally, this page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card. Select an mp3 file in the bottom file selector and click upload. (Requires firmware 1.06 or later. Maximum 16 files at a time.)
 
 ---
 
-### Setup page
+### WiFi Configuration
+
+Through this page you can either connect your Remote to your local WiFi network, or configure AP mode. 
+
+#### <ins>Connecting to an existing WiFi network</ins>
+
+In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __passwort__ (WPAx).
+
+>By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
+
+##### &#9654; Forget Saved WiFi Network
+
+Clicking this button (and selecting "yes" in the confirmation dialog) deletes the currently saved WiFi network (SSID and password) and reboots the device; it will restart in "access point" (AP) mode. See [here](#connecting-to-a-wifi-network).
+
+##### &#9654; Hostname
+
+The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
+
+If you have more than one Remote in your local network, please give them unique hostnames.
+
+_This setting applies to both AP-mode and when your Remote is connected to a WiFi network._ 
+
+##### &#9654; WiFi connection attempts
+
+Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#connecting-to-a-wifi-network)
+
+##### &#9654; WiFi connection timeout
+
+Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#connecting-to-a-wifi-network)
+
+#### <ins>Settings for AP-mode</ins>
+
+##### &#9654; Network name (SSID) appendix
+
+By default, when your Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
+
+##### &#9654; Password
+
+By default, and if this field is empty, the Remote's own WiFi network ("REM-AP") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
+
+If you forget this password and are thereby locked out of your Remote, 
+- power-down the device,
+- hold the Calibration button,
+- power-up the device (while still holding the Calibration button)
+- wait until the display shows a counter-clockwise circle animation,
+- press Button "O.O" twice within 10 seconds,
+- wait until the display shows "RST",
+- then release the Calibration button.
+
+This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
+
+##### &#9654; WiFi channel
+
+Here you can select one out of 13 channels, or have the Remote choose a random channel for you. The default channel is 1.
+
+---
+
+### Settings
 
 #### <ins>Basic settings</ins>
 
@@ -613,43 +667,6 @@ This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such 
 When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
 
 Shuffle mode can be changed at any time through the Remote's ["RESET" button](#buttons-oo-and-reset) or via TCD (7222/7555); however, a change through button or TCD is not saved.
-
-#### <ins>Network settings</ins>
-
-##### &#9654; Hostname
-
-The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
-
-This setting applies to both AP-mode and when your Remote is connected to a WiFi network. If you have several Remotes in your local network, please give them unique hostnames. Needless to say, only one Remote can be used with a TCD at a time.
-
-##### &#9654; WiFi connection attempts
-
-Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#connecting-to-a-wifi-network)
-
-##### &#9654; WiFi connection timeout
-
-Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#connecting-to-a-wifi-network)
-
-#### <ins>Network settings for AP-mode</ins>
-
-##### &#9654; Network name (SSID) appendix
-
-By default, when your Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
-
-##### &#9654; Password
-
-By default, and if this field is empty, the Remote's own WiFi network ("AP-mode") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
-
-If you forget this password and are thereby locked out of your Remote, 
-- power-down the device,
-- hold the Calibration button,
-- power-up the device (while still holding the Calibration button)
-- wait until the display shows a counter-clockwise circle animation,
-- press Button "O.O" twice within 10 seconds,
-- wait until the display shows "RST",
-- then release the Calibration button.
-
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
 
 #### <ins>Settings for BTTFN communication</ins>
 
