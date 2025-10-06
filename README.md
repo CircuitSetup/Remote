@@ -353,7 +353,7 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 
 Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend SDHC cards work fine in my experience.
 
-The SD card, apart from being required for [installing](#sound-pack-installation) of the built-in sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
+The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
 Note that the SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
 
@@ -494,7 +494,7 @@ If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, t
 #### TCD
 
 - Run your TCD in [*car mode*](https://tcd.out-a-ti.me/#car-mode);
-- disable WiFi power-saving on the TCD by setting **_WiFi power save timer (AP-mode)_** to 0 (zero).
+- disable WiFi power-saving on the TCD by setting **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the WiFi Configuration page.
 
 #### Remote
 
@@ -504,7 +504,7 @@ Enter the Config Portal on the Remote, click on *Setup* and
 
 After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
   - click on *WiFi Configuration*,
-  - select the TCD's access point name in the list at the top ("TCD-AP") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
+  - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "WiFi Scan") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
 In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
