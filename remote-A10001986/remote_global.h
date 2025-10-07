@@ -15,22 +15,10 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.09"
-#define REMOTE_VERSION_EXTRA "OCT052025"
+#define REMOTE_VERSION "V1.10"
+#define REMOTE_VERSION_EXTRA "OCT072025"
 
 //#define REMOTE_DBG              // debug output on Serial
-
-/*************************************************************************
- ***                     mDNS (Bonjour) support                        ***
- *************************************************************************/
-
-// Supply mDNS service
-// Allows accessing the Config Portal via http://hostname.local
-// <hostname> is configurable in the Config Portal
-// This needs to be commented if WiFiManager provides mDNS
-#define REMOTE_MDNS
-// Uncomment this if WiFiManager has mDNS enabled
-//#define REMOTE_WM_HAS_MDNS
 
 /*************************************************************************
  ***             Configuration for hardware/peripherals                ***
