@@ -53,11 +53,12 @@
 
 #include <Arduino.h>
 
-#ifdef REMOTE_MDNS
+#include "src/WiFiManager/WiFiManager.h"
+
+#ifndef WM_MDNS
+#define REMOTE_MDNS
 #include <ESPmDNS.h>
 #endif
-
-#include "src/WiFiManager/WiFiManager.h"
 
 #include "display.h"
 #include "remote_audio.h"
@@ -135,12 +136,15 @@ static const char *wmBuildBatType(const char *dest);
 #endif
 
 static const char *wmBuildApChnl(const char *dest);
+static const char *wmBuildHaveSD(const char *dest);
 
 static const char custHTMLSel[] = " selected";
 static const char *osde = "</option></select></div>";
 static const char *ooe  = "</option><option value='";
 
 static const char *aco = "autocomplete='off'";
+
+static const char haveNoSD[] = "<div class='c' style='background-color:#dc3630;color:#fff;font-size:80%;border-radius:5px'><i>No SD card present</i></div>";
 
 // WiFi Configuration
 
@@ -217,6 +221,7 @@ WiFiManagerParameter custom_mqttb8o("ha_b8o", "Button 8 message on ON", settings
 WiFiManagerParameter custom_mqttb8f("ha_b9f", "Button 8 message on OFF", settings.mqttbf[7], 63);
 #endif // HAVEMQTT
 
+WiFiManagerParameter custom_haveSD(wmBuildHaveSD);
 WiFiManagerParameter custom_CfgOnSD("CfgOnSD", "Save secondary settings on SD<br><span style='font-size:80%'>Check this to avoid flash wear</span>", settings.CfgOnSD, 1, "autocomplete='off' type='checkbox' class='mt5 mb0'", WFM_LABEL_AFTER);
 //WiFiManagerParameter custom_sdFrq("sdFrq", "4MHz SD clock speed<br><span style='font-size:80%'>Checking this might help in case of SD card problems</span>", settings.sdFreq, 1, "autocomplete='off' type='checkbox' style='margin-top:12px'", WFM_LABEL_AFTER);
 
@@ -465,6 +470,7 @@ void wifi_setup()
       #endif
   
       &custom_sectstart,     // 2 (3)
+      &custom_haveSD,
       &custom_CfgOnSD,
       //&custom_sdFrq,
   
@@ -505,7 +511,7 @@ void wifi_setup()
     if(!settings.ssid[0] && settings.ssid[1] == 'X') {
         
         // Read NVS-stored WiFi data
-        wm.getStoredCredentials(settings.ssid, sizeof(settings.ssid) - 1, settings.pass, sizeof(settings.pass) - 1);
+        wm.getStoredCredentials(settings.ssid, sizeof(settings.ssid), settings.pass, sizeof(settings.pass));
 
         #ifdef REMOTE_DBG
         Serial.printf("WiFi Transition: ssid '%s' pass '%s'\n", settings.ssid, settings.pass);
@@ -516,7 +522,7 @@ void wifi_setup()
 
     wm.setHostname(settings.hostName);
 
-    wm.showUploadContainer(true, AA_CONTAINER);
+    wm.showUploadContainer(haveSD, AA_CONTAINER, true);
     
     wm.setPreSaveWiFiCallback(preSaveWiFiCallback);
     wm.setSaveWiFiCallback(saveWiFiCallback);
@@ -822,7 +828,9 @@ void wifi_loop()
             // Parameters on WiFi Config page
 
             // Note: Parameters that need to grabbed from the server directly
-            // through getParam() must be handled in preSaveConfigCallback().
+            // through getParam() must be handled in preSaveWiFiCallback().
+
+            // ssid, pass copied to settings in saveWiFiCallback()
 
             strcpytrim(settings.hostName, custom_hostName.getValue(), true);
             if(strlen(settings.hostName) == 0) {
@@ -1710,6 +1718,14 @@ static const char *wmBuildApChnl(const char *dest)
     buildSelectMenu(str, apChannelCustHTMLSrc, 16, settings.apChnl);
     
     return str;
+}
+
+static const char *wmBuildHaveSD(const char *dest)
+{
+    if(dest || haveSD)
+        return NULL;
+
+    return haveNoSD;
 }
 
 /*
