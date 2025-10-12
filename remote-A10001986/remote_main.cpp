@@ -2540,7 +2540,7 @@ static void bttfn_setup()
 void bttfn_loop()
 {
     #ifdef BTTFN_MC
-    int t = 10;
+    int t = 100;
     #endif
     
     if(!useBTTFN)
@@ -2566,7 +2566,7 @@ void bttfn_loop()
 static void bttfn_loop_quick()
 {
     #ifdef BTTFN_MC
-    int t = 10;
+    int t = 100;
     #endif
     
     if(!useBTTFN)
@@ -2705,31 +2705,35 @@ static bool bttfn_checkmc()
     if(!psize) {
         return false;
     }
+
+    // This returns true as long as a packet was received
+    // regardless whether it was for us or not. Point is
+    // to clear the receive buffer.
     
     remMcUDP->read(BTTFMCBuf, BTTF_PACKET_SIZE);
 
     if(haveTCDIP) {
         if(bttfnTcdIP != remMcUDP->remoteIP())
-            return false;
+            return true; //false;
     } else {
         // Do not use tcdHostNameHash; let DISCOVER do its work
         // and wait for a result.
-        return false;
+        return true; //false;
     }
 
     if(!check_packet(BTTFMCBuf))
-        return false;
+        return true; //false;
 
     if((BTTFMCBuf[4] & 0x4f) == (BTTFN_VERSION | 0x40)) {
 
         // A notification from the TCD
         handle_tcd_notification(BTTFMCBuf);
     
-    } else {
+    } /*else {
       
         return false;
 
-    }
+    }*/
 
     return true;
 }
