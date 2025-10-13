@@ -767,7 +767,7 @@ Battery monitoring requires knowledge about the cell capacity. Note that the cap
 
 ## Appendix B: Display messages
 
-- "AUD": Please install/update the sound pack
+- "AUD": Please install/update the [sound pack](#sound-pack-installation)
 - "BAT": Battery is low
 - "CAL", "UP", "DN": Shown during [calibration](#calibration)
 - "ERR": Error while installing the sound-pack, or during calibration. Please try again.
