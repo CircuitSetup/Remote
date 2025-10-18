@@ -156,7 +156,7 @@ When the remote hits 88.0mph, the TCD triggers a time travel.
 
 Auto-throttle: If this option is checked in the Config Portal (or Auto-Throttle is enabled through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
-Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the trottle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
+Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
 
 Buttons and switches:
 
@@ -186,8 +186,8 @@ The throttle of the Remote needs calibration:
 
 - Put the "ON/OFF" switch in "OFF" position.
 - Put the throttle lever in neutral (center) position, press the Calibration button. The display will briefly show "CAL" to show acceptance.
-- Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push the throttle to the up-most position, and press the Calibration button. "DN" will be displayed.
-- Pull the throttle lever to the bottom-most position, and press the Calibration button. The display will clear, calibration is finished.
+- Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
+- Pull the throttle lever to the bottom-most position and press the Calibration button. The display will clear, calibration is finished.
 
 If you change power-source (ie a new battery, or power via USB to the ESP32), re-calibration is required.
  
@@ -428,7 +428,7 @@ The "low battery" warning is given as follows:
 
 The TCD communicates with the Remote wirelessly, via the built-in "**B**asic-**T**elematics-**T**ransmission-**F**ramework" (BTTFN) over WiFi. Note that a wired connection is not supported.
 
-The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the MusicPlayer, for instance).
+The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the Music Player, for instance).
 
 | [![Watch the video](https://img.youtube.com/vi/u9oTVXUIOXA/0.jpg)](https://youtu.be/u9oTVXUIOXA) |
 |:--:|
@@ -469,7 +469,7 @@ The Remote can - to some extent - be controlled through messages sent to topic *
 - MP_PREV: Jump to previous song
 - MP_SHUFFLE_ON: Enables shuffle mode in [Music Player](#the-music-player)
 - MP_SHUFFLE_OFF: Disables shuffle mode in [Music Player](#the-music-player)
-- MP_FOLDER_x: x being 0-9, set Music Folder number for [Music Player](#the-music-player)
+- MP_FOLDER_x: x being 0-9, set folder number for [Music Player](#the-music-player)
 
 ### Receive commands from Time Circuits Display
 
@@ -594,7 +594,7 @@ If you forget this password and are thereby locked out of your Remote,
 - wait until the display shows "RST",
 - then release the Calibration button.
 
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
+This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP address data; the device will return to using DHCP after a reboot.)
 
 ##### &#9654; WiFi channel
 
@@ -635,7 +635,7 @@ If unchecked, O.O is part of Music Player control and jumps to the previous song
 
 The Remote knows to modes of acceleration: "Movie mode" and "linear".
 
-In movie mode, acceleration changes with speed. At lower speeds, it is faster, and will gradually become slower as speed increases. The pace matches the movie mostly; unfortunately the remote is only shown for a very few seconds and timing is inconsistent (to say the least), so some interpolations were required.
+In movie mode, acceleration changes with speed. At lower speeds, it is faster, and will gradually become slower as speed increases. The pace matches the movie mostly; unfortunately, the remote is only shown for a very few seconds and timing is inconsistent (to say the least), so some interpolations were required.
 
 In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
 
