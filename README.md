@@ -53,7 +53,7 @@ Then there are two alternative ways to proceed. Note that both methods *require 
 1) Through the [Config Portal](#the-config-portal). Click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*.
 
 2) Via SD card:
-- Copy "REMA.bin" to the root directory of of a FAT32 formatted SD card;
+- Copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
 - power down the Remote,
 - insert this SD card into the slot and 
 - power up the Remote; the sound-pack will be installed automatically.
@@ -78,11 +78,11 @@ As long as your Remote is unconfigured, it creates its own WiFi network named "R
 
 It is ok to leave it in AP-mode, predominantly if used stand-alone. (To keep operating your Remote in AP-mode, do not configure a WiFi network as described below, or check "Forget saved WiFi network" and click "Save" on the Config Portal's "WiFi Configuration" page.)
 
->Please do not leave computers/hand helds permanently connected to the Remote's AP. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to packet loss and disruptions.
+>Please do not leave computers/handhelds permanently connected to the Remote's AP. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to packet loss and disruptions.
 
 >If you want your device to remain in AP-mode, please choose a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
 
->For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same ip network, regardless of how they take part in it: They can be can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
+>For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same IP network, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
 
 ##### &#9654; Home setup with a pre-existing local WiFi network
 
@@ -105,7 +105,7 @@ In this case, you can connect your Remote to your home WiFi network: Click on "W
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
-If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-protected your TCD-AP, enter this password below. See [here](#car-setup) for more details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
@@ -127,10 +127,10 @@ It can be accessed as follows:
 
 #### If Remote is connected to a WiFi network
 
-- Connect your hand-held/computer to the same (WiFi) network to which your Remote is connected, and
+- Connect your handheld/computer to the same (WiFi) network to which your Remote is connected, and
 - navigate your browser to http://dtmremote.local
 
-  >Accessing the Config Portal through this address requires the operating system of your hand-held/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
+  >Accessing the Config Portal through this address requires the operating system of your handheld/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
 
   >If connecting to http://dtmremote.local fails due to a name resolution error, you need to find out the Remote's IP address: Power up and fake-power-up the Remote and hold the Calibration button for 2 seconds. The Remote will display its current IP address (a. - b. - c. - d). Then, on your handheld or computer, navigate to http://a.b.c.d (a.b.c.d being the IP address as displayed on the Remote) in order to enter the Config Portal.
 
@@ -377,7 +377,7 @@ The firmware supports some additional user-provided sound effects, which it will
 - "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
 - "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintained switches.
 
-> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the MusicPlayer occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
+> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the Music Player occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
 
 Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
 
@@ -509,7 +509,7 @@ After the Remote has restarted, re-enter the Remote's Config Portal (while the T
   - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "WiFi Scan") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
-In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
+In order to access the Remote's Config Portal in this setup, connect your handheld or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
 
 This "car setup" can also be used in a home setup with no local WiFi network present.
 
@@ -551,7 +551,7 @@ Through this page you can either connect your Remote to your local WiFi network,
 
 #### <ins>Connecting to an existing WiFi network</ins>
 
-In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __passwort__ (WPAx). If there is no list displayed, click on "WiFi Scan".
+In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "WiFi Scan".
 
 >By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
 
@@ -607,7 +607,7 @@ If a WiFi Scan was done (which can be triggered by clicking "WiFI Scan"),
 - a list of networks is displayed at the top of the page; click "Show All" to list all networks including their channel;
 - a "proposed channel" is displayed near the "WiFi channel" drop-down, based on a rather simple heuristic. The banner is green when a channel is excellent, grey when it is impeded by overlapping channels, and when that banner is red operation in AP mode is not recommended due to channels all being used.
 
-The channel proposition is based on all WiFi networks found; it does not take non-WiFi equipment (baby monitors, cordless phones, bluetooth devices, microwave ovens, etc) into account. 
+The channel proposition is based on all WiFi networks found; it does not take non-WiFi equipment (baby monitors, cordless phones, Bluetooth devices, microwave ovens, etc) into account. 
 
 ---
 
