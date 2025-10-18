@@ -159,12 +159,8 @@ static const struct dispConf {
     uint8_t  bufPosArr[4];   //   The buffer positions of each of the digits from left to right
     uint8_t  bufShftArr[4];  //   Shift-value for each digit from left to right
     const uint16_t *fontSeg; //   Pointer to font
-} displays[REM_DISP_NUM_TYPES] = {
-#ifndef PROTO_DISPLAY  
-  { 4, { 0, 0, 1, 2 }, { 0, 8, 0, 0 }, font7segGeneric },  // Native
-#else  
-  { 3, { 0, 1, 3 }, { 0, 0, 0 }, font7segGeneric },  // Prototype
-#endif
+} displays[REM_DISP_NUM_TYPES] = {  
+  { 4, { 0, 0, 1, 2 }, { 0, 8, 0, 0 }, font7segGeneric }
 };
 
 // Store i2c address

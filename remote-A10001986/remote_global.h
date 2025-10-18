@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.10.2"
-#define REMOTE_VERSION_EXTRA "OCT142025"
+#define REMOTE_VERSION "V1.11"
+#define REMOTE_VERSION_EXTRA "OCT172025"
 
 //#define REMOTE_DBG              // debug output on Serial
 
@@ -40,8 +40,6 @@
 
 // Uncomment if hardware has a volume knob
 //#define REMOTE_HAVEVOLKNOB
-// Uncomment when using the prototype display
-//#define PROTO_DISPLAY
 
 // Battery monitor support
 #define HAVE_PM
