@@ -462,7 +462,7 @@ For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr
 
 ### Control the Remote via MQTT
 
-The Remote can - to some extent - be controlled through messages sent to topic **bttf/remote/cmd**. Support commands are
+The Remote can - to some extent - be controlled through messages sent to topic **bttf/remote/cmd**. Supported commands are
 - MP_PLAY: Starts the [Music Player](#the-music-player)
 - MP_STOP: Stops the [Music Player](#the-music-player)
 - MP_NEXT: Jump to next song
