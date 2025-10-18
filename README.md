@@ -623,14 +623,6 @@ If this is checked, acceleration is, after being started by pushing the throttle
 
 Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
-##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
-
-This option selects the function of the O.O button:
-
-If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
-
-If unchecked, O.O is part of Music Player control and jumps to the previous song.
-
 ##### &#9654; Movie-like acceleration
 
 The Remote knows to modes of acceleration: "Movie mode" and "linear".
@@ -686,6 +678,14 @@ Shuffle mode can be changed at any time through the Remote's ["RESET" button](#b
 In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
 
 If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
+
+##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
+
+This option selects the function of the O.O button:
+
+If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
+
+If unchecked, O.O is part of Music Player control and jumps to the previous song.
 
 #### <ins>Home Assistant / MQTT settings</ins>
 
