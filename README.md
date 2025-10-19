@@ -70,23 +70,27 @@ The first step is to establish access to the Remote's configuration web site ("C
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 
-#### Connecting to a WiFi network
+### Connecting to a WiFi network
 
 Your Remote knows two ways of WiFi operation: Either it creates its own WiFi network, or it connects to a pre-existing WiFi network.
 
-As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "**Access point mode**", or "AP-mode". 
+As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "**Access point mode**", or "AP-mode". or **"AP-mode"**. In this mode, computers/handhelds can connect to your Remote in order to access the Config Portal, but ways of communication end right here. There is no inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and no [HA/MQTT](#home-assistant--mqtt).
 
-It is ok to leave it in AP-mode, predominantly if used stand-alone. (To keep operating your Remote in AP-mode, do not configure a WiFi network as described below, or check "Forget saved WiFi network" and click "Save" on the Config Portal's "WiFi Configuration" page.)
+It is ok to leave it in AP-mode, predominantly if used stand-alone. (To keep operating your Remote in AP-mode, simply _do not configure_ a WiFi network connection as described below.
 
->Please do not leave computers/handhelds permanently connected to the Remote's AP. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to packet loss and disruptions.
+>Please do not leave computers/handhelds permanently connected to the Remote in AP-mode. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to disruptions.
 
->If you want your device to remain in AP-mode, please choose a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
+>If you wish for your device to remain in AP-mode, please select a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
 
 >For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same IP network, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
 
-##### &#9654; Home setup with a pre-existing local WiFi network
+#### &#9654; Home setup with a pre-existing local WiFi network
 
-In this case, you can connect your Remote to your home WiFi network: Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
+In this case, you can connect your Remote to your home WiFi network. This allows for inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and [HA/MQTT](#home-assistant--mqtt).
+
+![STAmode-home](img/stamode-home.png)
+
+Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
 
 >If you have a [Time Circuits Display](https://tcd.out-a-ti.me) note that in order to have both Remote and TCD communicate with each other, your Remote must be connected to the same network your TCD is connected to. In order to use MQTT, your Remote must be connected to the same network your broker is connected to.
 
@@ -101,11 +105,15 @@ In this case, you can connect your Remote to your home WiFi network: Click on "W
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
-##### &#9654; Places without a WiFi network
+#### &#9654; Places without a WiFi network
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
-If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-protected your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+If you have a TCD, you can connect your Remote to the TCD's own WiFi network: 
+
+![STAmode-car](img/stamode-car.png)
+
+Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-protected your TCD-AP, enter this password below. See [here](#car-setup) for more details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
