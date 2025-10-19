@@ -535,8 +535,6 @@ In order to reduce the number of write operations and thereby prolong the life o
 
 ### Main page
 
-### Main page
-
 ##### &#9654; WiFi Configuration
 
 This leads to the [WiFi configuration page](#wifi-configuration)
