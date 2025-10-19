@@ -76,6 +76,8 @@ Your Remote knows two ways of WiFi operation: Either it creates its own WiFi net
 
 As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "**Access point mode**", or "AP-mode". or **"AP-mode"**. In this mode, computers/handhelds can connect to your Remote in order to access the Config Portal, but ways of communication end right here. There is no inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and no [HA/MQTT](#home-assistant--mqtt).
 
+![APmode](img/apmode.png)
+
 It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep operating your Remote in AP-mode, simply _do not configure_ a WiFi network connection as described below.
 
 >Please do not leave computers/handhelds permanently connected to the Remote in AP-mode. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to disruptions.
@@ -500,6 +502,8 @@ Limitations: MQTT Protocol version 3.1.1; TLS/SSL not supported; ".local" domain
 ## Car setup
 
 If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, the following network configuration is recommended:
+
+![STAmode-car](img/stamode-car.png)
 
 #### TCD
 
