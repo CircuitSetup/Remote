@@ -21,7 +21,7 @@ A video of an early proof-of-concept is [here](https://www.facebook.com/61553801
 
 Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD-connected speedo. 
-- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps. When the speed on the TCD's speedo reaches 88mph, a time travel is triggered.
+- Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps twowards each direction. When the speed on the TCD's speedo reaches 88mph, a time travel is triggered.
 - Optional [coasting](#-coasting-when-throttle-in-neutral), optional [auto-throttle](#-auto-throttle)
 - Supports controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
 - Movie-accurate "Stop" light and stop switch behavior
@@ -53,7 +53,7 @@ Then there are two alternative ways to proceed. Note that both methods *require 
 1) Through the [Config Portal](#the-config-portal). Click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*.
 
 2) Via SD card:
-- Copy "REMA.bin" to the root directory of of a FAT32 formatted SD card;
+- Copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
 - power down the Remote,
 - insert this SD card into the slot and 
 - power up the Remote; the sound-pack will be installed automatically.
@@ -70,25 +70,27 @@ The first step is to establish access to the Remote's configuration web site ("C
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 
-#### Connecting to a WiFi network
+### Connecting to a WiFi network
 
 Your Remote knows two ways of WiFi operation: Either it creates its own WiFi network, or it connects to a pre-existing WiFi network.
 
-As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "**Access point mode**", or "AP-mode". 
+As long as your Remote is unconfigured, it creates its own WiFi network named "REM-AP". This mode of operation is called "**Access point mode**", or "AP-mode". or **"AP-mode"**. In this mode, computers/handhelds can connect to your Remote in order to access the Config Portal, but ways of communication end right here. There is no inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and no [HA/MQTT](#home-assistant--mqtt).
 
-It is ok to leave it in AP-mode, predominantly if used stand-alone. (To keep operating your Remote in AP-mode, do not configure a WiFi network as described below, or check "Forget saved WiFi network" and click "Save" on the Config Portal's "WiFi Configuration" page.)
+![APmode](img/apmode.png)
 
->Please do not leave computers/hand helds permanently connected to the Remote's AP. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to packet loss and disruptions.
+It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep operating your Remote in AP-mode, simply _do not configure_ a WiFi network connection as described below.
 
->If you want your device to remain in AP-mode, please choose a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
+>Please do not leave computers/handhelds permanently connected to the Remote in AP-mode. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to disruptions.
 
->For experts: In the following, the term "WiFi network" is used for both "WiFi network" and "ip network" for simplicity reasons. However, for BTTFN/MQTT communication, the devices must (only) be on the same ip network, regardless of how they take part in it: They can be can be connected to different WiFi networks, if those WiFi networks are part of the same ip network, or, in case of the MQTT broker, by wire. If the TCD operates as access point for other props, connecting a prop to the TCD's WiFi network also takes care of suitable ip network configuration through DHCP.
+>If you wish for your device to remain in AP-mode, please select a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
 
-##### &#9654; Home setup with a pre-existing local WiFi network
+#### &#9654; Home setup with a pre-existing local WiFi network
 
-In this case, you can connect your Remote to your home WiFi network: Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
+In this case, you can connect your Remote to your home WiFi network. This allows for inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and [HA/MQTT](#home-assistant--mqtt).
 
->If you have a [Time Circuits Display](https://tcd.out-a-ti.me) note that in order to have both Remote and TCD communicate with each other, your Remote must be connected to the same network your TCD is connected to. In order to use MQTT, your Remote must be connected to the same network your broker is connected to.
+![STAmode-home](img/stamode-home.png)
+
+Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
 
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
@@ -101,11 +103,15 @@ In this case, you can connect your Remote to your home WiFi network: Click on "W
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
-##### &#9654; Places without a WiFi network
+#### &#9654; Places without a WiFi network
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
-If you have a [Time Circuits Display](https://tcd.out-a-ti.me), you can connect your Remote to the TCD's own WiFi network: Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-proteced your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+If you have a TCD, you can connect your Remote to the TCD's own WiFi network: 
+
+![STAmode-car](img/stamode-car.png)
+
+Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-protected your TCD-AP, enter this password below. See [here](#car-setup) for more details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
@@ -127,10 +133,10 @@ It can be accessed as follows:
 
 #### If Remote is connected to a WiFi network
 
-- Connect your hand-held/computer to the same (WiFi) network to which your Remote is connected, and
+- Connect your handheld/computer to the same (WiFi) network to which your Remote is connected, and
 - navigate your browser to http://dtmremote.local
 
-  >Accessing the Config Portal through this address requires the operating system of your hand-held/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
+  >Accessing the Config Portal through this address requires the operating system of your handheld/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
 
   >If connecting to http://dtmremote.local fails due to a name resolution error, you need to find out the Remote's IP address: Power up and fake-power-up the Remote and hold the Calibration button for 2 seconds. The Remote will display its current IP address (a. - b. - c. - d). Then, on your handheld or computer, navigate to http://a.b.c.d (a.b.c.d being the IP address as displayed on the Remote) in order to enter the Config Portal.
 
@@ -156,7 +162,7 @@ When the remote hits 88.0mph, the TCD triggers a time travel.
 
 Auto-throttle: If this option is checked in the Config Portal (or Auto-Throttle is enabled through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
-Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the trottle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
+Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
 
 Buttons and switches:
 
@@ -186,8 +192,8 @@ The throttle of the Remote needs calibration:
 
 - Put the "ON/OFF" switch in "OFF" position.
 - Put the throttle lever in neutral (center) position, press the Calibration button. The display will briefly show "CAL" to show acceptance.
-- Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push the throttle to the up-most position, and press the Calibration button. "DN" will be displayed.
-- Pull the throttle lever to the bottom-most position, and press the Calibration button. The display will clear, calibration is finished.
+- Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
+- Pull the throttle lever to the bottom-most position and press the Calibration button. The display will clear, calibration is finished.
 
 If you change power-source (ie a new battery, or power via USB to the ESP32), re-calibration is required.
  
@@ -377,13 +383,13 @@ The firmware supports some additional user-provided sound effects, which it will
 - "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
 - "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintained switches.
 
-> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the MusicPlayer occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
+> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the Music Player occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
 
 Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
 
 ### Installing Custom & Replacement Audio Files
 
-As of version 1.06 of the Remote firmware, above mentioned audio files (both replacements and custom sounds) can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
+Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
 
 Uploading through the Config Portal works exactly like [installing the default audio files](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
@@ -428,15 +434,17 @@ The "low battery" warning is given as follows:
 
 The TCD communicates with the Remote wirelessly, via the built-in "**B**asic-**T**elematics-**T**ransmission-**F**ramework" (BTTFN) over WiFi. Note that a wired connection is not supported.
 
-The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the MusicPlayer, for instance).
+The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the Music Player, for instance).
 
 | [![Watch the video](https://img.youtube.com/vi/u9oTVXUIOXA/0.jpg)](https://youtu.be/u9oTVXUIOXA) |
 |:--:|
 | Click to watch the video |
 
-Note that the TCD's firmware must be up to date for BTTFN. You can update from [here](http://tcd.out-a-ti.me), or install CircuitSetup's release 3.2 or later.
+BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network. BTTFN does not work over the Internet.
 
-![BTTFN connection](img/family-wifi-bttfn.png)
+![STAmode-bttfn](img/stamode-bttfn.png)
+
+>The term "WiFi network" is used for both "WiFi network" and "ip subnet" here for simplicity reasons. However, for BTTFN communication, the devices must be on the same IP subnet, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip subnet.
 
 In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_IP address or hostname of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
   
@@ -462,36 +470,38 @@ For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr
 
 ### Control the Remote via MQTT
 
-The Remote can - to some extent - be controlled through messages sent to topic **bttf/remote/cmd**. Support commands are
+The Remote can - to some extent - be controlled through messages sent to topic **bttf/remote/cmd**. Supported commands are
 - MP_PLAY: Starts the [Music Player](#the-music-player)
 - MP_STOP: Stops the [Music Player](#the-music-player)
 - MP_NEXT: Jump to next song
 - MP_PREV: Jump to previous song
 - MP_SHUFFLE_ON: Enables shuffle mode in [Music Player](#the-music-player)
 - MP_SHUFFLE_OFF: Disables shuffle mode in [Music Player](#the-music-player)
-- MP_FOLDER_x: x being 0-9, set Music Folder number for [Music Player](#the-music-player)
+- MP_FOLDER_x: x being 0-9, set folder number for [Music Player](#the-music-player)
 
 ### Receive commands from Time Circuits Display
 
 If both TCD and Remote are connected to the same broker, and the option **_Send event notifications_** is checked on the TCD's side, the Remote will receive information on time travel and alarm and play their sequences in sync with the TCD. Unlike BTTFN, however, no other communication takes place. The actual remote controlling requires a BTTFN connection.
 
-![MQTT connection](img/family-wifi-mqtt.png)
-
 MQTT and BTTFN can co-exist. However, the TCD only sends out time travel and alarm notifications through either MQTT or BTTFN, never both. If you have other MQTT-aware devices listening to the TCD's public topic (bttf/tcd/pub) in order to react to time travel or alarm messages, use MQTT (ie check **_Send event notifications_**). If only BTTFN-aware devices are to be used, uncheck this option to use BTTFN as it has less latency.
 
 ### Setup
 
-In order to connect to a MQTT network, a "broker" (such as [mosquitto](https://mosquitto.org/), [EMQ X](https://www.emqx.io/), [Cassandana](https://github.com/mtsoleimani/cassandana), [RabbitMQ](https://www.rabbitmq.com/), [Ejjaberd](https://www.ejabberd.im/), [HiveMQ](https://www.hivemq.com/) to name a few) must be present in your network, and its address needs to be configured in the Config Portal. The broker can be specified either by domain or IP (IP preferred, spares us a DNS call). The default port is 1883. If a different port is to be used, append a ":" followed by the port number to the domain/IP, such as "192.168.1.5:1884". 
+MQTT requires a "broker" (such as [mosquitto](https://mosquitto.org/), [EMQ X](https://www.emqx.io/), [Cassandana](https://github.com/mtsoleimani/cassandana), [RabbitMQ](https://www.rabbitmq.com/), [Ejjaberd](https://www.ejabberd.im/), [HiveMQ](https://www.hivemq.com/) to name a few).
+
+![STAmode-mqtt](img/stamode-mqtt.png)
+
+The broker's address needs to be configured in the Config Portal. It can be specified either by domain or IP (IP preferred, spares us a DNS call). The default port is 1883. If a different port is to be used, append a ":" followed by the port number to the domain/IP, such as "192.168.1.5:1884". 
 
 If your broker does not allow anonymous logins, a username and password can be specified.
 
-Note that MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
-
-Limitations: MQTT Protocol version 3.1.1; TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. 
+Limitations: MQTT Protocol version 3.1.1; TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
 
 ## Car setup
 
 If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, the following network configuration is recommended:
+
+![STAmode-car](img/stamode-car2.png)
 
 #### TCD
 
@@ -509,19 +519,17 @@ After the Remote has restarted, re-enter the Remote's Config Portal (while the T
   - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "WiFi Scan") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
-In order to access the Remote's Config Portal in this setup, connect your hand held or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
+In order to access the Remote's Config Portal in this setup, connect your handheld or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
 
 This "car setup" can also be used in a home setup with no local WiFi network present.
 
 ## Flash Wear
 
-Flash memory has a somewhat limited life-time. It can be written to only between 10.000 and 100.000 times before becoming unreliable. The firmware writes to the internal flash memory when saving settings and other data. Every time you change settings, data is written to flash memory.
+Flash memory has a somewhat limited lifetime. It can be written to only between 10.000 and 100.000 times before becoming unreliable. The firmware writes to the internal flash memory when saving settings and other data. Every time you change settings, data is written to flash memory.
 
 In order to reduce the number of write operations and thereby prolong the life of your Remote, it is recommended to use a good-quality SD card and to check **_[Save secondary settings on SD](#-save-secondary-settings-on-sd)_** in the Config Portal; secondary settings are then stored on the SD card (which also suffers from wear but is easy to replace). See [here](#-save-secondary-settings-on-sd) for more information.
 
 ## Appendix A: The Config Portal
-
-### Main page
 
 ### Main page
 
@@ -551,7 +559,7 @@ Through this page you can either connect your Remote to your local WiFi network,
 
 #### <ins>Connecting to an existing WiFi network</ins>
 
-In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __passwort__ (WPAx). If there is no list displayed, click on "WiFi Scan".
+In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "WiFi Scan".
 
 >By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
 
@@ -594,15 +602,20 @@ If you forget this password and are thereby locked out of your Remote,
 - wait until the display shows "RST",
 - then release the Calibration button.
 
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP addres data; the device will return to using DHCP after a reboot.)
+This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP address data; the device will return to using DHCP after a reboot.)
 
 ##### &#9654; WiFi channel
 
-Here you can select one out of 13 channels, or have the Remote choose a random channel for you. The default channel is 1. Preferred are channels 1, 6 and 11.
-
-If you are in the US, please select a channel between 1 and 11. All above 11 are not legal. A future update will limit this to 11 channels.
+Here you can select one out of 11 channels, or have the Remote choose a random channel for you. The default channel is 1. Preferred are channels 1, 6 and 11.
 
 WiFI channel selection is key for a trouble-free operation. Disturbed WiFi communication can lead to disrupted sequences, packet loss, hanging or freezing props, and other problems. A good article on WiFi channel selection is [here](https://community.ui.com/questions/Choosing-the-right-Wifi-Channel-on-2-4Ghz-Why-Conventional-Wisdom-is-Wrong/ea2ffae0-8028-45fb-8fbf-60569c6d026d).
+
+If a WiFi Scan was done (which can be triggered by clicking "WiFI Scan"), 
+
+- a list of networks is displayed at the top of the page; click "Show All" to list all networks including their channel;
+- a "proposed channel" is displayed near the "WiFi channel" drop-down, based on a rather simple heuristic. The banner is green when a channel is excellent, grey when it is impeded by overlapping channels, and when that banner is red operation in AP mode is not recommended due to channels all being used.
+
+The channel proposition is based on all WiFi networks found; it does not take non-WiFi equipment (baby monitors, cordless phones, Bluetooth devices, microwave ovens, etc) into account. 
 
 ---
 
@@ -618,19 +631,11 @@ If this is checked, acceleration is, after being started by pushing the throttle
 
 Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
-##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
-
-This option selects the function of the O.O button:
-
-If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
-
-If unchecked, O.O is part of Music Player control and jumps to the previous song.
-
 ##### &#9654; Movie-like acceleration
 
 The Remote knows to modes of acceleration: "Movie mode" and "linear".
 
-In movie mode, acceleration changes with speed. At lower speeds, it is faster, and will gradually become slower as speed increases. The pace matches the movie mostly; unfortunately the remote is only shown for a very few seconds and timing is inconsistent (to say the least), so some interpolations were required.
+In movie mode, acceleration changes with speed. At lower speeds, it is faster, and will gradually become slower as speed increases. The pace matches the movie mostly; unfortunately, the remote is only shown for a very few seconds and timing is inconsistent (to say the least), so some interpolations were required.
 
 In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
 
@@ -682,6 +687,14 @@ In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Net
 
 If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
 
+##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
+
+This option selects the function of the O.O button:
+
+If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
+
+If unchecked, O.O is part of Music Player control and jumps to the previous song.
+
 #### <ins>Home Assistant / MQTT settings</ins>
 
 ##### &#9654; Use Home Assistant (MQTT 3.1.1)
@@ -710,7 +723,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 
 If this is checked, some settings (volume, etc) are stored on the SD card (if one is present). This helps to minimize write operations to the internal flash memory and to prolong the lifetime of your Remote. See [Flash Wear](#flash-wear).
 
-Apart from flash Wear, there is another reason for using an SD card for settings: Writing data to internal flash memory can cause delays of up to 1.5 seconds, which interrupt sound playback and have other undesired effects. The Remote needs to save data from time to time, so in order for a smooth experience without unexpected and unwanted delays, please use an SD card and check this option.
+Apart from flash Wear, there is another reason for using an SD card for settings: Writing data to internal flash memory can cause delays of up to 1.5 seconds, which interrupt sound playback and have other undesired effects. The Remote needs to save data from time to time, so for a smooth experience without unexpected and unwanted delays, please use an SD card and check this option.
 
 It is safe to have this option checked even with no SD card present.
 
@@ -775,5 +788,6 @@ Battery monitoring requires knowledge about the cell capacity. Note that the cap
 - "IP": IP address is going to be shown.
 - "RST": WiFi password temporarily cleared; static IP permanently deleted
 
+---
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
 _Other props: [Time Circuits Display](https://tcd.out-a-ti.me) ... [Flux Capacitor](https://fc.out-a-ti.me) ... [SID](https://sid.out-a-ti.me) ... [Dash Gauges](https://dg.out-a-ti.me) ... [VSR](https://vsr.out-a-ti.me) ... [TFC](https://tfc.out-a-ti.me)_
