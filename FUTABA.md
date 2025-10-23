@@ -93,11 +93,11 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 10) Remove two silver screws [8] on the top of the main PCB
 11) Unplug five ribbon cables [9] on the main PCB
-12) Lift out the main PCB; at this point, it is held by only pin sockets that connect it to other PCBs. 
+12) Lift out the main PCB; at this point, it is held only by pin sockets that connect it to other PCBs. 
 
 Now you can access the throttle potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
-Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a possibly leaking battery in it. 
+Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a possibly leaking battery in it.
 
 ### Throttle connection
 
@@ -169,7 +169,7 @@ The prop is powered by a 5V battery, connected to the USB port of the ESP32 boar
 
 Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, access to the battery for charging has to be provided, since the Futaba's battery compartment is not accessible without major disassembly. One way to do this is to use two pins of the existing charging connector, or the "tachometer" connector.
 
-I used this battery, which I sourced from [AliExpress](https://www.aliexpress.com/item/1005005621203243.html):
+I used this battery, which I sourced from [AliExpress](https://www.aliexpress.com/item/1005005621203243.html) and is the very same that CircuitSetup offers as part of their kit:
 
 ![battery](img/battery.jpg)
 
