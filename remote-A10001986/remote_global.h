@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.11"
-#define REMOTE_VERSION_EXTRA "OCT172025"
+#define REMOTE_VERSION "V1.11.1"
+#define REMOTE_VERSION_EXTRA "OCT232025"
 
 //#define REMOTE_DBG              // debug output on Serial
 
@@ -38,8 +38,13 @@
 // or later.
 #define BTTFN_MC
 
-// Uncomment if hardware has a volume knob
+// Uncomment if hardware has an analog volume knob (OEM board does not)
 //#define REMOTE_HAVEVOLKNOB
+
+// Uncomment to support a rotenc for volume
+// Adafruit 4991/5880, DFRobot Gravity 360 or DuPPA I2CEncoder 2.1
+// Enabling this disables volume adjustment through buttons
+//#define HAVE_VOL_ROTENC
 
 // Battery monitor support
 #define HAVE_PM

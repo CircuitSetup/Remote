@@ -380,10 +380,6 @@ static bool read_settings(File configFile, int cfgReadCount)
     bool wd = false;
     size_t jsonSize = 0;
     DECLARE_D_JSON(JSON_SIZE,json);
-    /*
-    //StaticJsonDocument<JSON_SIZE> json;
-    DynamicJsonDocument json(JSON_SIZE);
-    */
     
     DeserializationError error = readJSONCfgFile(json, configFile, funcName);
 
@@ -536,10 +532,6 @@ void write_settings()
 {
     const char *funcName = "write_settings";
     DECLARE_D_JSON(JSON_SIZE,json);
-    /*
-    DynamicJsonDocument json(JSON_SIZE);
-    //StaticJsonDocument<JSON_SIZE> json;
-    */
 
     if(!haveFS && !FlashROMode) {
         Serial.printf("%s: %s\n", funcName, fsNoAvail);

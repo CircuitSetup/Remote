@@ -136,6 +136,10 @@
 
 /*  Changelog
  *  
+ *  2025/10/21 (A10001986) [1.11.1]
+ *    - Reverse Enable/disable click sound commands for uniformity
+ *    - HAVE_VOL_ROTENC compile-time option for RotEnc/Volume support
+ *      (off in official builds)
  *  2025/10/17 (A10001986) [1.11]
  *    - Wipe flash FS if alien VER found; in case no VER is present, check
  *      available space for audio files, and wipe if not enough.
