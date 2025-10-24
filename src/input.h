@@ -6,7 +6,6 @@
  * https://remote.out-a-ti.me
  *
  * RotEnc Class, RemButton Class: I2C-RotEnc and Button handling
- * A class for ADC will be added here later.
  * 
  * -------------------------------------------------------------------
  * License: MIT NON-AI
@@ -64,7 +63,7 @@
 #define REM_RE_TYPE_DUPPAV2    1     // DuPPA I2CEncoder V2.1    https://www.duppa.net/shop/i2cencoder-v2-1/
 #define REM_RE_TYPE_DFRGR360   2     // DFRobot Gravity 360      https://www.dfrobot.com/product-2575.html
 #define REM_RE_TYPE_CS         3     // CircuitSetup             <yet to be designed>
-#define REM_RE_TYPE_ADS1X15    4     // ADS1015                  ADC (not strickly rotary encoder)
+#define REM_RE_TYPE_ADS1X15    4     // ADS1015                  ADC (not really a rotary encoder)
 
 class REMRotEnc {
   

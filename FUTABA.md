@@ -93,11 +93,11 @@ The following instructions only apply to models FP-T8SGA-P and FP-T8SGH-P.
 
 10) Remove two silver screws [8] on the top of the main PCB
 11) Unplug five ribbon cables [9] on the main PCB
-12) Lift out the main PCB; at this point, it is held by only pin sockets that connect it to other PCBs. 
+12) Lift out the main PCB; at this point, it is held only by pin sockets that connect it to other PCBs. 
 
 Now you can access the throttle potentiometer to patch in black-green-red wires in order to connect this pot to the kit's Control Board, as well as all switches and buttons you may want to connect to said Control board.
 
-Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a possibly leaking battery in it. 
+Even if you do not plan on putting a battery for the mod kit inside the Futaba, it is recommended to remove the Futaba's original battery. It is heavy, removing it makes the finished prop easier to handle. Also, since the the Remote, after the modifications, can't be used normally anyway, there is no point in keeping a possibly leaking battery in it.
 
 ### Throttle connection
 
@@ -169,7 +169,7 @@ The prop is powered by a 5V battery, connected to the USB port of the ESP32 boar
 
 Depending on the shape of the battery, it can be mounted under the Unibox (instead of the second set of 9V batteries), or inside the Futaba, in place of the Futaba's original battery. In the latter case, access to the battery for charging has to be provided, since the Futaba's battery compartment is not accessible without major disassembly. One way to do this is to use two pins of the existing charging connector, or the "tachometer" connector.
 
-I used this battery, which I sourced from [AliExpress](https://www.aliexpress.com/item/1005005621203243.html):
+I used this battery, which I sourced from [AliExpress](https://www.aliexpress.com/item/1005005621203243.html) and is the very same that CircuitSetup offers as part of their kit:
 
 ![battery](img/battery.jpg)
 
@@ -183,7 +183,7 @@ The actual power cable for the kit electronics is lead outside, together with th
 
 #### Battery monitoring
 
-"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a direct connection to the LiPo cells through either the JST PH connector on the bottom of the CB, or the "BATT+" header next to the STOP headers. When using a battery with a MH-CD32 booster board, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power! (Since GND is common, a wire to the battery's "+" suffices.)
+"M" versions of the Control Board (for example "1.6M") feature a Battery Monitor circuit for LiPo batteries. Battery monitoring requires a **direct connection to the LiPo cells** - _not the power output of the booster board_ - through either the JST PH connector on the bottom of the CB, or the "BATT+" header next to the STOP headers. When using a battery with a MH-CD32 booster board, the wires can be soldered on in parallel to the wires that lead to the LiPo cells. Watch out for shorts while soldering, you are working with live power! (Since GND is common, a wire to the battery's "+" suffices.)
 
 ![BatMonConnection](img/batmon1.jpg)
 
@@ -195,7 +195,7 @@ Battery header for monitoring on top of the Control Board: (Only + needed, GND i
 
 ![BatMonConnection](img/battmon2.jpg)
 
-**Important**: The Control Board must be connected to the LiPo battery when said battery is idle, ie not being discharged or charged.
+**Important**: The Control Board must be connected to the LiPo battery when said battery is idle, ie not being discharged or charged. This means it must be connected while the ESP32's USB is unplugged.
 
 ### "Stop" light and switch
 

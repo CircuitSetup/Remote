@@ -662,9 +662,8 @@ void main_setup()
         Serial.println("Rotary encoder/ADC throttle not found");
     }
 
-    // Check for secondary RotEnc for volume on secondary i2c addresses
-    // Not used - buttons for vol control suffice
-    #if 0
+    // Check for RotEnc for volume on secondary i2c addresses
+    #ifdef HAVE_VOL_ROTENC
     if(rotEncV.begin(false)) {
         useRotEncVol = true;
         rotEncVol = &rotEncV;
@@ -1091,12 +1090,14 @@ void main_loop()
             }
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonAKeyPressed) {
-                if(increaseVolume()) {
-                    displayVolume();
-                    offDisplayTimer = true;
-                    offDisplayNow = millis();
+                if(!useRotEncVol) {
+                    if(increaseVolume()) {
+                        displayVolume();
+                        offDisplayTimer = true;
+                        offDisplayNow = millis();
+                    }
+                    play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                 }
-                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
             } else if(isbuttonAKeyLongPressed) {
                 increaseBrightness();
                 displayBrightness();
@@ -1139,12 +1140,14 @@ void main_loop()
             }
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonBKeyPressed) {
-                if(decreaseVolume()) {
-                    displayVolume();
-                    offDisplayTimer = true;
-                    offDisplayNow = millis();
+                if(!useRotEncVol) {
+                    if(decreaseVolume()) {
+                        displayVolume();
+                        offDisplayTimer = true;
+                        offDisplayNow = millis();
+                    }
+                    play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                 }
-                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
             } else if(isbuttonBKeyLongPressed) {
                 decreaseBrightness();
                 displayBrightness();
@@ -1643,15 +1646,17 @@ void main_loop()
     // We get speed via MC now, no need to poll so frequently
     //bttfnRemPollInt = (!FPBUnitIsOn && displayGPSMode && (tcdCurrSpeed >= 0)) ? BTTFN_POLL_INT_FAST : BTTFN_POLL_INT;
 
-    // Poll RotEnv for volume. Don't in calibmode, P0 or during
-    // acceleration
-    #if 0
+    // Poll RotEnv for volume. Don't in calibmode, P0 or during acceleration
+    #ifdef HAVE_VOL_ROTENC
     if(useRotEncVol && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
         int oldVol = curSoftVol;
         curSoftVol = rotEncVol->updateVolume(curSoftVol, false);
         if(oldVol != curSoftVol) {
             volchanged = true;
             volchgnow = millis();
+            if(!FPBUnitIsOn) {
+                play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+            }
         }
     }
     #endif
@@ -2010,8 +2015,8 @@ static void execute_remote_command()
                 volchgnow = millis();
                 updateConfigPortalVolValues();
                 re_vol_reset();
-            } else if(command == 50 || command == 51) { // 7350/7351: Enable/disable acceleration click sound
-                playClicks = (command == 50);
+            } else if(command == 50 || command == 51) { // 7350/7351: Disable/enable acceleration click sound
+                playClicks = (command == 51);
             }
 
         } else if(command >= 400 && command <= 415) {

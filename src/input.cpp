@@ -6,7 +6,6 @@
  * https://remote.out-a-ti.me
  *
  * RotEnc Class, RemButton Class: I2C-RotEnc and Button handling
- * A class for ADC will be added here later.
  * 
  * -------------------------------------------------------------------
  * License: MIT NON-AI
@@ -61,6 +60,15 @@
 
 /*
  * REMRotEnc class
+ * 
+ * Rotary Encoder handling:
+ * Supports Adafruit 4991, DuPPA I2CEncoder 2.1, DFRobot Gravity 360,
+ * plus ADS 1015 since the handling is identical.
+ * 
+ * For Volume, the encoders must be configured as follows:
+ * - Ada4991: A0 closed (i2c address 0x37)
+ * - DFRobot Gravity 360: SW1 off, SW2 on (i2c address 0x55)
+ * - DuPPA I2CEncoder 2.1: A0 and A1 closed (i2c address 0x03)
  */
 
 // General

@@ -774,9 +774,13 @@ If the battery level is lower than 8 percent, a warning is issued. The way it is
 
 Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
 
+The battery CircuitSetup supplies as part of their kit is of the 3.7/4.2V type.
+
 ##### &#9654; Capacity per cell (1000-6000)
 
 Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
+
+The battery CircuitSetup supplies as part of their kit is a dual-cell 5000mAh LiPo battery. The value to enter here is therefore 2500.
 
 ## Appendix B: Display messages
 
