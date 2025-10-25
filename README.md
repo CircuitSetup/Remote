@@ -241,8 +241,8 @@ If the button/switch is pressed/flipped while audio from a previous press/flip o
 
 ### WiFi connection
 
-If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up.
-
+If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
+ 
 ### TCD remote command reference
 
 <table>
@@ -523,6 +523,16 @@ In order to access the Remote's Config Portal in this setup, connect your handhe
 
 This "car setup" can also be used in a home setup with no local WiFi network present.
 
+## WiFi power saving features
+
+The Config Portal offers an option for WiFi power saving for AP-mode (ie when the device acts as an access point). This option configures a timer after whose expiry WiFi is switched off; the device is no longer transmitting or receiving data over WiFi.
+
+The timer can be set to 0 (which disables it; WiFi is never switched off; this is the default), or 10-99 minutes. 
+
+After WiFi has been switched off due to timer expiry, it can be re-enabled by fake-powering down and up, in which case the timers are restarted (ie WiFi is again switched off after timer expiry).
+
+This technique is also used to trigger a re-connection attempt in case your configured WiFi network was not available when the Remote was trying to connect, see [here](#-wifi-connection).
+
 ## Flash Wear
 
 Flash memory has a somewhat limited lifetime. It can be written to only between 10.000 and 100.000 times before becoming unreliable. The firmware writes to the internal flash memory when saving settings and other data. Every time you change settings, data is written to flash memory.
@@ -616,6 +626,10 @@ If a WiFi Scan was done (which can be triggered by clicking "WiFI Scan"),
 - a "proposed channel" is displayed near the "WiFi channel" drop-down, based on a rather simple heuristic. The banner is green when a channel is excellent, grey when it is impeded by overlapping channels, and when that banner is red operation in AP mode is not recommended due to channels all being used.
 
 The channel proposition is based on all WiFi networks found; it does not take non-WiFi equipment (baby monitors, cordless phones, Bluetooth devices, microwave ovens, etc) into account. 
+
+##### &#9654; Power save timer
+
+See [here](#wifi-power-saving-features).
 
 ---
 
