@@ -529,7 +529,7 @@ The timer can be set to 0 (which disables it; WiFi is never switched off; this i
 
 After WiFi has been switched off due to timer expiry, it can be re-enabled by fake-powering down and up, in which case the timers are restarted (ie WiFi is again switched off after timer expiry).
 
-This technique is also used to trigger a re-connection attempt in case your configured WiFi network was not available when the Remote was trying to connect, see [here](#wifi-connection).
+This technique is also used to trigger a re-connection attempt in case your configured WiFi network was not available when the Remote was trying to connect, see [here](#-home-setup-with-a-pre-existing-local-wifi-network).
 
 ## Flash Wear
 
@@ -570,6 +570,8 @@ Through this page you can either connect your Remote to your local WiFi network,
 In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "WiFi Scan".
 
 >By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
+
+If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
 
 ##### &#9654; Forget Saved WiFi Network
 
