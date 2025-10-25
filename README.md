@@ -103,6 +103,8 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
+If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
+
 #### &#9654; Places without a WiFi network
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
@@ -238,11 +240,106 @@ Sound playback is mapped as follows:
 If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option **_Maintained: Audio on ON only_** is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
-
-### WiFi connection
-
-If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
  
+## SD card
+
+Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend, Sandisk Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards work fine in my experience.
+
+The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
+
+Note that the SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
+
+### Sound substitution
+
+The Remote's built-in sound effects can be substituted by your own sound files on a FAT32-formatted SD card. These files will be played back directly from the SD card during operation, so the SD card has to remain in the slot.
+
+Your replacements need to be put in the root (top-most) directory of the SD card, be in mp3 format (128kbps max) and named as follows:
+- "poweron.mp3": Played when the Remote is (fake)-powered on.
+- "brakeon.mp3": Played when the brake is switched on (= when the "Stop" light is switched on).
+- "alarm.mp3". Played when the alarm sounds (triggered by a Time Circuits Display via BTTFN or MQTT);
+
+### Additional Custom Sounds
+
+The firmware supports some additional user-provided sound effects, which it will load from the SD card. If the respective file is present, it will be used. If that file is absent, no sound will be played.
+
+- "poweroff.mp3": Played when the Remote is (fake)-powered off.
+- "brakeoff.mp3": Played when the brake is switched off.
+- "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
+- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintained switches.
+
+> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the Music Player occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
+
+Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
+
+### Installing Custom & Replacement Audio Files
+
+Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
+
+Uploading through the Config Portal works exactly like [installing the default audio files](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
+
+In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
+
+For technical reasons, the Remote must reboot after mp3 files are uploaded in this way.
+
+Please remember that the maximum bitrate for mp3 files is 128kbps. Also note that the uploaded file is stored to the root folder of the SD card, so this way of uploading cannot be used to upload songs for the Music Player. 
+
+## The Music Player
+
+The firmware contains a simple music player to play mp3 files located on the SD card. 
+
+In order to be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, ie the player starts searching for music in folder *music0*. This folder number can be changed in the Config Portal or through the TCD keypad (705x).
+
+The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). *The maximum bitrate is 128kpbs.*
+
+Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you - provided you can live with the files being sorted in alphabetical order: Just copy your files with their original filenames to the music folder; upon boot or upon selecting a folder containing such files, they will be renamed following the 3-digit name scheme (as mentioned: in alphabetic order). You can also add files to a music folder later, they will be renamed properly; when you do so, delete the file "TCD_DONE.TXT" from the music folder on the SD card so that the firmware knows that something has changed. The renaming process can take a while (10 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the control board as this speeds up the process.
+
+To start and stop music playback, hold "O.O" for 2 seconds. Briefly pressing "O.O" jumps to the previous song, pressing "RESET" to the next one. (The same can be achieved by entering codes on the TCD's keypad: 7002 = previous song, 7005 = play/stop, 7008 = next song).
+
+By default, the songs are played in order, starting at 000.mp3, followed by 001.mp3 and so on. Holding "RESET" toggles Shuffle mode. The power-up Shuffle mode can be set up in the Config Portal.
+
+See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
+
+While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
+
+## Battery monitoring
+
+If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
+
+Monitoring can be done through the [Calibration button](#calibration) and the TCD (7091/7092).
+
+The "low battery" warning is given as follows:
+
+- A sound is played once
+- If the Futaba's battery level meter is connected and enabled, it is switched off (= it reads 0).
+- If the Futaba's original power LED is connected and enabled, it blinks.
+- If the power LED is disabled, depending on fake power, either "BAT" is displayed periodically, or the display blinks periodically.
+
+## Connecting a Time Circuits Display
+
+The TCD communicates with the Remote wirelessly, via the built-in "**B**asic-**T**elematics-**T**ransmission-**F**ramework" (BTTFN) over WiFi. Note that a wired connection is not supported.
+
+The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the Music Player, for instance).
+
+| [![Watch the video](https://img.youtube.com/vi/u9oTVXUIOXA/0.jpg)](https://youtu.be/u9oTVXUIOXA) |
+|:--:|
+| Click to watch the video |
+
+BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network. BTTFN does not work over the Internet.
+
+![STAmode-bttfn](img/stamode-bttfn.png)
+
+>The term "WiFi network" is used for both "WiFi network" and "ip subnet" here for simplicity reasons. However, for BTTFN communication, the devices must be on the same IP subnet, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip subnet.
+
+In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_IP address or hostname of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
+  
+Afterwards, the Remote and the TCD can communicate wirelessly and 
+- the TCD's speed control is done by the Remote,
+- both play an alarm-sequence when the TCD's alarm occurs (if so configures),
+- the Remote can be remote controlled through the TCD's keypad (command codes 7xxx; see below),
+- the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
+
+You can use BTTF-Network and MQTT at the same time.
+
 ### TCD remote command reference
 
 <table>
@@ -356,105 +453,6 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
-
-## SD card
-
-Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend, Sandisk Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards work fine in my experience.
-
-The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
-
-Note that the SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
-
-### Sound substitution
-
-The Remote's built-in sound effects can be substituted by your own sound files on a FAT32-formatted SD card. These files will be played back directly from the SD card during operation, so the SD card has to remain in the slot.
-
-Your replacements need to be put in the root (top-most) directory of the SD card, be in mp3 format (128kbps max) and named as follows:
-- "poweron.mp3": Played when the Remote is (fake)-powered on.
-- "brakeon.mp3": Played when the brake is switched on (= when the "Stop" light is switched on).
-- "alarm.mp3". Played when the alarm sounds (triggered by a Time Circuits Display via BTTFN or MQTT);
-
-### Additional Custom Sounds
-
-The firmware supports some additional user-provided sound effects, which it will load from the SD card. If the respective file is present, it will be used. If that file is absent, no sound will be played.
-
-- "poweroff.mp3": Played when the Remote is (fake)-powered off.
-- "brakeoff.mp3": Played when the brake is switched off.
-- "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
-- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintained switches.
-
-> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the Music Player occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
-
-Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
-
-### Installing Custom & Replacement Audio Files
-
-Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
-
-Uploading through the Config Portal works exactly like [installing the default audio files](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
-
-In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
-
-For technical reasons, the Remote must reboot after mp3 files are uploaded in this way.
-
-Please remember that the maximum bitrate for mp3 files is 128kbps. Also note that the uploaded file is stored to the root folder of the SD card, so this way of uploading cannot be used to upload songs for the Music Player. 
-
-## The Music Player
-
-The firmware contains a simple music player to play mp3 files located on the SD card. 
-
-In order to be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, ie the player starts searching for music in folder *music0*. This folder number can be changed in the Config Portal or through the TCD keypad (705x).
-
-The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). *The maximum bitrate is 128kpbs.*
-
-Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you - provided you can live with the files being sorted in alphabetical order: Just copy your files with their original filenames to the music folder; upon boot or upon selecting a folder containing such files, they will be renamed following the 3-digit name scheme (as mentioned: in alphabetic order). You can also add files to a music folder later, they will be renamed properly; when you do so, delete the file "TCD_DONE.TXT" from the music folder on the SD card so that the firmware knows that something has changed. The renaming process can take a while (10 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the control board as this speeds up the process.
-
-To start and stop music playback, hold "O.O" for 2 seconds. Briefly pressing "O.O" jumps to the previous song, pressing "RESET" to the next one. (The same can be achieved by entering codes on the TCD's keypad: 7002 = previous song, 7005 = play/stop, 7008 = next song).
-
-By default, the songs are played in order, starting at 000.mp3, followed by 001.mp3 and so on. Holding "RESET" toggles Shuffle mode. The power-up Shuffle mode can be set up in the Config Portal.
-
-See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
-
-While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
-
-## Battery monitoring
-
-If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
-
-Monitoring can be done through the [Calibration button](#calibration) and the TCD (7091/7092).
-
-The "low battery" warning is given as follows:
-
-- A sound is played once
-- If the Futaba's battery level meter is connected and enabled, it is switched off (= it reads 0).
-- If the Futaba's original power LED is connected and enabled, it blinks.
-- If the power LED is disabled, depending on fake power, either "BAT" is displayed periodically, or the display blinks periodically.
-
-## Connecting a Time Circuits Display
-
-The TCD communicates with the Remote wirelessly, via the built-in "**B**asic-**T**elematics-**T**ransmission-**F**ramework" (BTTFN) over WiFi. Note that a wired connection is not supported.
-
-The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the Music Player, for instance).
-
-| [![Watch the video](https://img.youtube.com/vi/u9oTVXUIOXA/0.jpg)](https://youtu.be/u9oTVXUIOXA) |
-|:--:|
-| Click to watch the video |
-
-BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network. BTTFN does not work over the Internet.
-
-![STAmode-bttfn](img/stamode-bttfn.png)
-
->The term "WiFi network" is used for both "WiFi network" and "ip subnet" here for simplicity reasons. However, for BTTFN communication, the devices must be on the same IP subnet, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip subnet.
-
-In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_IP address or hostname of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
-  
-Afterwards, the Remote and the TCD can communicate wirelessly and 
-- the TCD's speed control is done by the Remote,
-- both play an alarm-sequence when the TCD's alarm occurs (if so configures),
-- the Remote can be remote controlled through the TCD's keypad (command codes 7xxx),
-- the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
-
-You can use BTTF-Network and MQTT at the same time, see immediately below.
 
 ## Home Assistant / MQTT
 
