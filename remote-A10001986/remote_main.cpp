@@ -892,7 +892,8 @@ void main_loop()
                 if(!justBootedNow && wifiNeedReConnect()) {
                     showWaitSequence();
                     remdisplay.on();
-                    wifiReConnect();
+                    // Enable WiFi / even if in AP mode / with CP
+                    wifiOn(0, true, false);
                     endWaitSequence();
                 }
                 justBootedNow = 0;

@@ -136,6 +136,12 @@
 
 /*  Changelog
  *  
+ *  2025/10/24 (A10001986) [1.11.2]
+ *    - Add WiFi power saving for AP-mode, and user-triggered WiFi connect retry. 
+ *      Fake power off, then on to 1) restart WiFi after entering PS mode, 2)
+ *      trigger a connection attempt if configured WiFi could not be connected
+ *      to during boot.
+ *    - WM: Fix AP shutdown; handle MDNS
  *  2025/10/21 (A10001986) [1.11.1]
  *    - Reverse Enable/disable click sound commands for uniformity
  *    - HAVE_VOL_ROTENC compile-time option for RotEnc/Volume support

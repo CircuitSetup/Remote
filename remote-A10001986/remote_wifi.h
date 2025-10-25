@@ -64,11 +64,9 @@ extern bool useMQTT;
 void wifi_setup();
 void wifi_setup2();
 void wifi_loop();
-void wifiOff(bool force = false);
 void wifiOn(unsigned long newDelay = 0, bool alsoInAPMode = false, bool deferConfigPortal = false);
-void wifiReConnect(bool deferCP = false);
 bool wifiNeedReConnect();
-bool wifiIsOn();
+bool wifiOnWillBlock();
 void wifiStartCP();
 
 void updateConfigPortalValues();

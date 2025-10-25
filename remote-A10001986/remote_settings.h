@@ -69,6 +69,7 @@ extern uint8_t musFolderNum;
 #define DEF_WIFI_RETRY      3     // 1-10; Default: 3 retries
 #define DEF_WIFI_TIMEOUT    7     // 7-25; Default: 7 seconds
 #define DEF_AP_CHANNEL      1     // 1-13; 0 = random(1-13)
+#define DEF_WIFI_APOFFDELAY 0
 
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
@@ -109,7 +110,8 @@ struct Settings {
     char systemID[8]        = "";
     char appw[10]           = "";
     char apChnl[4]          = MS(DEF_AP_CHANNEL);
-    
+    char wifiAPOffDelay[4]  = MS(DEF_WIFI_APOFFDELAY);
+
     char coast[4]           = MS(DEF_COAST);
     char autoThrottle[4]    = MS(DEF_AT);
     char ooTT[4]            = MS(DEF_OO_TT);
