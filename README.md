@@ -92,7 +92,7 @@ In this case, you can connect your Remote to your home WiFi network. This allows
 
 ![STAmode-home](img/stamode-home.png)
 
-Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. If that fails, it will again start in access point mode.
+Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. 
 
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
@@ -105,7 +105,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
-If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
+If the Remote fails to connect, it falls back to AP-mode. You can trigger another connection attempt by fake-powering it down and up.
 
 #### &#9654; Places without a WiFi network
 
@@ -531,7 +531,7 @@ The timer can be set to 0 (which disables it; WiFi is never switched off; this i
 
 After WiFi has been switched off due to timer expiration, it can be re-enabled by fake-powering down and up, in which case the timers are restarted (ie WiFi is again switched off after timer expiration).
 
-This technique is also used to trigger a re-connection attempt in case your configured WiFi network was not available when the Remote was trying to connect, see [here](#-home-setup-with-a-pre-existing-local-wifi-network).
+> This technique is also used to trigger a re-connection attempt in case your configured WiFi network was not available when the Remote was trying to connect, see [here](#-home-setup-with-a-pre-existing-local-wifi-network).
 
 ## Flash Wear
 
