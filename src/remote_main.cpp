@@ -171,16 +171,15 @@ static bool    doCoast = false;
 bool           keepCounting = false;
 bool           autoThrottle = false;
 
-bool                 calibMode = false;
-static bool          calibUp = false;
-static bool          calibIP = true;
+bool        calibMode = false;
+static bool calibUp = false;
+static bool calibIP = true;
 
 static bool          offDisplayTimer = false;
 static unsigned long offDisplayNow = 0;
 
-uint16_t             visMode = 0;
-
-bool                 movieMode = true;
+uint16_t visMode = 0;
+bool     movieMode = true;
 
 static bool          etmr = false;
 static unsigned long enow = 0;
@@ -279,6 +278,8 @@ static const char    *brakeOnSnd  = "/brakeon.mp3";   // Default provided
 static const char    *brakeOffSnd = "/brakeoff.mp3";  // No default sound
 static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
 
+bool blockScan = false;
+
 // BTTF network
 #define BTTFN_VERSION              1
 #define BTTFN_SUP_MC            0x80
@@ -328,6 +329,7 @@ static WiFiUDP       bttfMcUDP;
 static UDP*          remMcUDP;
 #endif
 static byte          BTTFUDPBuf[BTTF_PACKET_SIZE];
+static byte          BTTFUDPTBuf[BTTF_PACKET_SIZE];
 static unsigned long bttfnRemPollInt = BTTFN_POLL_INT;
 static unsigned long BTTFNUpdateNow = 0;
 static unsigned long BTFNTSAge = 0;
@@ -344,7 +346,6 @@ static uint8_t       bttfnReqStatus = 0x52; // Request capabilities, status, spe
 #ifdef BTTFN_MC
 static uint32_t      tcdHostNameHash = 0;
 static byte          BTTFMCBuf[BTTF_PACKET_SIZE];
-static uint8_t       bttfnMcMarker = 0;
 static IPAddress     bttfnMcIP(224, 0, 0, 224);
 #endif 
 static uint32_t      bttfnSeqCnt[BTTFN_REM_MAX_COMMAND+1] = { 1 };
@@ -429,6 +430,7 @@ static void BTTFNCheckPacket();
 static bool bttfn_checkmc();
 #endif
 static bool BTTFNTriggerUpdate();
+static void BTTFNPreparePacketTemplate();
 static void BTTFNSendPacket();
 static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2);
 static bool bttfn_trigger_tt(bool probe);
@@ -875,6 +877,8 @@ void main_loop()
         #endif
         if(isFPBKeyPressed) {
             if(!FPBUnitIsOn) {
+                bool wifiblocks = false;
+                
                 // Fake power on:
                 FPBUnitIsOn = true;
 
@@ -889,11 +893,16 @@ void main_loop()
 
                 // Re-connect if we're in AP mode but
                 // there is a configured WiFi network
-                if(!justBootedNow && wifiNeedReConnect()) {
-                    showWaitSequence();
-                    remdisplay.on();
-                    wifiReConnect();
-                    endWaitSequence();
+                if(!justBootedNow && wifiNeedReConnect(wifiblocks)) {
+                    if(wifiblocks) {
+                        showWaitSequence();
+                        remdisplay.on();
+                    }
+                    // Enable WiFi
+                    wifiOn(0);
+                    if(wifiblocks) {
+                        endWaitSequence();
+                    }
                 }
                 justBootedNow = 0;
 
@@ -2087,6 +2096,8 @@ static void display_ip()
     remdisplay.setText("IP");
     remdisplay.show();
 
+    blockScan = true;
+
     mydelay(500, true);
 
     wifi_getIP(a[0], a[1], a[2], a[3]);
@@ -2101,6 +2112,8 @@ static void display_ip()
     remdisplay.clearBuf();
     remdisplay.show();
     mydelay(500, true);
+
+    blockScan = false;
 }
 
 #ifdef HAVE_PM
@@ -2160,11 +2173,13 @@ static bool display_soc_voltage(int type, bool displayAndReturn)
         remdisplay.show();
         remdisplay.blink(blink);
         if(displayAndReturn) return true;
+        blockScan = true;
         mydelay(2000, true);
         remdisplay.clearBuf();
         remdisplay.show();
         if(blink) remdisplay.blink(false);
         mydelay(500, true);
+        blockScan = false;
         return true;
     }
     return false;
@@ -2173,6 +2188,7 @@ static bool display_soc_voltage(int type, bool displayAndReturn)
 
 static void play_startup()
 {    
+    blockScan = true;
     remdisplay.setSpeed(0);
     remdisplay.show();
     remdisplay.on();
@@ -2187,6 +2203,7 @@ static void play_startup()
 
     remdisplay.setSpeed(0);
     remdisplay.show();
+    blockScan = false;
 }
 
 void allOff()
@@ -2214,8 +2231,11 @@ void switchMusicFolder(uint8_t nmf)
     bool waitShown = false;
 
     if(nmf > 9) return;
-    
+
     if(musFolderNum != nmf) {
+
+        blockScan = true;
+        
         musFolderNum = nmf;
         // Initializing the MP can take a while;
         // need to stop all audio before calling
@@ -2237,6 +2257,8 @@ void switchMusicFolder(uint8_t nmf)
         if(waitShown) {
             endWaitSequence();
         }
+
+        blockScan = false;
     }
 }
 
@@ -2537,6 +2559,8 @@ static void bttfn_setup()
     remMcUDP = &bttfMcUDP;
     remMcUDP->beginMulticast(bttfnMcIP, BTTF_DEFAULT_LOCAL_PORT + 2);
     #endif
+
+    BTTFNPreparePacketTemplate();
     
     BTTFNfailCount = 0;
     useBTTFN = true;
@@ -2603,6 +2627,42 @@ static void handle_tcd_notification(uint8_t *buf)
     uint32_t seqCnt;
 
     switch(buf[5]) {
+    case BTTFN_NOT_SPD:       // TCD fw >= 10/26/2024 (MC)
+        seqCnt = GET32(buf, 12);
+        if(seqCnt > bttfnTCDSeqCnt || seqCnt == 1) {
+            int t = buf[8] | (buf[9] << 8);
+            tcdCurrSpeed = buf[6] | (buf[7] << 8);
+            if(tcdCurrSpeed > 88) tcdCurrSpeed = 88;
+            switch(t) {
+            case BTTFN_SSRC_P0:
+                tcdSpeedP0 = (uint16_t)tcdCurrSpeed;
+                tcdIsInP0 = FPBUnitIsOn ? 1 : 0;
+                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
+                break;
+            case BTTFN_SSRC_REM:
+                tcdIsInP0 = 0;
+                tcdSpdIsRotEnc = false;
+                tcdSpdIsRemote = true;
+                break;
+            case BTTFN_SSRC_ROTENC:
+                tcdIsInP0 = 0;
+                tcdSpdIsRotEnc = true;
+                tcdSpdIsRemote = false;
+                break;
+            default:
+                tcdIsInP0 = 0;
+                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
+            }
+            #ifdef REMOTE_DBG
+            Serial.printf("TCD sent NOT_SPD: %d src %d (IsP0:%d)\n", tcdCurrSpeed, t, tcdIsInP0);
+            #endif
+        } else {
+            #ifdef REMOTE_DBG
+            Serial.printf("Out-of-sequence packet received from TCD %d %d\n", seqCnt, bttfnTCDSeqCnt);
+            #endif
+        }
+        bttfnTCDSeqCnt = seqCnt;
+        break;
     case BTTFN_NOT_PREPARE:
         // Prepare for TT. Comes at some undefined point,
         // an undefined time before the actual tt, and
@@ -2648,49 +2708,13 @@ static void handle_tcd_notification(uint8_t *buf)
             wakeup();
         }
         break;
-    case BTTFN_NOT_REM_SPD:     // TCD fw < 10/26/2024
+    case BTTFN_NOT_REM_SPD:     // TCD fw < 10/26/2024 (non-MC)
         seqCnt = GET32(buf, 12);
-        if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
+        if(seqCnt > bttfnTCDSeqCnt || seqCnt == 1) {
             tcdIsInP0  = buf[8] | (buf[9] << 8);
             tcdSpeedP0 = buf[6] | (buf[7] << 8);
             #ifdef REMOTE_DBG
             Serial.printf("TCD sent REM_SPD: %d %d\n", tcdIsInP0, tcdSpeedP0);
-            #endif
-        } else {
-            #ifdef REMOTE_DBG
-            Serial.printf("Out-of-sequence packet received from TCD %d %d\n", seqCnt, bttfnTCDSeqCnt);
-            #endif
-        }
-        bttfnTCDSeqCnt = seqCnt;
-        break;
-    case BTTFN_NOT_SPD:       // TCD fw >= 10/26/2024
-        seqCnt = GET32(buf, 12);
-        if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
-            int t = buf[8] | (buf[9] << 8);
-            tcdCurrSpeed = buf[6] | (buf[7] << 8);
-            if(tcdCurrSpeed > 88) tcdCurrSpeed = 88;
-            switch(t) {
-            case BTTFN_SSRC_P0:
-                tcdSpeedP0 = (uint16_t)tcdCurrSpeed;
-                tcdIsInP0 = FPBUnitIsOn ? 1 : 0;
-                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
-                break;
-            case BTTFN_SSRC_REM:
-                tcdIsInP0 = 0;
-                tcdSpdIsRotEnc = false;
-                tcdSpdIsRemote = true;
-                break;
-            case BTTFN_SSRC_ROTENC:
-                tcdIsInP0 = 0;
-                tcdSpdIsRotEnc = true;
-                tcdSpdIsRemote = false;
-                break;
-            default:
-                tcdIsInP0 = 0;
-                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
-            }
-            #ifdef REMOTE_DBG
-            Serial.printf("TCD sent NOT_SPD: %d src %d (IsP0:%d)\n", tcdCurrSpeed, t, tcdIsInP0);
             #endif
         } else {
             #ifdef REMOTE_DBG
@@ -2719,26 +2743,22 @@ static bool bttfn_checkmc()
 
     if(haveTCDIP) {
         if(bttfnTcdIP != remMcUDP->remoteIP())
-            return true; //false;
+            return true;
     } else {
         // Do not use tcdHostNameHash; let DISCOVER do its work
         // and wait for a result.
-        return true; //false;
+        return true;
     }
 
     if(!check_packet(BTTFMCBuf))
-        return true; //false;
+        return true;
 
     if((BTTFMCBuf[4] & 0x4f) == (BTTFN_VERSION | 0x40)) {
 
         // A notification from the TCD
         handle_tcd_notification(BTTFMCBuf);
     
-    } /*else {
-      
-        return false;
-
-    }*/
+    }
 
     return true;
 }
@@ -2831,7 +2851,6 @@ static void BTTFNCheckPacket()
             bttfnReqStatus &= ~0x40;     // Do no longer poll capabilities
             #ifdef BTTFN_MC
             if(BTTFUDPBuf[31] & 0x01) {
-                bttfnMcMarker = BTTFN_SUP_MC;
                 bttfnReqStatus &= ~0x02; // Do no longer poll speed, comes over multicast
             }
             #endif
@@ -2864,28 +2883,33 @@ static bool BTTFNTriggerUpdate()
     return true;
 }
 
-static void BTTFNPreparePacket()
+static void BTTFNPreparePacketTemplate()
 {
-    memset(BTTFUDPBuf, 0, BTTF_PACKET_SIZE);
+    memset(BTTFUDPTBuf, 0, BTTF_PACKET_SIZE);
 
     // ID
-    memcpy(BTTFUDPBuf, BTTFUDPHD, 4);
+    memcpy(BTTFUDPTBuf, BTTFUDPHD, 4);
 
-    // Tell the TCD about our hostname (0-term., 13 bytes total)
-    strncpy((char *)BTTFUDPBuf + 10, settings.hostName, 12);
-    BTTFUDPBuf[10+12] = 0;
+    // Tell the TCD about our hostname
+    // 13 bytes total. If hostname is longer, last in buf is '.'
+    memcpy(BTTFUDPTBuf + 10, settings.hostName, 13);
+    if(strlen(settings.hostName) > 13) BTTFUDPTBuf[10+12] = '.';
 
-    BTTFUDPBuf[10+13] = BTTFN_TYPE_REMOTE;
+    BTTFUDPTBuf[10+13] = BTTFN_TYPE_REMOTE;
 
     // Version, MC-marker
+    BTTFUDPTBuf[4] = BTTFN_VERSION;
     #ifdef BTTFN_MC
-    BTTFUDPBuf[4] = BTTFN_VERSION | bttfnMcMarker;  
-    #else
-    BTTFUDPBuf[4] = BTTFN_VERSION;
+    BTTFUDPTBuf[4] |= BTTFN_SUP_MC;
     #endif
-
+    
     // Remote-ID
-    SET32(BTTFUDPBuf, 35, myRemID);                 
+    SET32(BTTFUDPTBuf, 35, myRemID);                 
+}
+
+static void BTTFNPreparePacket()
+{
+    memcpy(BTTFUDPBuf, BTTFUDPTBuf, BTTF_PACKET_SIZE);          
 }
 
 static void BTTFNDispatch()
@@ -2902,9 +2926,6 @@ static void BTTFNDispatch()
         remUDP->beginPacket(bttfnTcdIP, BTTF_DEFAULT_LOCAL_PORT);
     #ifdef BTTFN_MC
     } else {
-        #ifdef REMOTE_DBG
-        //Serial.printf("Sending multicast (hostname hash %x)\n", tcdHostNameHash);
-        #endif
         remUDP->beginPacket(bttfnMcIP, BTTF_DEFAULT_LOCAL_PORT + 1);
     }
     #endif
@@ -2989,7 +3010,7 @@ static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2)
 
     BTTFNPreparePacket();
     
-    BTTFUDPBuf[5] = 0x00;
+    //BTTFUDPBuf[5] = 0x00;   // already 0
 
     SET32(BTTFUDPBuf, 6, bttfnSeqCnt[cmd]);
     bttfnSeqCnt[cmd]++;
