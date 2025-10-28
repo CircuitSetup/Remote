@@ -87,6 +87,8 @@ It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep oper
 
 >If you wish for your device to remain in AP-mode, please select a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
 
+> In AP-mode, the SID can switch off WiFi to save power. See [here](#wifi-power-saving-features).
+
 </details>
 
 #### Home setup with a pre-existing local WiFi network
