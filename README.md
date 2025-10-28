@@ -550,15 +550,15 @@ In order to reduce the number of write operations and thereby prolong the life o
 
 ### Main page
 
-##### &#9654; WiFi Configuration
+##### &#9193; WiFi Configuration
 
 This leads to the [WiFi configuration page](#wifi-configuration)
 
-##### &#9654; Settings
+##### &#9193; Settings
 
 This leads to the [Settings page](#settings).
 
-##### &#9654; Update
+##### &#9193; Update
 
 This leads to the firmware and audio update page. 
 
@@ -582,11 +582,11 @@ In order to connect your Remote to your WiFi network, all you need to do is eith
 
 If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
 
-##### &#9654; Forget Saved WiFi Network
+##### &#9193; Forget Saved WiFi Network
 
 Clicking this button (and selecting "yes" in the confirmation dialog) deletes the currently saved WiFi network (SSID and password as well as static IP data) and reboots the device; it will restart in "access point" (AP) mode. See [here](#connecting-to-a-wifi-network).
 
-##### &#9654; Hostname
+##### &#9193; Hostname
 
 The device's hostname in the WiFi network. Defaults to 'dtmremote'. This also is the domain name at which the Config Portal is accessible from a browser in the same local network. The URL of the Config Portal then is http://<i>hostname</i>.local (the default is http://dtmremote.local)
 
@@ -594,25 +594,25 @@ If you have more than one Remote in your local network, please give them unique 
 
 _This setting applies to both AP-mode and when your Remote is connected to a WiFi network._ 
 
-##### &#9654; WiFi connection attempts
+##### &#9193; WiFi connection attempts
 
 Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#connecting-to-a-wifi-network)
 
-##### &#9654; WiFi connection timeout
+##### &#9193; WiFi connection timeout
 
 Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#connecting-to-a-wifi-network)
 
-##### &#9654; Attempt re-connection on Fake Power
+##### &#9193; Attempt re-connection on Fake Power
 
 If the configured WiFi network wasn't reachable during power-up (and the Remote, as a result, fell back to AP-mode), and this option is checked, the Remote will re-try to connect to the configured WiFi network upon Fake-Power-On. If this option is unchecked, no connection attempts are made, the Remote will remain in AP-mode until (real-)powered-down.
 
 #### <ins>Settings for AP-mode</ins>
 
-##### &#9654; Network name (SSID) appendix
+##### &#9193; Network name (SSID) appendix
 
 By default, when your Remote creates a WiFi network of its own ("AP-mode"), this network is named "REM-AP". In case you have multiple Remotes in your vicinity, you can have a string appended to create a unique network name. If you, for instance, enter "-ABC" here, the WiFi network name will be "REM-AP-ABC". Characters A-Z, a-z, 0-9 and - are allowed.
 
-##### &#9654; Password
+##### &#9193; Password
 
 By default, and if this field is empty, the Remote's own WiFi network ("REM-AP") will be unprotected. If you want to protect your access point, enter your password here. It needs to be 8 characters in length and only characters A-Z, a-z, 0-9 and - are allowed.
 
@@ -627,7 +627,7 @@ If you forget this password and are thereby locked out of your Remote,
 
 This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP address data; the device will return to using DHCP after a reboot.)
 
-##### &#9654; WiFi channel
+##### &#9193; WiFi channel
 
 Here you can select one out of 11 channels, or have the Remote choose a random channel for you. The default channel is 1. Preferred are channels 1, 6 and 11.
 
@@ -640,11 +640,11 @@ If a WiFi Scan was done (which can be triggered by clicking "WiFI Scan"),
 
 The channel proposition is based on all WiFi networks found; it does not take non-WiFi equipment (baby monitors, cordless phones, Bluetooth devices, microwave ovens, etc) into account. 
 
-##### &#9654; Power save timer
+##### &#9193; Power save timer
 
 See [here](#wifi-power-saving-features).
 
-##### &#9654; Re-enable WiFi on Fake Power
+##### &#9193; Re-enable WiFi on Fake Power
 
 If a power save timer is configured and has expired, and this option is checked, the Remote will re-enable WiFi upon Fake-Power-On. If this option is unchecked, WiFi will **not** be re-enabled, it will stay off until (real-)power down. See also [here](#wifi-power-saving-features).
 
@@ -654,15 +654,15 @@ If a power save timer is configured and has expired, and this option is checked,
 
 #### <ins>Basic settings</ins>
 
-##### &#9654; Auto throttle
+##### &#9193; Auto throttle
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
-##### &#9654; Coasting when throttle in neutral
+##### &#9193; Coasting when throttle in neutral
 
 Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
 
-##### &#9654; Movie-like acceleration
+##### &#9193; Movie-like acceleration
 
 The Remote knows to modes of acceleration: "Movie mode" and "linear".
 
@@ -670,19 +670,19 @@ In movie mode, acceleration changes with speed. At lower speeds, it is faster, a
 
 In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
 
-##### &#9654; Play acceleration 'click' sound
+##### &#9193; Play acceleration 'click' sound
 
 Check this to play a click sound for each "mph" while accelerating. Uncheck to stay mute. Note that the click is only played when accelerating, not with reducing speed.
 
-##### &#9654; Play TCD-alarm sounds
+##### &#9193; Play TCD-alarm sounds
 
 If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TCD's alarm sounds. If you want to play an alarm sound, check this option.
 
-##### &#9654; Display TCD speed when fake-off
+##### &#9193; Display TCD speed when fake-off
 
 When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
 
-##### &#9654; Brightness level
+##### &#9193; Brightness level
 
 This selects brightness level for the LED display. 
 
@@ -698,13 +698,13 @@ You can also change the volume using buttons ["O.O" and "RESET"](#buttons-oo-and
 
 #### <ins>Music Player settings</ins>
 
-##### &#9654; Music folder
+##### &#9193; Music folder
 
 Selects the current music folder, can be 0 through 9. 
 
 This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such a change will be saved immediately.
 
-##### &#9654; Shuffle at startup
+##### &#9193; Shuffle at startup
 
 When checked, songs are shuffled when the device is booted. When unchecked, songs will be played in order.
 
@@ -712,13 +712,13 @@ Shuffle mode can be changed at any time through the Remote's ["RESET" button](#b
 
 #### <ins>Settings for BTTFN communication</ins>
 
-##### &#9654; IP address or hostname of TCD
+##### &#9193; IP address or hostname of TCD
 
 In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
 
 If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
 
-##### &#9654; O.O, throttle-up trigger BTTFN-wide Time Travel
+##### &#9193; O.O, throttle-up trigger BTTFN-wide Time Travel
 
 This option selects the function of the O.O button:
 
@@ -728,29 +728,29 @@ If unchecked, O.O is part of Music Player control and jumps to the previous song
 
 #### <ins>Home Assistant / MQTT settings</ins>
 
-##### &#9654; Use Home Assistant (MQTT 3.1.1)
+##### &#9193; Use Home Assistant (MQTT 3.1.1)
 
 If checked, the Remote will connect to the broker (if configured) and send and receive messages via [MQTT](#home-assistant--mqtt)
 
-##### &#9654; Broker IP[:port] or domain[:port]
+##### &#9193; Broker IP[:port] or domain[:port]
 
 The broker server address. Can be a domain (eg. "myhome.me") or an IP address (eg "192.168.1.5"). The default port is 1883. If different port is to be used, it can be specified after the domain/IP and a colon ":", for example: "192.168.1.5:1884". Specifying the IP address is preferred over a domain since the DNS call adds to the network overhead. Note that ".local" (MDNS) domains are not supported.
 
-##### &#9654; User[:Password]
+##### &#9193; User[:Password]
 
 The username (and optionally the password) to be used when connecting to the broker. Can be left empty if the broker accepts anonymous logins.
 
-##### &#9654; Button x topic
+##### &#9193; Button x topic
 
 The MQTT topic for on/off messages. Nothing is published/sent if the topic is empty.
 
-##### &#9654; Button x message on ON/OFF
+##### &#9193; Button x message on ON/OFF
 
 The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
 #### <ins>Other settings</ins>
 
-##### &#9654; Save secondary settings on SD
+##### &#9193; Save secondary settings on SD
 
 If this is checked, some settings (volume, etc) are stored on the SD card (if one is present). This helps to minimize write operations to the internal flash memory and to prolong the lifetime of your Remote. See [Flash Wear](#flash-wear).
 
@@ -767,21 +767,21 @@ This procedure ensures that all your settings are copied from the old to the new
 
 #### <ins>Hardware configuration settings</ins>
 
-##### &#9654; Button x is maintained
+##### &#9193; Button x is maintained
 
 You might want use one or more switches of the Futaba remote for sound effects and/or MQTT messages. If that switch is a maintained contact, check this option for the respective "button" number. Leave unchecked when using a momentary button.
 
-##### &#9654; Maintained: Play audio on ON only
+##### &#9193; Maintained: Play audio on ON only
 
 If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
-##### &#9654; Use Power LED
+##### &#9193; Use Power LED
 
 This setting is for using the Futaba's original power LED. If this LED isn't connected to the control board, this setting has no effect.
 
 If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
 
-##### &#9654; Use Battery Level Meter
+##### &#9193; Use Battery Level Meter
 
 This setting is for using the Futaba's original battery level meter. If this meter isn't connected to the control board, this setting has no effect.
 
@@ -789,25 +789,25 @@ If unchecked, the level meter stays at zero, which is the default. If checked, t
 
 Please note that the meter does not show actual battery level; the built-in battery monitor, as described below, only works through the Stanley display.
 
-##### &#9654; Power LED/meter on fake power
+##### &#9193; Power LED/meter on fake power
 
 If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
 
 #### <ins>Battery monitoring</ins>
 
-##### &#9654; Battery monitoring/warnings
+##### &#9193; Battery monitoring/warnings
 
 Enable or disable battery monitoring and respective warnings. Battery monitoring requires using an "M"-version Control Board, or a non-M version with the BatMon Add-On, plus a properly connected LiPo battery.
 
 If the battery level is lower than 8 percent, a warning is issued. The way it is given depends on hardware and software settings, see [here](#battery-monitoring).
 
-##### &#9654; Battery type
+##### &#9193; Battery type
 
 Battery monitoring only works reliably with the LiPo batteries listed. Select the type you are using.
 
 The battery CircuitSetup supplies as part of their kit is of the 3.7/4.2V type.
 
-##### &#9654; Capacity per cell (1000-6000)
+##### &#9193; Capacity per cell (1000-6000)
 
 Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
 
