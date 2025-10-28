@@ -105,7 +105,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 
-If the Remote fails to connect, it falls back to AP-mode. You can trigger another connection attempt by fake-powering it down and up.
+If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
 
 #### &#9654; Places without a WiFi network
 
