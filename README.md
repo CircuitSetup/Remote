@@ -81,9 +81,12 @@ As long as your Remote is unconfigured, it creates its own WiFi network named "R
 It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep operating your Remote in AP-mode, simply _do not configure_ a WiFi network connection as described below.
 
 <details>
+<summary>More...</summary>
+  
 >Please do not leave computers/handhelds permanently connected to the Remote in AP-mode. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to disruptions.
 
 >If you wish for your device to remain in AP-mode, please select a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
+
 </details>
 
 #### &#9654; Home setup with a pre-existing local WiFi network
