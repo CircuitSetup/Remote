@@ -122,7 +122,7 @@ If you have a TCD, you can connect your Remote to the TCD's own WiFi network:
 
 ![STAmode-car](img/stamode-car.png)
 
-This setup is meant for cars, but also suitable for places with no WiFi. See [here](#car-setup) for details.
+This setup is meant for cars, but suitable for any place with no WiFi network. See [here](#car-setup) for details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
@@ -145,10 +145,7 @@ It can be accessed as follows:
 #### If Remote is connected to a WiFi network
 
 - Connect your handheld/computer to the same (WiFi) network to which your Remote is connected, and
-- navigate your browser to http://dtmremote.local
-
-  <details>
-  <summary>More...</summary>
+- navigate your browser to http://dtmremote.local   <details><summary>More...</summary>
 
   >Accessing the Config Portal through this address requires the operating system of your handheld/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
 
