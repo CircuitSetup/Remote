@@ -82,7 +82,7 @@ It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep oper
 
 <details>
 <summary>More...</summary>
-  
+
 >Please do not leave computers/handhelds permanently connected to the Remote in AP-mode. These devices might think they are connected to the internet and therefore hammer your Remote with DNS and HTTP requests which might lead to disruptions.
 
 >If you wish for your device to remain in AP-mode, please select a suitable WiFi channel on the Config Portal's "WiFi Configuration" page. See [here](#-wifi-channel).
@@ -110,7 +110,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
 
-#### &#183; Places without a WiFi network
+#### &#9672; Places without a WiFi network
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
