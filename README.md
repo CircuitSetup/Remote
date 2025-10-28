@@ -89,7 +89,7 @@ It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep oper
 
 </details>
 
-#### &#9737; Home setup with a pre-existing local WiFi network
+#### Home setup with a pre-existing local WiFi network
 
 In this case, you can connect your Remote to your home WiFi network. This allows for inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and [HA/MQTT](#home-assistant--mqtt).
 
@@ -114,7 +114,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
 
-#### &#9655; Places without a WiFi network
+#### Places without a WiFi network
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
