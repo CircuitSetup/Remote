@@ -525,13 +525,13 @@ This "car setup" can also be used in a home setup with no local WiFi network pre
 
 ## WiFi power saving features
 
-The Config Portal offers an option for WiFi power saving for AP-mode (ie when the device acts as an access point). This option configures a timer after whose expiration WiFi is switched off; the device is no longer transmitting or receiving data over WiFi.
+In AP-mode (ie when the device acts as an access point), WiFi can only be used for the Config Portal. Since changing settings in the Config Portal isn't something done on a regular basis, the Remote can switch off WiFi after a configurable period of time in order to save battery power.
 
-The timer can be set to 0 (which disables it; WiFi is never switched off; this is the default), or 10-99 minutes. 
+To enable power-saving enter into the field **_Power save timer_** the number of minutes that need to elapse from (real-)power-on until WiFi is supposed to be switched off. Anything between 10 and 99 minutes is allowed. Entering 0 disables this feature entirely.
 
-After WiFi has been switched off due to timer expiration, it can be re-enabled by fake-powering down and up, in which case the timers are restarted (ie WiFi is again switched off after timer expiration).
+After WiFi has been switched off due to timer expiration, and the option **_Re-enable WiFi on Fake Power_** is checked, WiFi will be re-enabled on fake-power-up, and the timer is restarted (ie WiFi is again switched off after timer expiration).
 
-> This technique is also used to trigger a re-connection attempt in case your configured WiFi network was not available when the Remote was trying to connect, see [here](#-home-setup-with-a-pre-existing-local-wifi-network).
+>If the Remote ended up in AP-mode because the configured WiFi network wasn't reachable on (real-)power up, and the option **_Attempt re-connection on Fake Power_** is checked, the Remote will attempt to connect to the WiFi network on fake-power-on (and, as usual, fall back to AP-mode on failure; the timer is, of course, restarted in that case).
 
 ## Flash Wear
 
@@ -595,6 +595,10 @@ Number of times the firmware tries to reconnect to a WiFi network, before fallin
 
 Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#connecting-to-a-wifi-network)
 
+##### &#9654; Attempt re-connection on Fake Power
+
+If the configured WiFi network wasn't reachable during power-up (and the Remote, as a result, fell back to AP-mode), and this option is checked, the Remote will re-try to connect to the configured WiFi network upon Fake-Power-On. If this option is unchecked, no connection attempts are made, the Remote will remain in AP-mode until (real-)powered-down.
+
 #### <ins>Settings for AP-mode</ins>
 
 ##### &#9654; Network name (SSID) appendix
@@ -632,6 +636,10 @@ The channel proposition is based on all WiFi networks found; it does not take no
 ##### &#9654; Power save timer
 
 See [here](#wifi-power-saving-features).
+
+##### &#9654; Re-enable WiFi on Fake Power
+
+If a power save timer is configured and has expired, and this option is checked, the Remote will re-enable WiFi upon Fake-Power-On. If this option is unchecked, WiFi will **not** be re-enabled, it will stay off until (real-)power down. See also [here](#wifi-power-saving-features).
 
 ---
 
