@@ -525,9 +525,9 @@ This "car setup" can also be used in a home setup with no local WiFi network pre
 
 ## WiFi power saving features
 
-In AP-mode (ie when the device acts as an access point), WiFi can only be used for the Config Portal. Since changing settings in the Config Portal isn't something done on a regular basis, the Remote can switch off WiFi after a configurable period of time in order to save battery power.
+In AP-mode (ie when the device acts as an access point), WiFi can [only be used for the Config Portal](#connecting-to-a-wifi-network). Since changing settings in the Config Portal isn't something done on a regular basis, the Remote can switch off WiFi in AP-mode after a configurable period of time in order to save battery power.
 
-To enable power-saving enter into the field **_Power save timer_** the number of minutes that need to elapse from (real-)power-on until WiFi is supposed to be switched off. Anything between 10 and 99 minutes is allowed. Entering 0 disables this feature entirely.
+To enable this power-saving feature, navigate to the "WiFi Configuration" page and enter into the field **_Power save timer_** in the "Settings for AP-mode" section the number of minutes that need to elapse from (real-)power-on until WiFi is supposed to be switched off. Anything between 10 and 99 minutes is allowed. Entering 0 disables this feature.
 
 After WiFi has been switched off due to timer expiration, and the option **_Re-enable WiFi on Fake Power_** is checked, WiFi will be re-enabled on fake-power-up, and the timer is restarted (ie WiFi is again switched off after timer expiration).
 
