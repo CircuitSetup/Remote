@@ -113,7 +113,7 @@ If you have a TCD, you can connect your Remote to the TCD's own WiFi network:
 
 ![STAmode-car](img/stamode-car.png)
 
-Run the TCD in AP-Mode, and on your Remote's Config Portal, click on "WiFi Configuration" and either select "TCD-AP" from the top of the page or enter "TCD-AP" under *Network name (SSID)*. If you password-protected your TCD-AP, enter this password below. See [here](#car-setup) for more details.
+This setup is meant for cars, but also suitable for places with no WiFi. See [here](#car-setup) for details.
 
 After completing WiFi setup, your Remote is ready for use; you can also continue configuring it to your personal preferences through the Config Portal.
 
