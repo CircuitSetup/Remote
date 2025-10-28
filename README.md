@@ -110,7 +110,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
 
-#### &#9654; Places without a WiFi network
+#### &#183; Places without a WiFi network
 
 In this case and with no [Time Circuits Display](https://tcd.out-a-ti.me) at hand, keep your Remote operating in AP-mode.
 
