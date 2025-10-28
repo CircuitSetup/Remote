@@ -144,8 +144,8 @@ It can be accessed as follows:
 
 #### If Remote is connected to a WiFi network
 
-- Connect your handheld/computer to the same (WiFi) network to which your Remote is connected, and
-- navigate your browser to http://dtmremote.local   <details><summary>More...</summary>
+- Connect your handheld/computer to the same (WiFi) network to which your Remote is connected.
+- Navigate your browser to http://dtmremote.local   <details><summary>More...</summary>
 
   >Accessing the Config Portal through this address requires the operating system of your handheld/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
 
