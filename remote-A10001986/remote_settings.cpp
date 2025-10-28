@@ -427,11 +427,13 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyTextParm(json["hostName"], settings.hostName, sizeof(settings.hostName));
         wd |= CopyCheckValidNumParm(json["wifiConRetries"], settings.wifiConRetries, sizeof(settings.wifiConRetries), 1, 10, DEF_WIFI_RETRY);
         wd |= CopyCheckValidNumParm(json["wifiConTimeout"], settings.wifiConTimeout, sizeof(settings.wifiConTimeout), 7, 25, DEF_WIFI_TIMEOUT);
+        wd |= CopyCheckValidNumParm(json["rcOFP"], settings.reconOnFP, sizeof(settings.reconOnFP), 0, 1, DEF_RECON_ON_FP);
     
         wd |= CopyTextParm(json["systemID"], settings.systemID, sizeof(settings.systemID));
         wd |= CopyTextParm(json["appw"], settings.appw, sizeof(settings.appw));
         wd |= CopyCheckValidNumParm(json["apch"], settings.apChnl, sizeof(settings.apChnl), 0, 11, DEF_AP_CHANNEL);
         wd |= CopyCheckValidNumParm(json["wAOD"], settings.wifiAPOffDelay, sizeof(settings.wifiAPOffDelay), 0, 99, DEF_WIFI_APOFFDELAY);
+        wd |= CopyCheckValidNumParm(json["rAOFP"], settings.reactAPOnFP, sizeof(settings.reactAPOnFP), 0, 1, DEF_REACT_AP_ON_FP);
 
         // Settings
 
@@ -552,11 +554,13 @@ void write_settings()
     json["hostName"] = (const char *)settings.hostName;
     json["wifiConRetries"] = (const char *)settings.wifiConRetries;
     json["wifiConTimeout"] = (const char *)settings.wifiConTimeout;
+    json["rcOFP"] = (const char *)settings.reconOnFP;
     
     json["systemID"] = (const char *)settings.systemID;
     json["appw"] = (const char *)settings.appw;
     json["apch"] = (const char *)settings.apChnl;
     json["wAOD"] = (const char *)settings.wifiAPOffDelay;
+    json["rAOFP"] = (const char *)settings.reactAPOnFP;
 
     sprintf(settings.autoThrottle, "%d", autoThrottle ? 1 : 0);
     sprintf(settings.movieMode, "%d", movieMode ? 1 : 0);

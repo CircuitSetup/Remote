@@ -68,8 +68,10 @@ extern uint8_t musFolderNum;
 #define DEF_HOSTNAME        "dtmremote"
 #define DEF_WIFI_RETRY      3     // 1-10; Default: 3 retries
 #define DEF_WIFI_TIMEOUT    7     // 7-25; Default: 7 seconds
+#define DEF_RECON_ON_FP     1     // 1: Reconnection attempt on Fake Power, 0: no
 #define DEF_AP_CHANNEL      1     // 1-13; 0 = random(1-13)
 #define DEF_WIFI_APOFFDELAY 0
+#define DEF_REACT_AP_ON_FP  1     // 1: Re-activate AP on Fake Power, 0: don't.
 
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
@@ -107,10 +109,12 @@ struct Settings {
     char hostName[32]       = DEF_HOSTNAME;
     char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
     char wifiConTimeout[4]  = MS(DEF_WIFI_TIMEOUT);
+    char reconOnFP[4]       = MS(DEF_RECON_ON_FP);
     char systemID[8]        = "";
     char appw[10]           = "";
     char apChnl[4]          = MS(DEF_AP_CHANNEL);
     char wifiAPOffDelay[4]  = MS(DEF_WIFI_APOFFDELAY);
+    char reactAPOnFP[4]     = MS(DEF_REACT_AP_ON_FP);
 
     char coast[4]           = MS(DEF_COAST);
     char autoThrottle[4]    = MS(DEF_AT);

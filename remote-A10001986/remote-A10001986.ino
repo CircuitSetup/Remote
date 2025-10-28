@@ -136,6 +136,10 @@
 
 /*  Changelog
  *  
+ *  2025/10/27 (A10001986) [1.11.4]
+ *    - Make reactivation of AP after power-save and reconnection attempts
+ *      on Fake Power optional.
+ *    - Fix display of current power saving timer value in CP
  *  2025/10/26 (A10001986) [1.11.3]
  *    - BTTFN: Fix hostname length issues; code optimizations; minor fix for mc 
  *      notifications. Breaks support for TCD firmwares < 3.2.

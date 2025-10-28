@@ -158,13 +158,14 @@ static const char haveNoSD[] = "<div class='c' style='background-color:#dc3630;c
 WiFiManagerParameter custom_hostName("hostname", HNTEXT, settings.hostName, 31, "pattern='[A-Za-z0-9\\-]+' placeholder='Example: dtmremote'");
 WiFiManagerParameter custom_wifiConRetries("wifiret", "Connection attempts (1-10)", settings.wifiConRetries, 2, "type='number' min='1' max='10' autocomplete='off'", WFM_LABEL_BEFORE);
 WiFiManagerParameter custom_wifiConTimeout("wificon", "Connection timeout (7-25[seconds])", settings.wifiConTimeout, 2, "type='number' min='7' max='25'");
+WiFiManagerParameter custom_reconAtmp("recAtmt", "Attempt re-connection on Fake Power", settings.reconOnFP, 1, "autocomplete='off' title='Fake power off+on to try to reconnect to configured WiFi network.' type='checkbox' class='mt5'", WFM_LABEL_AFTER);
 
 WiFiManagerParameter custom_sysID("sysID", "Network name (SSID) appendix<br><span style='font-size:80%'>Will be appended to \"REM-AP\" to create a unique SSID if multiple remotes are in range. [a-z/0-9/-]</span>", settings.systemID, 7, "pattern='[A-Za-z0-9\\-]+'");
 WiFiManagerParameter custom_appw("appw", "Password<br><span style='font-size:80%'>Password to protect REM-AP. Empty or 8 characters [a-z/0-9/-]<br><b>Write this down, you might lock yourself out!</b></span>", settings.appw, 8, "minlength='8' pattern='[A-Za-z0-9\\-]+'");
 WiFiManagerParameter custom_apch(wmBuildApChnl);
 WiFiManagerParameter custom_bapch(wmBuildBestApChnl);
 WiFiManagerParameter custom_wifiAPOffDelay("wifiAPoff", "Power save timer<br><span style='font-size:80%'>(10-99[minutes]; 0=off)</span>", settings.wifiAPOffDelay, 2, "type='number' min='0' max='99' title='WiFi-AP will be shut down after chosen period. 0 means never.'");
-WiFiManagerParameter custom_wifihint("<div style='margin:0;padding:0'>Fake power off+on to re-enable Wifi when in power save mode.</div>");
+WiFiManagerParameter custom_reactAP("reactAP", "Re-enable WiFi on Fake Power", settings.reactAPOnFP, 1, "autocomplete='off' title='Fake power off+on to re-enable Wifi when in power save mode.' type='checkbox' class='mt5'", WFM_LABEL_AFTER);
 
 // Settings
 
@@ -306,20 +307,19 @@ static bool shouldDeleteIPConfig = false;
 // Did user configure a WiFi network to connect to?
 bool wifiHaveSTAConf = false;
 
-static unsigned long lastConnect = 0;
-static unsigned long consecutiveAPmodeFB = 0;
-
 // WiFi power management in AP mode
 bool          wifiInAPMode = false;
 bool          wifiAPIsOff = false;
 unsigned long wifiAPModeNow;
 unsigned long wifiAPOffDelay = 0;     // default: never
+static bool   wifiReactAPOnFP = true;
 
 // WiFi power management in STA mode
 bool          wifiIsOff = false;
 unsigned long wifiOnNow = 0;
 unsigned long wifiOffDelay     = 0;   // default: never
 unsigned long origWiFiOffDelay = 0;
+static bool   wifiReconOnFP = true;
 
 static File acFile;
 static bool haveACFile = false;
@@ -331,13 +331,12 @@ static int  *opType = NULL;
 #ifdef REMOTE_HAVEMQTT
 #define       MQTT_SHORT_INT  (30*1000)
 #define       MQTT_LONG_INT   (5*60*1000)
-static const char emptyStr[1] = { 0 };
-bool          useMQTT = false;
-char          *mqttUser = (char *)emptyStr;
-char          *mqttPass = (char *)emptyStr;
-char          *mqttServer = (char *)emptyStr;
-uint16_t      mqttPort = 1883;
-bool          pubMQTT = false;
+static const char    emptyStr[1] = { 0 };
+bool                 useMQTT = false;
+char *               mqttUser = (char *)emptyStr;
+char *               mqttPass = (char *)emptyStr;
+char *               mqttServer = (char *)emptyStr;
+uint16_t             mqttPort = 1883;
 static unsigned long mqttReconnectNow = 0;
 static unsigned long mqttReconnectInt = MQTT_SHORT_INT;
 static uint16_t      mqttReconnFails = 0;
@@ -351,7 +350,7 @@ static unsigned long mqttPingInt = MQTT_SHORT_INT;
 static uint16_t      mqttPingsExpired = 0;
 #endif
 
-static void wifiConnect(bool deferConfigPortal = false);
+static void wifiConnect(bool APonly = false, bool deferConfigPortal = false);
 static void wifiOff(bool force);
 
 static void saveParamsCallback();
@@ -409,7 +408,8 @@ void wifi_setup()
 
       &custom_sectstart_wifi,
       &custom_wifiConRetries, 
-      &custom_wifiConTimeout, 
+      &custom_wifiConTimeout,
+      &custom_reconAtmp,
 
       &custom_sectstart_ap,
       &custom_sysID,
@@ -417,7 +417,7 @@ void wifi_setup()
       &custom_apch,
       &custom_bapch,
       &custom_wifiAPOffDelay,
-      &custom_wifihint,
+      &custom_reactAP,
 
       &custom_sectend_foot,
 
@@ -569,6 +569,9 @@ void wifi_setup()
     if(temp > 10) temp = 10;
     wm.setConnectRetries(temp);
 
+    wifiReconOnFP = (atoi(settings.reconOnFP) > 0);
+    wifiReactAPOnFP = (atoi(settings.reactAPOnFP) > 0);
+
     wm.setMenu(wifiMenu, TC_MENUSIZE, false);
 
     temp = (sizeof(parmArray) / sizeof(WiFiManagerParameter *)) - 1;
@@ -629,7 +632,7 @@ void wifi_setup()
             #ifdef REMOTE_HAVEMQTT
             useMQTT = false;
             #endif
-        }      
+        }
     } else {
         // No point in retry when we have no WiFi config'd
         wm.setConnectRetries(1);
@@ -654,7 +657,7 @@ void wifi_setup()
 void wifi_setup2()
 {
     // Connect, but defer starting the CP
-    wifiConnect(true);
+    wifiConnect(false, true);
 
     #ifdef REMOTE_MDNS
     if(MDNS.begin(settings.hostName)) {
@@ -851,6 +854,7 @@ void wifi_loop()
             }
             mystrcpy(settings.wifiConRetries, &custom_wifiConRetries);
             mystrcpy(settings.wifiConTimeout, &custom_wifiConTimeout);
+            strcpyCB(settings.reconOnFP, &custom_reconAtmp);
             
             strcpytrim(settings.systemID, custom_sysID.getValue(), true);
             strcpytrim(settings.appw, custom_appw.getValue(), true);
@@ -860,6 +864,7 @@ void wifi_loop()
                 }
             }
             mystrcpy(settings.wifiAPOffDelay, &custom_wifiAPOffDelay);
+            strcpyCB(settings.reactAPOnFP, &custom_reactAP);
 
         } else { 
 
@@ -1081,18 +1086,24 @@ void wifi_loop()
 
 }
 
-static void wifiConnect(bool deferConfigPortal)
+static void wifiConnect(bool APonly, bool deferConfigPortal)
 {
+    bool doOnlyAP = false;
     char realAPName[16];
 
     strcpy(realAPName, apName);
     if(settings.systemID[0]) {
         strcat(realAPName, settings.systemID);
     }
+
+    if(APonly || !settings.ssid[0]) {
+        wm.startConfigPortal(realAPName, settings.appw, settings.ssid, settings.pass);
+        doOnlyAP = true;
+    }
     
     // Automatically connect using saved credentials if they exist
     // If connection fails it starts an access point with the specified name
-    if(wm.autoConnect(settings.ssid, settings.pass, realAPName, settings.appw)) {
+    if(!doOnlyAP && wm.autoConnect(settings.ssid, settings.pass, realAPName, settings.appw)) {
         #ifdef REMOTE_DBG
         Serial.println("WiFi connected");
         #endif
@@ -1124,8 +1135,6 @@ static void wifiConnect(bool deferConfigPortal)
         wifiIsOff = false;
         wifiOnNow = millis();
         wifiAPIsOff = false;  // Sic! Allows checks like if(wifiAPIsOff || wifiIsOff)
-
-        //consecutiveAPmodeFB = 0;  // Reset counter of consecutive AP-mode fall-backs
 
     } else {
         #ifdef REMOTE_DBG
@@ -1167,14 +1176,7 @@ static void wifiConnect(bool deferConfigPortal)
         wifiAPModeNow = millis();
         wifiIsOff = false;    // Sic!
 
-        /*
-        if(wifiHaveSTAConf) {    
-            consecutiveAPmodeFB++;  // increase counter of consecutive AP-mode fall-backs
-        }
-        */
     }
-
-    //lastConnect = millis();
 }
 
 void wifiOff(bool force)
@@ -1189,13 +1191,13 @@ void wifiOff(bool force)
     wm.disableWiFi();
 }
 
-void wifiOn(unsigned long newDelay, bool alsoInAPMode, bool deferCP)
+void wifiOn(unsigned long newDelay)
 {
+    bool doOnlyAP = false;
     unsigned long desiredDelay;
     unsigned long Now = millis();
     
-    // wifiON() is called when the user fake-powers off+on (with alsoInAPMode
-    // TRUE) [and - UNUSED - (with alsoInAPMode FALSE)].
+    // wifiON() is called when the user fake-powers off+on.
     //
     // Fake power down/up serves - apart from the actual fake power function -
     // additional two purposes: To re-enable WiFi if in power save mode, and 
@@ -1203,12 +1205,6 @@ void wifiOn(unsigned long newDelay, bool alsoInAPMode, bool deferCP)
     // that network at the last connection attempt. In both cases, the Config
     // Portal is started.
     //
-    // [Unused:
-    // The call with alsoInAPMode=FALSE should only re-connect if we are in 
-    // power-save  mode after being connected to a user-configured network, 
-    // or if we are in AP mode but the user had config'd a network. Should  
-    // only be called when a short freeze is feasible.]
-    //    
     // "wifiInAPMode" only tells us our latest mode; if the configured WiFi
     // network was - for whatever reason - was not available when we
     // tried to (re)connect, "wifiInAPMode" is true.
@@ -1216,107 +1212,53 @@ void wifiOn(unsigned long newDelay, bool alsoInAPMode, bool deferCP)
     // At this point, wifiInAPMode reflects the state after
     // the last connection attempt.
 
-    if(alsoInAPMode) {    // User entered *77OK
-        
-        if(wifiInAPMode) {  // We are in AP mode
+    if(wifiInAPMode) {  // We are in AP mode
 
-            if(!wifiAPIsOff) {
+        if(!wifiAPIsOff) {
 
-                // If ON but no user-config'd WiFi network -> bail
-                if(!wifiHaveSTAConf) {
-                    // Best we can do is to restart the timer
-                    wifiAPModeNow = Now;
-                    return;
-                }
-
-                // If ON and User has config's a NW, disable WiFi at this point
-                // (in hope of successful connection below)
-                wifiOff(true);
-
-            }
-
-        } else {            // We are in STA mode
-
-            // If WiFi is not off, check if caller wanted
-            // to start the CP, and do so, if not running
-            if(!wifiIsOff && (WiFi.status() == WL_CONNECTED)) {
-                if(!deferCP) {
-                    if(!wm.getWebPortalActive()) {
-                        wm.startWebPortal();
-                    }
-                }
-                // Restart timer
-                wifiOnNow = Now;
+            // If ON but no user-config'd WiFi network or
+            // disabled "Reconnect on FP" -> bail
+            if(!wifiHaveSTAConf || !wifiReconOnFP) {
+                // Best we can do is to restart the AP-PS timer
+                // (if user selected "Re-enable AP on FP")
+                if(wifiReactAPOnFP) wifiAPModeNow = Now;
                 return;
             }
 
+            // If ON and User has config'd a NW and wants reconnection attempts,
+            // disable WiFi at this point in hope of successful connection below
+            wifiOff(true);
+
+        } else {
+
+            // If OFF (PS), check if user has configured nw & wants reconnection
+            // If not, see if user wants AP-reactivation
+            if(!wifiHaveSTAConf || !wifiReconOnFP) {
+                if(wifiReactAPOnFP) doOnlyAP = true;
+                else return;
+            }
+            
         }
 
-    } else {      // unused
+    } else {            // We are (or were) in STA mode
 
-        /*
-         
-        // If no user-config'd network - no point, bail
-        if(!wifiHaveSTAConf) return;
-
-        if(wifiInAPMode) {  // We are in AP mode (because connection failed)
-
-            #ifdef REMOTE_DBG
-            Serial.printf("wifiOn: consecutiveAPmodeFB %d\n", consecutiveAPmodeFB);
-            #endif
-
-            // Reset counter of consecutive AP-mode fallbacks
-            // after a couple of days
-            if(Now - lastConnect > 4*24*60*60*1000)
-                consecutiveAPmodeFB = 0;
-
-            // Give up after so many attempts
-            if(consecutiveAPmodeFB > 5)
-                return;
-
-            // Do not try to switch from AP- to STA-mode
-            // if last fall-back to AP-mode was less than
-            // 15 (for the first 2 attempts, then 90) minutes ago
-            if(Now - lastConnect < ((consecutiveAPmodeFB <= 2) ? 15*60*1000 : 90*60*1000))
-                return;
-
-            if(!wifiAPIsOff) {
-
-                // If ON, disable WiFi at this point
-                // (in hope of successful connection below)
-                wifiOff(true);
-
+        // If WiFi is not off, start CP if not running
+        if(!wifiIsOff && (WiFi.status() == WL_CONNECTED)) {
+            if(!wm.getWebPortalActive()) {
+                wm.startWebPortal();
             }
-
-        } else {            // We are in STA mode
-
-            // If WiFi is not off, check if caller wanted
-            // to start the CP, and do so, if not running
-            if(!wifiIsOff && (WiFi.status() == WL_CONNECTED)) {
-                if(!deferCP) {
-                    if(!wm.getWebPortalActive()) {
-                        wm.startWebPortal();
-                    }
-                }
-                // Add 60 seconds to timer in case the NTP
-                // request might fall off the edge
-                if(origWiFiOffDelay > 0) {
-                    if((Now - wifiOnNow >= wifiOffDelay) ||
-                       ((wifiOffDelay - (Now - wifiOnNow)) < (60*1000))) {
-                        wifiOnNow += (60*1000);
-                    }
-                }
-                return;
-            }
-
+            // Restart timer
+            wifiOnNow = Now;
+            return;
         }
 
-        */
+        // User does not want reconnection attempts on FP? Bail.
+        if(!wifiReconOnFP) return;
 
     }
 
     // (Re)connect
-    wifiConnect(deferCP);
+    wifiConnect(doOnlyAP);
 
     // Restart timers
     // Note that wifiInAPMode now reflects the
@@ -1357,38 +1299,50 @@ void wifiOn(unsigned long newDelay, bool alsoInAPMode, bool deferCP)
     }
 }
 
-bool wifiNeedReConnect()
-{
-    // We are connected? Bail...
-    if(WiFi.status() == WL_CONNECTED)
-        return false;
-
-    // Not connected, but network configured? Do it.
-    if(wifiHaveSTAConf)
-        return true;
-
-    // No nw configured: AP-mode power save timer run out? Do it.
-    if(wifiInAPMode && wifiAPIsOff)
-        return true;
-        
-    return false;
-}
-
-// Check if a longer interruption due to a re-connect is to
-// be expected when calling wifiOn(true, xxx).
-bool wifiOnWillBlock()
+bool wifiNeedReConnect(bool &blocks)
 {
     if(wifiInAPMode) {  // We are in AP mode
+
         if(!wifiAPIsOff) {
-            if(!wifiHaveSTAConf) {
+
+            // If ON, check if nw configured and user wants reconnection attempts
+            if(!wifiHaveSTAConf || !wifiReconOnFP) {
+              
+                // No, but user wants to re-activate the AP: We restart timer here. NO.
+                if(wifiReactAPOnFP) wifiAPModeNow = millis();
                 return false;
             }
-        }
-    } else {            // We are in STA mode
-        if(!wifiIsOff) return false;
-    }
 
-    return true;
+        } else {
+
+            // If OFF, check if nw configured and user wants reconnection attempts
+            if(!wifiHaveSTAConf || !wifiReconOnFP) {
+                
+                // No, but user wants to re-activate the AP: YES.
+                if(wifiReactAPOnFP) return true;
+                
+                // User does not want re-activation or re-connection: NO.
+                return false;
+            }
+          
+        }
+
+        // We have network & user wants reconnection: YES.
+        blocks = true;
+        return true;
+
+    } else {            // We are (or were) in STA mode
+
+        // User does not want reconnection attempts on FP? Bail.
+        if(!wifiReconOnFP) return false;
+          
+        if(!wifiIsOff && (WiFi.status() == WL_CONNECTED)) {
+            return !wm.getWebPortalActive();
+        }
+
+        blocks = true;
+        return true;
+    }
 }
 
 void wifiStartCP()
@@ -1596,7 +1550,7 @@ static bool preWiFiScanCallback()
     // Do not allow a WiFi scan under some circumstances (as
     // it may disrupt sequences)
     
-    if(TTrunning || tcdIsInP0 || throttlePos || keepCounting || calibMode)
+    if(blockScan || TTrunning || tcdIsInP0 || throttlePos || keepCounting || calibMode)
         return false;
 
     return true;
@@ -1648,10 +1602,13 @@ void updateConfigPortalValues()
     custom_hostName.setValue(settings.hostName, 31);
     custom_wifiConTimeout.setValue(settings.wifiConTimeout, 2);
     custom_wifiConRetries.setValue(settings.wifiConRetries, 2);
+    setCBVal(&custom_reconAtmp, settings.reconOnFP);
 
     custom_sysID.setValue(settings.systemID, 7);
-    // ap channel done on-the-fly
     custom_appw.setValue(settings.appw, 8);
+    // ap channel done on-the-fly
+    custom_wifiAPOffDelay.setValue(settings.wifiAPOffDelay, 2);
+    setCBVal(&custom_reactAP, settings.reactAPOnFP);
 
     setCBVal(&custom_coast, settings.coast);
     setCBVal(&custom_oott, settings.ooTT);

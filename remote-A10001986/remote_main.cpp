@@ -171,16 +171,15 @@ static bool    doCoast = false;
 bool           keepCounting = false;
 bool           autoThrottle = false;
 
-bool                 calibMode = false;
-static bool          calibUp = false;
-static bool          calibIP = true;
+bool        calibMode = false;
+static bool calibUp = false;
+static bool calibIP = true;
 
 static bool          offDisplayTimer = false;
 static unsigned long offDisplayNow = 0;
 
-uint16_t             visMode = 0;
-
-bool                 movieMode = true;
+uint16_t visMode = 0;
+bool     movieMode = true;
 
 static bool          etmr = false;
 static unsigned long enow = 0;
@@ -278,6 +277,8 @@ static const char    *powerOffSnd = "/poweroff.mp3";  // No default sound
 static const char    *brakeOnSnd  = "/brakeon.mp3";   // Default provided
 static const char    *brakeOffSnd = "/brakeoff.mp3";  // No default sound
 static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
+
+bool blockScan = false;
 
 // BTTF network
 #define BTTFN_VERSION              1
@@ -876,6 +877,8 @@ void main_loop()
         #endif
         if(isFPBKeyPressed) {
             if(!FPBUnitIsOn) {
+                bool wifiblocks = false;
+                
                 // Fake power on:
                 FPBUnitIsOn = true;
 
@@ -890,12 +893,16 @@ void main_loop()
 
                 // Re-connect if we're in AP mode but
                 // there is a configured WiFi network
-                if(!justBootedNow && wifiNeedReConnect()) {
-                    showWaitSequence();
-                    remdisplay.on();
-                    // Enable WiFi / even if in AP mode / with CP
-                    wifiOn(0, true, false);
-                    endWaitSequence();
+                if(!justBootedNow && wifiNeedReConnect(wifiblocks)) {
+                    if(wifiblocks) {
+                        showWaitSequence();
+                        remdisplay.on();
+                    }
+                    // Enable WiFi
+                    wifiOn(0);
+                    if(wifiblocks) {
+                        endWaitSequence();
+                    }
                 }
                 justBootedNow = 0;
 
@@ -2089,6 +2096,8 @@ static void display_ip()
     remdisplay.setText("IP");
     remdisplay.show();
 
+    blockScan = true;
+
     mydelay(500, true);
 
     wifi_getIP(a[0], a[1], a[2], a[3]);
@@ -2103,6 +2112,8 @@ static void display_ip()
     remdisplay.clearBuf();
     remdisplay.show();
     mydelay(500, true);
+
+    blockScan = false;
 }
 
 #ifdef HAVE_PM
@@ -2162,11 +2173,13 @@ static bool display_soc_voltage(int type, bool displayAndReturn)
         remdisplay.show();
         remdisplay.blink(blink);
         if(displayAndReturn) return true;
+        blockScan = true;
         mydelay(2000, true);
         remdisplay.clearBuf();
         remdisplay.show();
         if(blink) remdisplay.blink(false);
         mydelay(500, true);
+        blockScan = false;
         return true;
     }
     return false;
@@ -2175,6 +2188,7 @@ static bool display_soc_voltage(int type, bool displayAndReturn)
 
 static void play_startup()
 {    
+    blockScan = true;
     remdisplay.setSpeed(0);
     remdisplay.show();
     remdisplay.on();
@@ -2189,6 +2203,7 @@ static void play_startup()
 
     remdisplay.setSpeed(0);
     remdisplay.show();
+    blockScan = false;
 }
 
 void allOff()
@@ -2216,8 +2231,11 @@ void switchMusicFolder(uint8_t nmf)
     bool waitShown = false;
 
     if(nmf > 9) return;
-    
+
     if(musFolderNum != nmf) {
+
+        blockScan = true;
+        
         musFolderNum = nmf;
         // Initializing the MP can take a while;
         // need to stop all audio before calling
@@ -2239,6 +2257,8 @@ void switchMusicFolder(uint8_t nmf)
         if(waitShown) {
             endWaitSequence();
         }
+
+        blockScan = false;
     }
 }
 
@@ -2609,7 +2629,7 @@ static void handle_tcd_notification(uint8_t *buf)
     switch(buf[5]) {
     case BTTFN_NOT_SPD:       // TCD fw >= 10/26/2024 (MC)
         seqCnt = GET32(buf, 12);
-        if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
+        if(seqCnt > bttfnTCDSeqCnt || seqCnt == 1) {
             int t = buf[8] | (buf[9] << 8);
             tcdCurrSpeed = buf[6] | (buf[7] << 8);
             if(tcdCurrSpeed > 88) tcdCurrSpeed = 88;
@@ -2690,7 +2710,7 @@ static void handle_tcd_notification(uint8_t *buf)
         break;
     case BTTFN_NOT_REM_SPD:     // TCD fw < 10/26/2024 (non-MC)
         seqCnt = GET32(buf, 12);
-        if(seqCnt == 1 || seqCnt > bttfnTCDSeqCnt) {
+        if(seqCnt > bttfnTCDSeqCnt || seqCnt == 1) {
             tcdIsInP0  = buf[8] | (buf[9] << 8);
             tcdSpeedP0 = buf[6] | (buf[7] << 8);
             #ifdef REMOTE_DBG

@@ -99,6 +99,8 @@ extern uint16_t tcdIsInP0;
 extern int32_t  throttlePos;
 extern bool     keepCounting;
 
+extern bool blockScan;
+
 void main_boot();
 void main_boot2();
 void main_setup();
