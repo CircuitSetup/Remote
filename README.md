@@ -97,6 +97,9 @@ In this case, you can connect your Remote to your home WiFi network. This allows
 
 Click on "WiFi Configuration" and either select a network from the top of the page or enter a WiFi network name (SSID), and enter your WiFi password. After saving the WiFi network settings, your Remote reboots and tries to connect to your selected WiFi network. 
 
+<details>
+<summary>More...</summary>
+  
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
 >- hold the Calibration button,
@@ -107,6 +110,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 >- then release the Calibration button.
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
+</details>
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
 
