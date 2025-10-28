@@ -334,7 +334,7 @@ In order to connect your Remote to the TCD, just enter the TCD's IP address or h
   
 Afterwards, the Remote and the TCD can communicate wirelessly and 
 - the TCD's speed control is done by the Remote,
-- both play an alarm-sequence when the TCD's alarm occurs (if so configures),
+- both play an alarm-sequence when the TCD's alarm occurs (if so configured),
 - the Remote can be remote controlled through the TCD's keypad (command codes 7xxx; see below),
 - the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
 
