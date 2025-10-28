@@ -89,7 +89,7 @@ It is ok to leave it in AP-mode, predominantly if used stand-alone. To keep oper
 
 </details>
 
-#### &#9758; Home setup with a pre-existing local WiFi network
+#### &#9702; Home setup with a pre-existing local WiFi network
 
 In this case, you can connect your Remote to your home WiFi network. This allows for inter-prop-communication ([BTTFN](#bttf-network-bttfn)) and [HA/MQTT](#home-assistant--mqtt).
 
