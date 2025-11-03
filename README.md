@@ -487,7 +487,7 @@ To release Fake-Power control, hold RESET when Fake-Power on the Remote is off.
 If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Portal, the Remote will take over Fake-Power control from the TCD at its startup, ie there is no need to initially press O.O.
 
 Notes:
-- Buttons O.O/RESET need to configured for this function, see [here](#-holding-o-o-reset-when-fake-power-off).
+- Buttons O.O/RESET need to configured for this function, see [here](#-holding-ooreset-when-fake-power-off).
 - The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority.
 
 ## Home Assistant / MQTT
@@ -767,17 +767,15 @@ This procedure ensures that all your settings are copied from the old to the new
 
 This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
 
-_Plays previous song in Music Player_: As it says, as part of Music Player control, it jumps to the previous song.
-
-_Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
+- _Plays previous song in Music Player_: As it says, as part of Music Player control, it jumps to the previous song.
+- _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
 
 ##### &#9193; Holding O.O/RESET when Fake-Power off
 
 This selects what happens when you hold the O.O button for 2 seconds when Fake-Power is off:
 
-_adjusts display brightness_: O.O increases display brightness, RESET decreases it.
-
-_takes/releases control of TCD Fake Power_: O.O takes over TCD Fake-Power control, RESET releases Fake-Power control.
+- _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
+- _takes/releases control of TCD Fake Power_: O.O takes over TCD Fake-Power control, RESET releases Fake-Power control.
 
 #### <ins>Hardware configuration settings</ins>
 
