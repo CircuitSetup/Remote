@@ -159,6 +159,7 @@ static bool battWarnSnd = false;
 
 static bool powerState = false;
 static bool brakeState = false;
+bool        powerMaster;
 static bool triggerCompleteUpdate = false;
 
 int32_t        throttlePos = 0;
@@ -167,13 +168,16 @@ static int     currSpeedF = 0;
 static int     currSpeed = 0;
 static unsigned long lastSpeedUpd = 0;
 static bool    lockThrottle = false;
-static bool    doCoast = false;
+bool           doCoast = false;
 bool           keepCounting = false;
 bool           autoThrottle = false;
 
 bool        calibMode = false;
 static bool calibUp = false;
 static bool calibIP = true;
+
+static unsigned long brichgtimer = 0;
+static unsigned long volchgtimer = 0;
 
 static bool          offDisplayTimer = false;
 static unsigned long offDisplayNow = 0;
@@ -187,12 +191,17 @@ static unsigned long enow = 0;
 static bool ooTT = true;
 static int  triggerTTonThrottle = 0;
 
+bool ooresBri = true;
+
 static unsigned long accelDelay = 1000/10;
 static int32_t       accelStep = 1;
-static const unsigned long accelDelays[5] = { 50, 42, 35, 28, 20 };  // 1-100%
-static const int32_t       accelSteps[5]  = {  1,  1,  1,  1,  1 };  //
 
-/*
+// Linear mode
+static const unsigned long accelDelays[5] = { 50, 42, 35, 28, 20 };  // 1-100%
+static const int32_t       accelSteps[5]  = {  1,  1,  1,  1,  1 };  // 1-100%
+static const int32_t       decelSteps[5]  = {  1,  1,  1,  2,  2 };  // 1-100%
+
+/* movie mode
  *       0- 7:  90ms/mph
  *      20-24: 197ms/mph
  *      32-39: 200ms/mph
@@ -211,6 +220,20 @@ static const unsigned long strictAccelDelays[89] =
     230, 233, 236, 240, 243, 246, 250, 253, 256, 260,  // i60-69  70mph 60-69: 2.47s
     263, 266, 270, 273, 276, 280, 283, 286, 290, 293,  // m70-79  80mph 70-79: 2.78s
     296, 300, 300, 303, 303, 306, 310, 310,   0        // i80-88  90mph 80-88: 2.4s   total 17.6 secs
+};
+static const int32_t  strictdecelSteps[5]  = {  2,  2,  2,  2,  2 };  // 1-100%
+
+static const int16_t coastCurve[89][2] =
+{
+    {6, 2}, {6, 2}, {6, 2}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 4}, // 0 
+    {6, 4}, {6, 4}, {6, 4}, {6, 4}, {6, 4}, {6, 4}, {6, 4}, {6, 4}, {6, 3}, {6, 3}, // 10
+    {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, // 20
+    {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 3}, // 30
+    {6, 3}, {6, 3}, {6, 3}, {6, 3}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, // 40
+    {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, // 50 
+    {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, // 60 
+    {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {6, 2}, {5, 1}, {5, 1}, {5, 1}, // 70
+    {5, 1}, {5, 1}, {5, 1}, {5, 1}, {5, 1}, {5, 1}, {5, 1}, {5, 1}, {5, 1}          // 80
 };
 
 static unsigned long lastCommandSent = 0;
@@ -268,17 +291,16 @@ bool                 FPBUnitIsOn = true;
 static unsigned long justBootedNow = 0;
 static bool          bootFlag = false;
 static bool          sendBootStatus = false;
+bool                 blockScan = false;
 
 static bool          havePOFFsnd = false;
 static bool          haveBOFFsnd = false;
 static bool          haveThUp = false;
-static const char    *powerOnSnd  = "/poweron.mp3";   // Default provided
-static const char    *powerOffSnd = "/poweroff.mp3";  // No default sound
-static const char    *brakeOnSnd  = "/brakeon.mp3";   // Default provided
-static const char    *brakeOffSnd = "/brakeoff.mp3";  // No default sound
-static const char    *throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
-
-bool blockScan = false;
+static const char *  powerOnSnd  = "/poweron.mp3";   // Default provided
+static const char *  powerOffSnd = "/poweroff.mp3";  // No default sound
+static const char *  brakeOnSnd  = "/brakeon.mp3";   // Default provided
+static const char *  brakeOffSnd = "/brakeoff.mp3";  // No default sound
+static const char *  throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
 
 // BTTF network
 #define BTTFN_VERSION              1
@@ -385,6 +407,8 @@ static void increaseBrightness();
 static void decreaseBrightness();
 static void displayBrightness();
 
+static void triggerSaveVis();
+
 static void condPLEDaBLvl(bool sLED, bool sLvl);
 
 static void execute_remote_command();
@@ -419,7 +443,9 @@ static void mqtt_send_button_on(int i);
 static void mqtt_send_button_off(int i);
 #endif
 
+#ifdef HAVE_VOL_ROTENC
 static void re_vol_reset();
+#endif
 
 static void myloop(bool withBTTFN);
 
@@ -590,15 +616,18 @@ void main_setup()
     Serial.println("DTM Remote Control version " REMOTE_VERSION " " REMOTE_VERSION_EXTRA);
 
     if(loadVis()) {                 // load visMode
+        autoThrottle = !!(visMode & 0x04);
+        doCoast = !!(visMode & 0x08);
         movieMode = !!(visMode & 0x01);
         displayGPSMode = !!(visMode & 0x02);
-        autoThrottle = !!(visMode & 0x04);
+        powerMaster = !!(visMode & 0x80);
     }
     updateConfigPortalVisValues();  // Update CP to current value(s)
+
     updateConfigPortalBriValues();
 
-    doCoast = (atoi(settings.coast) > 0);
     ooTT = (atoi(settings.ooTT) > 0);
+    ooresBri = !(atoi(settings.oorst) > 0);
 
     for(int i = 0; i < BTTFN_REM_MAX_COMMAND+1; i++) {
         bttfnSeqCnt[i] = 1;
@@ -628,7 +657,7 @@ void main_setup()
     }
     if(useMQTT) {
         for(int i = 0; i < PACK_SIZE; i++) {
-            if(strlen(settings.mqttbt[i])) {
+            if(*settings.mqttbt[i]) {
                 MQTTbuttonOnLen[i] = strlen(settings.mqttbo[i]);
                 MQTTbuttonOffLen[i] = strlen(settings.mqttbf[i]);
             }
@@ -919,6 +948,10 @@ void main_loop()
                 // Display ON
                 remdisplay.setBrightness(255);
 
+                if(powerMaster) {
+                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                }
+
                 // Scan brake switch
                 brake.scan();
 
@@ -948,8 +981,6 @@ void main_loop()
                 bttfn_remote_send_combined(powerState, brakeState, currSpeed);
 
                 play_file(powerOnSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
-    
-                // FIXME - anything else?
             }
         } else {
             if(FPBUnitIsOn) {
@@ -982,8 +1013,6 @@ void main_loop()
                 if(havePOFFsnd) {
                     play_file(powerOffSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
                 }
-
-                // FIXME - anything else?
             }
         }
     } else {
@@ -1026,7 +1055,7 @@ void main_loop()
     //            Long press:  MusicPlayer Play/Stop
     //    Fake-power off:
     //        Short press: Increase volume
-    //        Long press: Increase brightness
+    //        Long press: Increase brightness or take over Fake-Power control (depending on option)
     // Button B "RESET":
     //    Fake-power on: 
     //        If buttonPack is enabled/present:
@@ -1037,7 +1066,7 @@ void main_loop()
     //            Long press:  MusicPlayer Next Song
     //    Fake-power off:
     //        Short press: Decrease volume
-    //        Long press: Decrease brightness
+    //        Long press: Decrease brightness or relinquish Fake-Power control (depending on option)
     buttonA.scan();
     if(isbuttonAKeyChange) {
         isbuttonAKeyChange = false;
@@ -1100,18 +1129,31 @@ void main_loop()
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonAKeyPressed) {
                 if(!useRotEncVol) {
-                    if(increaseVolume()) {
-                        displayVolume();
-                        offDisplayTimer = true;
-                        offDisplayNow = millis();
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(volchgtimer && millis() - volchgtimer < 10*1000) {
+                        increaseVolume();
                     }
+                    displayVolume();
+                    offDisplayTimer = true;
+                    offDisplayNow = volchgtimer = millis();
                     play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                 }
             } else if(isbuttonAKeyLongPressed) {
-                increaseBrightness();
-                displayBrightness();
-                offDisplayTimer = true;
-                offDisplayNow = millis();
+                if(ooresBri) {
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(brichgtimer && millis() - brichgtimer < 10*1000) {
+                        increaseBrightness();
+                    }
+                    displayBrightness();
+                    offDisplayTimer = true;
+                    offDisplayNow = brichgtimer = millis();
+                } else {
+                    powerMaster = true;
+                    updateVisMode();
+                    triggerSaveVis();
+                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                    play_file("/pmon.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                }
             }
         }
     }
@@ -1150,18 +1192,31 @@ void main_loop()
         } else if(!calibMode) {           // When off, but not in calibMode
             if(isbuttonBKeyPressed) {
                 if(!useRotEncVol) {
-                    if(decreaseVolume()) {
-                        displayVolume();
-                        offDisplayTimer = true;
-                        offDisplayNow = millis();
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(volchgtimer && millis() - volchgtimer < 10*1000) {
+                        decreaseVolume();
                     }
+                    displayVolume();
+                    offDisplayTimer = true;
+                    offDisplayNow = volchgtimer = millis();
                     play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
                 }
             } else if(isbuttonBKeyLongPressed) {
-                decreaseBrightness();
-                displayBrightness();
-                offDisplayTimer = true;
-                offDisplayNow = millis();
+                if(ooresBri) {
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(brichgtimer && millis() - brichgtimer < 10*1000) { 
+                        decreaseBrightness();
+                    }
+                    displayBrightness();
+                    offDisplayTimer = true;
+                    offDisplayNow = brichgtimer = millis();
+                } else {
+                    powerMaster = false;
+                    updateVisMode();
+                    triggerSaveVis();
+                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                    play_file("/pmoff.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                }
             }
         }
     }
@@ -1170,11 +1225,12 @@ void main_loop()
     //    Fake-power is off: Throttle calibration
     //        - Short press registers current position as "center" (zero) position.
     //        - Long press enters calib mode for full throttle forward and backward:
-    //             * ("UP is displayed) Hold throttle full up, 
-    //             * short-press button, 
-    //             * ("DN" is displayed) Hold throttle full down, 
-    //             * short-press button.
-    //          If long-pressed during calib mode, calibration is cancelled
+    //             * When "UP" is displayed: Hold throttle full up, 
+    //             * short-press calibration button, 
+    //             * When "DN" is displayed: Hold throttle full down, 
+    //             * short-press calibration button.
+    //          If calib button is long-pressed during calib mode, calibration is cancelled
+    //        No calibration as long as there is a battery warning.
     //    Fake-power on:
     //        Short press: Reset speed to 0
     // .      Long press:  First time: Display IP address, subsequently SOC and TTE/TTF alternately
@@ -1182,7 +1238,14 @@ void main_loop()
     if(isCalibKeyChange) {
         isCalibKeyChange = false;
         if(!FPBUnitIsOn) {
-            if(isCalibKeyPressed) {
+            if(battWarn) {
+                remdisplay.setText("BAT");
+                remdisplay.show();
+                remdisplay.on();
+                offDisplayTimer = true;
+                offDisplayNow = millis();
+                isCalibKeyPressed = isCalibKeyLongPressed = false;
+            } else if(isCalibKeyPressed) {
                 if(calibMode) {
                     if(calibUp) {
                         if(useRotEnc && rotEnc.setMaxStepsUp(0)) {
@@ -1219,9 +1282,9 @@ void main_loop()
                     remdisplay.setText("CAL");
                     remdisplay.show();
                     remdisplay.on();
+                    delay(pwrLEDonFP ? 2000 : 200);    // Stabilize voltage after turning on display, LED, level meter
                     offDisplayTimer = true;
                     offDisplayNow = millis();
-                    delay(pwrLEDonFP ? 2000 : 200);    // Stabilize voltage after turning on display, LED, level meter
                     if(useRotEnc) {
                         rotEnc.zeroPos(true);
                         if(!rotEnc.dynZeroPos()) {
@@ -1241,10 +1304,15 @@ void main_loop()
                 } else {
                     calibMode = true;
                     offDisplayTimer = false;
+                    condPLEDaBLvl(true, true);
+                    if(pwrLEDonFP) {
+                        showWaitSequence();
+                        remdisplay.on();
+                        delay(2000);
+                    }
                     remdisplay.setText("UP");
                     remdisplay.show();
                     remdisplay.on();
-                    condPLEDaBLvl(true, true);
                     calibUp = true;
                 }
             }
@@ -1308,6 +1376,8 @@ void main_loop()
                             buttonPackActionLongPress(i);
                         }
                     }
+                } else {
+                    flushDelayedSave();
                 }
             } 
         }
@@ -1349,26 +1419,21 @@ void main_loop()
                     tas = sizeof(strictAccelFacts)/sizeof(strictAccelFacts[0]);
                     tidx = (abs(throttlePos)-1) * tas / 100;
                     accelDelay = strictAccelDelays[currSpeedF / 10] * strictAccelFacts[tidx] / 100;
-                    accelStep = 1;
+                    if(throttlePos < 0 && accelDelay < 13) accelDelay = 13;
+                    accelStep = throttlePos > 0 ? 1 : strictdecelSteps[tidx];
                 } else {
-                    //tidx = -1;
-                    accelDelay = doCoast ? ((esp_random() % 20) + 40) : 0;
-                    //accelStep = 0;
+                    accelDelay = doCoast ? ((esp_random() % 30) + 60) : 0;
                 }
 
             } else {
               
-                if(throttlePos != oldThrottlePos) {
-                    if((oldThrottlePos = throttlePos)) {
-                        tas = sizeof(accelDelays)/sizeof(accelDelays[0]);
-                        tidx = (abs(throttlePos)-1) * tas / 100;
-                        accelDelay = accelDelays[tidx];
-                        accelStep = accelSteps[tidx];
-                    } else {
-                        //tidx = -1;
-                        accelDelay = doCoast ? ((esp_random() % 20) + 40) : 0;
-                        //accelStep = 0;
-                    }
+                if((oldThrottlePos = throttlePos)) {
+                    tas = sizeof(accelDelays)/sizeof(accelDelays[0]);
+                    tidx = (abs(throttlePos)-1) * tas / 100;
+                    accelDelay = accelDelays[tidx];
+                    accelStep = throttlePos > 0 ? accelSteps[tidx] : decelSteps[tidx];
+                } else {
+                    accelDelay = doCoast ? ((esp_random() % 30) + 55)  : 0;
                 }
 
             }
@@ -1406,8 +1471,10 @@ void main_loop()
                         if(currSpeedF < 0) currSpeedF = 0;
                         keepCounting = false;
                     } else if(doCoast) {
-                        currSpeedF -= (esp_random() % 3);
-                        if(currSpeedF < 0) currSpeedF = 0;
+                        if(currSpeedF > 0) {
+                            currSpeedF -= max(0, (int)(esp_random() % coastCurve[currSpeedF/10][0]) - coastCurve[currSpeedF/10][1]);
+                            if(currSpeedF < 0) currSpeedF = 0;
+                        }
                     }
                     if(currSpeedF != sbf) {
                         currSpeed = currSpeedF / 10;
@@ -1448,15 +1515,18 @@ void main_loop()
     }
 
     if(tcdIsInP0) {
-        if(!tcdIsInP0Old || tcdSpeedP0 != tcdSpeedP0Old) {
+        unsigned long now = millis();
+        if(!tcdIsInP0Old || (tcdSpeedP0 != tcdSpeedP0Old)) {
             if(!tcdIsInP0Old) {
                 triggerTTonThrottle = 0;
                 tcdIsInP0Old = tcdIsInP0;
-                tcdInP0now = millis();
                 tcdClickNow = 0;
+                tcdInP0now = now;
                 #ifdef REMOTE_DBG
                 Serial.printf("Switching to P0\n");
                 #endif
+            } else {
+                tcdInP0now = now;
             }
             if(FPBUnitIsOn) {
                 if(!tcdSpeedP0) {
@@ -1465,29 +1535,29 @@ void main_loop()
                     } else {
                         play_file("/throttleup.wav", PA_THRUP|PA_INTRMUS|PA_WAV, 1.0);
                     }
-                } else if(tcdSpeedP0 > 0 && (!tcdClickNow || millis() - tcdClickNow > 25)) {
-                    tcdClickNow = millis();
+                } else if(tcdSpeedP0 > 0 && (!tcdClickNow || now - tcdClickNow > 25)) {
+                    tcdClickNow = now;
                     play_click();
                 }
                 remdisplay.on();
                 remdisplay.setSpeed(tcdSpeedP0 * 10);
                 remdisplay.show();
                 tcdSpeedP0Old = tcdSpeedP0;
-                tcdSpdChgNow = millis();
+                tcdSpdChgNow = now;
                 tcdSpdFake100 = 0;
             }
         } else if(FPBUnitIsOn) {
             // Fake .1s
-            if(millis() - tcdSpdChgNow > accelDelays[4]) {
+            if(now - tcdSpdChgNow > accelDelays[4]) {
                 tcdSpdFake100++;
                 if(tcdSpdFake100 > 9) tcdSpdFake100 = 1;
-                tcdSpdChgNow = millis();
+                tcdSpdChgNow = now;
                 remdisplay.on();
                 remdisplay.setSpeed((tcdSpeedP0 * 10) + tcdSpdFake100);
                 remdisplay.show();
             }
         }
-        if(millis() - tcdInP0now > 45*1000) {
+        if(now - tcdInP0now > 5*1000) {
             tcdIsInP0 = 0;
             #ifdef REMOTE_DBG
             Serial.printf("Expiring P0\n");
@@ -1671,16 +1741,16 @@ void main_loop()
     #endif
 
     if(!TTrunning && !tcdIsInP0 && !calibMode && !throttlePos && !keepCounting) {
-        // Save secondary settings 10 seconds after last change
-        if(brichanged && (now - brichgnow > 10000)) {
+        // Save on-the-fly settings 8/3 seconds after last change
+        if(brichanged && (now - brichgnow > 8000)) {
             brichanged = false;
             saveBrightness();
         }
-        if(volchanged && (now - volchgnow > 10000)) {
+        if(volchanged && (now - volchgnow > 8000)) {
             volchanged = false;
             saveCurVolume();
         }
-        if(vischanged && (now - vischgnow > 10000)) {
+        if(vischanged && (now - vischgnow > 3000)) {
             vischanged = false;
             saveVis();
         }
@@ -1692,7 +1762,6 @@ void main_loop()
             bttfn_remote_send_combined(powerState, brakeState, currSpeed);
             sendBootStatus = false;
         }
-        
     }
 }
 
@@ -1712,13 +1781,8 @@ void flushDelayedSave()
     }
 }
 
-static bool chgVolume(int d)
+static void chgVolume(int d)
 {
-    #ifdef REMOTE_HAVEVOLKNOB
-    if(curSoftVol == 255)
-        return false;
-    #endif
-
     int nv = curSoftVol;
     nv += d;
     if(nv < 0 || nv > 19)
@@ -1728,18 +1792,16 @@ static bool chgVolume(int d)
 
     volchanged = true;
     volchgnow = millis();
-    updateConfigPortalVolValues();
-    return true;
 }
 
-bool increaseVolume()
+void increaseVolume()
 {
-    return chgVolume(1);
+    chgVolume(1);
 }
 
-bool decreaseVolume()
+void decreaseVolume()
 {
-    return chgVolume(-1);
+    chgVolume(-1);
 }
 
 static void displayVolume()
@@ -1786,19 +1848,26 @@ static void displayBrightness()
 
 void updateVisMode()
 {
-    visMode &= ~0x07;
-    if(movieMode) visMode |= 0x01;
+    visMode &= ~0x8f;
+    if(movieMode)      visMode |= 0x01;
     if(displayGPSMode) visMode |= 0x02;
-    if(autoThrottle) visMode |= 0x04;
+    if(autoThrottle)   visMode |= 0x04;
+    if(doCoast)        visMode |= 0x08;
+    if(powerMaster)    visMode |= 0x80;
+}
+
+static void triggerSaveVis()
+{
+    vischanged = true;
+    vischgnow = millis();
+    updateConfigPortalVisValues();
 }
 
 static void toggleDisplayGPS()
 {
     displayGPSMode = !displayGPSMode;
     updateVisMode();
-    vischanged = true;
-    vischgnow = millis();
-    updateConfigPortalVisValues();
+    triggerSaveVis();
 
     if(!FPBUnitIsOn && displayGPSMode) {
         currSpeedOldGPS = -2;   // force GPS speed display update
@@ -1809,18 +1878,29 @@ static void toggleMovieMode()
 {
     movieMode = !movieMode;
     updateVisMode();
-    vischanged = true;
-    vischgnow = millis();
-    updateConfigPortalVisValues();
+    triggerSaveVis();
 }
 
 static void toggleAutoThrottle()
 {
     autoThrottle = !autoThrottle;
     updateVisMode();
-    vischanged = true;
-    vischgnow = millis();
-    updateConfigPortalVisValues();
+    triggerSaveVis();
+}
+
+static void toggleCoast()
+{
+    doCoast = !doCoast;
+    updateVisMode();
+    triggerSaveVis();
+}
+
+static void togglePwrMst()
+{
+    powerMaster = !powerMaster;
+    updateVisMode();
+    triggerSaveVis();
+    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
 }
 
 static void condPLEDaBLvl(bool sLED, bool sLvl)
@@ -1881,6 +1961,7 @@ void showCopyError()
     doForceDispUpd = true;
 }
 
+// Ignore this, nothing to do
 void prepareTT()
 {
 }
@@ -1890,6 +1971,7 @@ void prepareTT()
 // For audio-visually synchronized behavior
 // >>> Also called when RotEnc speed is changed, so
 //     could ignore if we are not Speed master
+// Ignore this, nothing to do
 void wakeup()
 {
 }
@@ -1958,7 +2040,7 @@ static void execute_remote_command()
         // All here allowed when we're off
 
         switch(command) {
-        case 60:                              // 7060  enable/disable Movie mode
+        case 60:                              // 7060  enable/disable Movie-like accel
             toggleMovieMode();
             break;
         case 61:                              // 7061  enable/disable "display TCD speed while fake-off"
@@ -1966,6 +2048,9 @@ static void execute_remote_command()
             break;
         case 62:                              // 7062  enable/disable autoThrottle
             toggleAutoThrottle();
+            break;
+        case 63:                              // 7063  enable/disable coasting
+            toggleCoast();
             break;
         case 90:                              // 7090: Display IP address
             flushDelayedSave();
@@ -1996,6 +2081,9 @@ static void execute_remote_command()
             }
             #endif
             break;
+        case 96:                              // 7096: Toggle "Remote is power master"
+            togglePwrMst();
+            break;
         default:
             if(command >= 50 && command <= 59) {   // 7050-7059: Set music folder number
                 if(haveSD) {
@@ -2009,21 +2097,16 @@ static void execute_remote_command()
 
         if(command >= 300 && command <= 399) {
 
-            command -= 300;                           // 7300-7319/7399: Set fixed volume level / enable knob
+            command -= 300;                           // 7300-7319/7399: Set fixed volume level
             if(command == 99) {
-                #ifdef REMOTE_HAVEVOLKNOB
-                curSoftVol = 255;
-                volchanged = true;
-                volchgnow = millis();
-                updateConfigPortalVolValues();
-                re_vol_reset();
-                #endif
+                // nada
             } else if(command <= 19) {
                 curSoftVol = command;
                 volchanged = true;
                 volchgnow = millis();
-                updateConfigPortalVolValues();
+                #ifdef HAVE_VOL_ROTENC
                 re_vol_reset();
+                #endif
             } else if(command == 50 || command == 51) { // 7350/7351: Disable/enable acceleration click sound
                 playClicks = (command == 51);
             }
@@ -2216,8 +2299,11 @@ void prepareReboot()
 {
     mp_stop();
     stopAudio();
-    
+
     allOff();
+
+    pwrled.setState(false);
+    bLvLMeter.setState(false);
         
     flushDelayedSave();
    
@@ -2481,16 +2567,14 @@ static void mqtt_send_button_off(int i)
 }
 #endif
 
+#ifdef HAVE_VOL_ROTENC
 static void re_vol_reset()
 {
     if(useRotEncVol) {
-        #ifdef REMOTE_HAVEVOLKNOB
-        rotEncVol->zeroPos((curSoftVol == 255) ? 0 : curSoftVol);
-        #else
         rotEncVol->zeroPos(curSoftVol);
-        #endif
     }
 }
+#endif
 
 /*
  *  Do this whenever we are caught in a while() loop
@@ -3045,8 +3129,9 @@ static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t
 {
     if(!triggerCompleteUpdate) {
         uint8_t p1 = 0;
-        if(powerstate) p1 |= 0x01;
-        if(brakestate) p1 |= 0x02;
+        if(powerstate)  p1 |= 0x01;
+        if(brakestate)  p1 |= 0x02;
+        if(powerMaster) p1 |= 0x08;  // 4 tainted by buggy TCD 3.7
         if(!bttfn_send_command(BTTFN_REMCMD_COMBINED, p1, speed)) {
             triggerCompleteUpdate = true;
         }

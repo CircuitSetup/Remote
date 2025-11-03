@@ -70,7 +70,6 @@ void wifiStartCP();
 
 void updateConfigPortalValues();
 void updateConfigPortalBriValues();
-void updateConfigPortalVolValues();
 void updateConfigPortalMFValues();
 void updateConfigPortalVisValues();
 

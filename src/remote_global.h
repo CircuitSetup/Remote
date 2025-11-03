@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.11.4"
-#define REMOTE_VERSION_EXTRA "OCT272025"
+#define REMOTE_VERSION "V1.12"
+#define REMOTE_VERSION_EXTRA "NOV032025"
 
 //#define REMOTE_DBG              // debug output on Serial
 
@@ -37,9 +37,6 @@
 // This is required for proper operation with TCD firmwares dated Oct 26, 2024,
 // or later.
 #define BTTFN_MC
-
-// Uncomment if hardware has an analog volume knob (OEM board does not)
-//#define REMOTE_HAVEVOLKNOB
 
 // Uncomment to support a rotenc for volume
 // Adafruit 4991/5880, DFRobot Gravity 360 or DuPPA I2CEncoder 2.1
@@ -101,7 +98,5 @@
 #define LVLMETER_PIN      12      // Battery level meter on Futaba (CB 1.5)
 
 #define BALM_PIN          4       // Battery monitor alarm (CB 1.6; act. low)     (PU on CB 1.6)
-
-#define VOLUME_PIN        39      // (unused)
 
 #endif
