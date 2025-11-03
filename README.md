@@ -224,7 +224,7 @@ When fake power is on:
 When fake power is off, the buttons are used to set up audio volume and display brightness:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td>Volume up</td><td>Brightness up<br>or<br>Take over TCD Fake-Power control<br>(depending on <a href="#-holding-ooreset-when-fake-power-off">configuration</a>)/td></tr>
+  <tr><td>Button "O.O"</td><td>Volume up</td><td>Brightness up<br>or<br>Take over TCD Fake-Power control<br>(depending on <a href="#-holding-ooreset-when-fake-power-off">configuration</a>)</td></tr>
   <tr><td>Button "RESET"</td><td>Volume down</td><td>Brightness down<br>or<br>Release TCD Fake-Power control</td></tr>
 </table>
 
