@@ -46,7 +46,7 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update of the sound-pack is needed.
 
-The first step is to download "install/sound-pack-xxxxxxxx.zip" and extract it. It contains one file named "REMA.bin".
+The first step is to download "install/sound-pack-rmXX.zip" and extract it. It contains one file named "REMA.bin".
 
 Then there are two alternative ways to proceed. Note that both methods *require an SD card*.
 
@@ -173,9 +173,9 @@ For acceleration, there are two modes: Linear mode and "movie mode". In linear m
 
 When the remote hits 88.0mph, the TCD triggers a time travel.
 
-Auto-throttle: If this option is checked in the Config Portal (or Auto-Throttle is enabled through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+Auto-throttle: If this option is checked in the Config Portal (or through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
-Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
+Coasting: If this feature is enabled through the Config Portal (or through the TCD keypad [7063]), the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
 
 Buttons and switches:
 
@@ -345,6 +345,7 @@ In order to connect your Remote to the TCD, just enter the TCD's IP address or h
   
 Afterwards, the Remote and the TCD can communicate wirelessly and 
 - the TCD's speed control is done by the Remote,
+- the Remote can switch Fake-Power on the TCD,
 - both play an alarm-sequence when the TCD's alarm occurs (if so configured),
 - the Remote can be remote controlled through the TCD's keypad (command codes 7xxx; see below),
 - the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
@@ -366,6 +367,10 @@ You can use BTTF-Network and MQTT at the same time.
    <tr>
      <td align="left">Toggle <a href="#-auto-throttle">auto-throttle</a></td>
      <td align="left"<td>7062&#9166;</td>
+    </tr>
+  <tr>
+     <td align="left">Toggle <a href="#-coasting-when-throttle-in-neutral">coasting</a></td>
+     <td align="left"<td>7063&#9166;</td>
     </tr>
     <tr>
      <td align="left">Set volume level (00-19)</td>
@@ -450,7 +455,11 @@ You can use BTTF-Network and MQTT at the same time.
   <tr>
      <td align="left">Display battery voltage<sup>1</sup></td>
      <td align="left">7093&#9166;</td>
-    </tr>   
+    </tr> 
+   <tr>
+     <td align="left">Toggle <a href="#controlling-tcd-fake-power">Fake-Power control</a></td>
+     <td align="left">7096&#9166;</td>
+    </tr> 
     <tr>
      <td align="left">Reboot the device</td>
      <td align="left">7064738&#9166;</td>
@@ -464,6 +473,22 @@ You can use BTTF-Network and MQTT at the same time.
 1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
+
+### Controlling TCD Fake-Power
+
+The Remote can, if so configured, control Fake-Power of a wirelessly connected Time Circuits Display.
+
+By holding O.O when Fake-Power on the Remote is off, the Remote takes over control of Fake-Power on the TCD. The same can be achieved by entering 7096 on the TCD keypad.
+
+From now on, whenever you flip the Fake-Power switch on the Remote, the TCD will follow. 
+
+To release Fake-Power control, hold RESET when Fake-Power on the Remote is off.
+
+If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Portal, the Remote will take over Fake-Power control from the TCD at its startup, ie there is no need to initially press O.O.
+
+Notes:
+- Buttons O.O/RESET need to configured for this function, see [here](#-holding-o-o-reset-when-fake-power-off).
+- The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority.
 
 ## Home Assistant / MQTT
 
@@ -559,6 +584,10 @@ This leads to the [WiFi configuration page](#wifi-configuration)
 ##### &#9193; Settings
 
 This leads to the [Settings page](#settings).
+
+##### &#9193; HA/MQTT Settings
+
+This leads to the [HomeAssistent/MQTT Settings page](#ha-mqtt-settings).
 
 ##### &#9193; Update
 
@@ -690,14 +719,6 @@ This selects brightness level for the LED display.
 
 This can also be done through buttons ["O.O" and "RESET"](#buttons-oo-and-reset), as well as the TCD (7400-7415); a change through buttons or TCD is saved 10 seconds after it occurred.
 
-#### <ins>Volume settings</ins>
-
-##### Volume level (0-19)
-
-Enter a value between 0 (mute) or 19 (very loud) here. 
-
-You can also change the volume using buttons ["O.O" and "RESET"](#buttons-oo-and-reset), and via TCD (7300-7319); a change through buttons or TCD is saved 10 seconds after it occurred.
-
 #### <ins>Music Player settings</ins>
 
 ##### &#9193; Music folder
@@ -720,35 +741,8 @@ In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Net
 
 If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
 
-##### &#9193; O.O, throttle-up trigger BTTFN-wide Time Travel
+##### &#9193; Remote Fake-Power controls TCD Fake-Power
 
-This option selects the function of the O.O button:
-
-If checked, briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
-
-If unchecked, O.O is part of Music Player control and jumps to the previous song.
-
-#### <ins>Home Assistant / MQTT settings</ins>
-
-##### &#9193; Use Home Assistant (MQTT 3.1.1)
-
-If checked, the Remote will connect to the broker (if configured) and send and receive messages via [MQTT](#home-assistant--mqtt)
-
-##### &#9193; Broker IP[:port] or domain[:port]
-
-The broker server address. Can be a domain (eg. "myhome.me") or an IP address (eg "192.168.1.5"). The default port is 1883. If different port is to be used, it can be specified after the domain/IP and a colon ":", for example: "192.168.1.5:1884". Specifying the IP address is preferred over a domain since the DNS call adds to the network overhead. Note that ".local" (MDNS) domains are not supported.
-
-##### &#9193; User[:Password]
-
-The username (and optionally the password) to be used when connecting to the broker. Can be left empty if the broker accepts anonymous logins.
-
-##### &#9193; Button x topic
-
-The MQTT topic for on/off messages. Nothing is published/sent if the topic is empty.
-
-##### &#9193; Button x message on ON/OFF
-
-The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
 #### <ins>Other settings</ins>
 
@@ -766,6 +760,24 @@ If you want copy settings from one SD card to another, do as follows:
 - Power-up the Remote, enter the Config Portal, re-enable _Save secondary settings on SD_, and click "SAVE".
 
 This procedure ensures that all your settings are copied from the old to the new SD card.
+
+#### <ins>Button assignment settings</ins>
+
+##### &#9193; Pressing O.O when Fake-Power on
+
+This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
+
+_Plays previous song in Music Player_: As it says, as part of Music Player control, it jumps to the previous song.
+
+_Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
+
+##### &#9193; Holding O.O/RESET when Fake-Power off
+
+This selects what happens when you hold the O.O button for 2 seconds when Fake-Power is off:
+
+_adjusts display brightness_: O.O increases display brightness, RESET decreases it.
+
+_takes/releases control of TCD Fake Power_: O.O takes over TCD Fake-Power control, RESET releases Fake-Power control.
 
 #### <ins>Hardware configuration settings</ins>
 
@@ -814,6 +826,30 @@ The battery CircuitSetup supplies as part of their kit is of the 3.7/4.2V type.
 Battery monitoring requires knowledge about the cell capacity. Note that the capacity _per cell_ is required to be entered. Most batteries consist of two or more cells; in that case divide the nominal capacity by the number of cells and enter the number here.
 
 The battery CircuitSetup supplies as part of their kit is a dual-cell 5000mAh LiPo battery. The value to enter here is therefore 2500.
+
+---
+
+### HA/MQTT Settings
+
+##### &#9193; Use Home Assistant (MQTT 3.1.1)
+
+If checked, the Remote will connect to the broker (if configured) and send and receive messages via [MQTT](#home-assistant--mqtt)
+
+##### &#9193; Broker IP[:port] or domain[:port]
+
+The broker server address. Can be a domain (eg. "myhome.me") or an IP address (eg "192.168.1.5"). The default port is 1883. If different port is to be used, it can be specified after the domain/IP and a colon ":", for example: "192.168.1.5:1884". Specifying the IP address is preferred over a domain since the DNS call adds to the network overhead. Note that ".local" (MDNS) domains are not supported.
+
+##### &#9193; User[:Password]
+
+The username (and optionally the password) to be used when connecting to the broker. Can be left empty if the broker accepts anonymous logins.
+
+##### &#9193; Button x topic
+
+The MQTT topic for on/off messages. Nothing is published/sent if the topic is empty.
+
+##### &#9193; Button x message on ON/OFF
+
+The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
 ## Appendix B: Display messages
 
