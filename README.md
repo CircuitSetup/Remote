@@ -772,15 +772,15 @@ This procedure ensures that all your settings are copied from the old to the new
 
 This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
 
-- _Plays previous song in Music Player_: As it says, as part of Music Player control, it jumps to the previous song.
+- _Plays previous song in Music Player_: As it says, as part of Music Player control, O.O jumps to the previous song.
 - _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
 
 ##### &#9193; Holding O.O/RESET when Fake-Power off
 
-This selects what happens when you hold the O.O button for 2 seconds when Fake-Power is off:
+This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
 
 - _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
-- _takes/releases control of TCD Fake Power_: O.O takes over TCD Fake-Power control, RESET releases Fake-Power control.
+- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](-controlling-tcd-fake-power), RESET releases it.
 
 #### <ins>Hardware configuration settings</ins>
 
