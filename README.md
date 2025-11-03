@@ -780,7 +780,7 @@ This selects what happens when you (briefly) press the O.O button when Fake-Powe
 This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
 
 - _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
-- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](-controlling-tcd-fake-power), RESET releases it.
+- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](#-controlling-tcd-fake-power), RESET releases it.
 
 #### <ins>Hardware configuration settings</ins>
 
