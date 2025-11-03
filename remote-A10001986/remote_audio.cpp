@@ -99,15 +99,6 @@ static const float volTable[20] = {
     0.70, 0.80, 0.90, 1.00
 };
 uint8_t         curSoftVol = DEFAULT_VOLUME;
-#ifdef REMOTE_HAVEVOLKNOB
-// Resolution for pot, 9-12 allowed
-#define POT_RESOLUTION 9
-#define VOL_SMOOTH_SIZE 4
-static int      rawVol[VOL_SMOOTH_SIZE];
-static int      rawVolIdx = 0;
-static int      anaReadCount = 0;
-static long     prev_avg, prev_raw, prev_raw2;
-#endif
 static uint32_t g(uint32_t a, int o) { return a << (PA_MASKA - o); }
 
 static float    curVolFact = 1.0;
@@ -152,12 +143,6 @@ void audio_setup()
     audioLogger = &Serial;
     #endif
 
-    // Set resolution for volume pot
-    #ifdef REMOTE_HAVEVOLKNOB
-    analogReadResolution(POT_RESOLUTION);
-    analogSetWidth(POT_RESOLUTION);
-    #endif
-
     out = new AudioOutputI2S(0, 0, 32, 0);
     out->SetOutputModeMono(true);
     out->SetPinout(I2S_BCLK_PIN, I2S_LRCLK_PIN, I2S_DIN_PIN);
@@ -174,7 +159,6 @@ void audio_setup()
     myPM = new AudioFileSourcePROGMEM();
 
     loadCurVolume();
-    updateConfigPortalVolValues();
 
     loadMusFoldNum();
     updateConfigPortalMFValues();
@@ -322,13 +306,6 @@ void play_file(const char *audio_file, uint16_t flags, float volumeFactor)
     dynVol     = (flags & PA_DYNVOL) ? true : false;
     throttleup_playing = (flags & PA_THRUP) ? true : false;
     key_playing = flags & 0xff80;
-
-    #ifdef REMOTE_HAVEVOLKNOB
-    // Reset vol smoothing
-    // (user might have turned the pot while no sound was played)
-    rawVolIdx = 0;
-    anaReadCount = 0;
-    #endif
     
     out->SetGain(getVolume());
 
@@ -419,12 +396,6 @@ void play_click()
 
     curVolFact = 1.0;
 
-    #ifdef REMOTE_HAVEVOLKNOB
-    // Reset vol smoothing
-    // (user might have turned the pot while no sound was played)
-    rawVolIdx = 0;
-    anaReadCount = 0;
-    #endif
     out->SetGain(getVolume());
 
     myPM->open(data_click_wav, data_click_wav_len);
@@ -468,81 +439,11 @@ void play_bad()
     play_file("/bad.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
 }
 
-// Returns value for volume based on the position of the pot
-// Since the values vary we do some noise reduction
-#ifdef REMOTE_HAVEVOLKNOB
-static float getRawVolume()
-{
-    float vol_val;
-    long avg = 0, avg1 = 0, avg2 = 0;
-    long raw;
-
-    raw = analogRead(VOLUME_PIN);
-
-    if(anaReadCount > 1) {
-      
-        rawVol[rawVolIdx] = raw;
-
-        if(anaReadCount < VOL_SMOOTH_SIZE) {
-        
-            avg = 0;
-            for(int i = rawVolIdx; i > rawVolIdx - anaReadCount; i--) {
-                avg += rawVol[i & (VOL_SMOOTH_SIZE-1)];
-            }
-            avg /= anaReadCount;
-            anaReadCount++;
-
-        } else {
-
-            for(int i = rawVolIdx; i > rawVolIdx - anaReadCount; i--) {
-                if(i & 1) { 
-                    avg1 += rawVol[i & (VOL_SMOOTH_SIZE-1)];
-                } else {
-                    avg2 += rawVol[i & (VOL_SMOOTH_SIZE-1)];
-                }
-            }
-            avg1 = round((float)avg1 / (float)(VOL_SMOOTH_SIZE/2));
-            avg2 = round((float)avg2 / (float)(VOL_SMOOTH_SIZE/2));
-            avg = (abs(avg1-prev_avg) < abs(avg2-prev_avg)) ? avg1 : avg2;
-
-            //Serial.printf("%d %d %d %d\n", raw, avg1, avg2, avg);
-            
-            prev_avg = avg;
-        }
-        
-    } else {
-      
-        anaReadCount++;
-        rawVol[rawVolIdx] = avg = prev_avg = prev_raw = prev_raw2 = raw;
-        
-    }
-
-    rawVolIdx++;
-    rawVolIdx &= (VOL_SMOOTH_SIZE-1);
-
-    vol_val = (float)avg / (float)((1<<POT_RESOLUTION)-1);
-
-    if((raw + prev_raw + prev_raw2 > 0) && vol_val < 0.01) vol_val = 0.01;
-
-    prev_raw2 = prev_raw;
-    prev_raw = raw;
-
-    //Serial.println(vol_val);
-
-    return vol_val;
-}
-#endif
-
 static float getVolume()
 {
     float vol_val;
 
-    #ifdef REMOTE_HAVEVOLKNOB
-    if(curSoftVol == 255) {
-        vol_val = getRawVolume();
-    } else 
-    #endif
-        vol_val = volTable[curSoftVol];
+    vol_val = volTable[curSoftVol];
 
     // If user muted, return 0
     if(vol_val == 0.0) return vol_val;

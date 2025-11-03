@@ -75,7 +75,6 @@ extern uint8_t musFolderNum;
 
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
-#define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
 #define DEF_MOV_MD          1     // 1: (mostly) movie-accurate accel pace, 0: linear and faster
 #define DEF_PLAY_CLK        1     // 1: Play accel-clicks, 0: Do not
 #define DEF_PLAY_ALM_SND    0     // 1: Play TCD-alarm sound, 0: do not
@@ -85,6 +84,9 @@ extern uint8_t musFolderNum;
 #define DEF_SHUFFLE         0     // Music Player: Do not shuffle by default
 
 #define DEF_TCD_IP          ""    // TCD ip address or hostname for networked polling
+#define DEF_PWR_MST         0     // 0: Remote is not BTTFN-wide power-master, 1: Remote is.
+#define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
+#define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
 
 #define DEF_CFG_ON_SD       1     // Save secondary settings on SD card. Default: Yes (1)
 #define DEF_SD_FREQ         0     // SD/SPI frequency: Default 16MHz
@@ -118,7 +120,6 @@ struct Settings {
 
     char coast[4]           = MS(DEF_COAST);
     char autoThrottle[4]    = MS(DEF_AT);
-    char ooTT[4]            = MS(DEF_OO_TT);
     char movieMode[4]       = MS(DEF_MOV_MD);       // saved, but overruled by vis config file
     char playClick[4]       = MS(DEF_PLAY_CLK);
     char playALsnd[4]       = MS(DEF_PLAY_ALM_SND);
@@ -127,6 +128,9 @@ struct Settings {
     char shuffle[4]         = MS(DEF_SHUFFLE);
 
     char tcdIP[32]          = DEF_TCD_IP;
+    char pwrMst[4]          = MS(DEF_PWR_MST);
+    char oorst[4]           = MS(DEF_OORST);
+    char ooTT[4]            = MS(DEF_OO_TT);
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";
@@ -191,6 +195,9 @@ void unmount_fs();
 
 void write_settings();
 bool checkConfigExists();
+#ifdef REMOTE_HAVEMQTT
+void write_mqtt_settings();
+#endif
 
 bool loadCalib();
 void saveCalib();

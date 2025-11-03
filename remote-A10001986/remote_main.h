@@ -79,9 +79,11 @@ extern bool havePwrMon;
 extern bool FPBUnitIsOn;
 
 extern uint16_t visMode;
+extern bool autoThrottle;
+extern bool doCoast;
 extern bool movieMode;
 extern bool displayGPSMode;
-extern bool autoThrottle;
+extern bool powerMaster;
 
 extern bool TTrunning;
 
@@ -107,8 +109,8 @@ void main_setup();
 void main_loop();
 
 void flushDelayedSave();
-bool increaseVolume();
-bool decreaseVolume();
+void increaseVolume();
+void decreaseVolume();
 
 void timeTravel(uint16_t P0Dur = P0_DUR, uint16_t P1Dur = P1_DUR);
 

@@ -136,10 +136,35 @@
 
 /*  Changelog
  *  
+ *  2025/11/02 (A10001986) [1.12]
+ *    - WM: Generate HTML for checkboxes on-the-fly.
+ *  2025/11/01 (A10001986)
+ *    - Tweak coasting and deceleration curves
+ *    - No calibration when battery is low
+ *    - Play sound when taking over/releasing TCD fake-power control
+ *    - New sound pack (RM07)
+ *  2025/10/31 (A10001986)
+ *    - Move HA/MQTT settings to separate page in Config Portal; also, HA/MQTT
+ *      settings are in separate file now.
+ *    - Do not change bri/vol on first press, just display/show
+ *  2025/10/30 (A10001986)
+ *    - Add CP option to use O.O/RESET (when fake power is off) to either control
+ *      brightness (as before) or take over/release TCD Fake-Power control (like 
+ *      7095 command from TCD).
+ *    - Fix deleting a bad .bin file after upload
+ *    - Remove volume settings from Settings page
+ *  2025/10/29 (A10001986)
+ *    - Add "Remote fake power controls TCD fake power" option feature. Can be 
+ *      toggled at any time using 7096 command from the TCD (which, however, 
+ *      needs to be fake-on to accept commands).
+ *      Requires TCD firmware >= 3.8.
+ *    - Make coasting deceleration more realistic
+ *  2025/10/28 (A10001986)
+ *    - Allow coasting to be toggled by TCD command (7063)
  *  2025/10/27 (A10001986) [1.11.4]
  *    - Make reactivation of AP after power-save and reconnection attempts
  *      on Fake Power optional.
- *    - Fix display of current power saving timer value in CP
+ *    - Fix display of configured power save timer value in CP
  *  2025/10/26 (A10001986) [1.11.3]
  *    - BTTFN: Fix hostname length issues; code optimizations; minor fix for mc 
  *      notifications. Breaks support for TCD firmwares < 3.2.

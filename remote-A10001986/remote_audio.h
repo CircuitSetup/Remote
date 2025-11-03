@@ -52,12 +52,8 @@
 #ifndef _REMOTE_AUDIO_H
 #define _REMOTE_AUDIO_H
 
-// Default volume (index or 255 for knob)
-#ifdef REMOTE_HAVEVOLKNOB
+// Default volume (index)
 #define DEFAULT_VOLUME 6
-#else
-#define DEFAULT_VOLUME 6  // (not 255!)
-#endif
 
 #define PA_LOOP    0x0001
 #define PA_INTRMUS 0x0002
