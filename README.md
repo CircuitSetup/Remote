@@ -345,7 +345,7 @@ In order to connect your Remote to the TCD, just enter the TCD's IP address or h
   
 Afterwards, the Remote and the TCD can communicate wirelessly and 
 - the TCD's speed control is done by the Remote,
-- the Remote can switch Fake-Power on the TCD,
+- the Remote can switch [Fake-Power on the TCD](#controlling-tcd-fake-power),
 - both play an alarm-sequence when the TCD's alarm occurs (if so configured),
 - the Remote can be remote controlled through the TCD's keypad (command codes 7xxx; see below),
 - the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
@@ -488,7 +488,7 @@ If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Port
 
 Notes:
 - Buttons O.O/RESET need to configured for this function, see [here](#-holding-ooreset-when-fake-power-off).
-- The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority.
+- The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority; state changes are tracked but do not become effective until the Remote releases Fake-Power control.
 
 ## Home Assistant / MQTT
 
