@@ -743,6 +743,11 @@ If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP ad
 
 ##### &#9193; Remote Fake-Power controls TCD Fake-Power
 
+This selects the power-up behavior of Fake-Power control over the TCD.
+
+If this option is checked, the Remote takes over Fake-Power control from the TCD when booting. If the TCD is powered-up after the Remote, it will recognize the Remote's state and stay silent and dark until the Remote is fake-powered up.
+
+If this option is unchecked, you need to hold O.O to gain Fake-Power control on the TCD, as described [here](#controlling-tcd-fake-power).
 
 #### <ins>Other settings</ins>
 
