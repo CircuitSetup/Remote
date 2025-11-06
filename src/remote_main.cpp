@@ -898,7 +898,6 @@ void main_loop()
     powerswitch.scan();
     if(isFPBKeyChange) {
         isFPBKeyChange = false;
-        powerState = isFPBKeyPressed;
         #ifdef REMOTE_DBG
         if(bootFlag) {
             Serial.printf("Power change detected at boot\n");
@@ -978,7 +977,7 @@ void main_loop()
 
                 networkTimeTravel = false;
 
-                bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                fakePower(true);
 
                 play_file(powerOnSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
             }
@@ -1008,7 +1007,7 @@ void main_loop()
 
                 flushDelayedSave();
 
-                bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                fakePower(false);
 
                 if(havePOFFsnd) {
                     play_file(powerOffSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
@@ -3123,6 +3122,14 @@ void bttfn_remote_unregister()
     if(!bttfn_send_command(BTTFN_REMCMD_BYE, 0, 0)) {
         triggerCompleteUpdate = true;
     }
+}
+
+void fakePower(bool on)
+{
+    if(powerState != on) {
+        powerState = on;
+    }
+    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
 }
 
 static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t speed)
