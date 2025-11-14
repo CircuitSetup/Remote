@@ -544,7 +544,7 @@ The Remote can be controlled through messages sent to topic **bttf/remote/cmd**.
 
 #### The INJECT_x command
 
-This command allows remote control of the Remote through HA/MQTT in the same way as through the TCD keypad by injecting commands in the Remote's command queue (hence the name). Commands are listed [here](#tcd-remote-command-reference); nearly all with a leading "7" are supported. 
+This command allows remote control of the Remote through HA/MQTT in the same way as through the TCD keypad by injecting commands in the Remote's command queue (hence the name). Commands are listed [here](#tcd-remote-command-reference); nearly all are supported. 
 
 To toggle movie/linear mode (7060), issue the following command: **INJECT_7060**
 
