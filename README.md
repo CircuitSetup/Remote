@@ -457,7 +457,7 @@ You can use BTTF-Network and MQTT at the same time.
      <td align="left">7009&#9166; / 7509&#9166;</td>
     </tr>
     <tr>
-     <td align="left">Play "<a href="#additional-custom-sounds">keyXl.mp3</a>"</td>
+     <td align="left">Play "<a href="#additional-custom-sounds">keyXl.mp3</a>" (X=1-9)</td>
      <td align="left">7511&#9166; - 7519&#9166;</td>
     </tr>
     <tr>
