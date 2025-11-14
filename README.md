@@ -1,5 +1,7 @@
 # Remote Control (Delorean Time Machine)
 
+_Documentation is currently reflecting version 1.13 which will be released shortly_
+
 This [repository](https://remote.out-a-ti.me) holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me) with a connected speedo. Of course, the Remote can also be used stand-alone.
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
@@ -44,7 +46,7 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 ### Sound-pack installation
 
-The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update of the sound-pack is needed.
+The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "ISP" briefly during boot, a re-installation/update of the sound-pack is needed.
 
 The first step is to download "install/sound-pack-rmXX.zip" and extract it. It contains one file named "REMA.bin".
 
@@ -167,15 +169,19 @@ After [calibration](#calibration), your Remote is ready for use.
 
 If battery monitoring is available, the battery state (in percent, or "FUL") is shown briefly upon (real) power-on.
 
-After fake-power-on, the Remote's throttle controls the TCD's speed (ie the speed displayed on the Speedo). 
+The Remote can be operated stand-alone, but is really meant to be (wirelessly) connected to a TCD.
 
-For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds. The mode can be selected in the Config Portal, or through the TCD's keypad (7060).
+After fake-power-on, the Remote's throttle controls the speed displayed on the TCD's Speedo.
 
-When the remote hits 88.0mph, the TCD triggers a time travel.
+For acceleration, there are two modes: Linear mode and "movie mode". In linear mode, acceleration is even over the entire range of 0 to 88mph. In "movie mode", the Remote (mostly) accelerates in the same pace as shown in the movie. In this mode, acceleration becomes slower at higher speeds. The mode can be selected in the Config Portal.
 
-Auto-throttle: If this option is checked in the Config Portal (or through the TCD keypad [7062]), acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+When the remote hits 88.0mph, the TCD triggers a BTFN-wide time travel; all connected props will play a synchronized time travel sequence. If operated stand-alone, a time travel sequence will be played on the Remote.
 
-Coasting: If this feature is enabled through the Config Portal (or through the TCD keypad [7063]), the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
+Auto-throttle: If this option is checked in the Config Portal, acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
+
+Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
+
+All the operation modes described above can also be switched on/off through the [TCD keypad](#tcd-remote-command-reference) or [HA/MQTT](#control-the-remote-via-mqtt).
 
 Buttons and switches:
 
@@ -217,7 +223,7 @@ The Calibration button needs to be a momentary contact.
 When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td>Prepare BTTFN-wide TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous Song<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
+  <tr><td>Button "O.O"</td><td>Prepare TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous Song<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
   <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
 </table>
 
@@ -245,10 +251,8 @@ Sound playback is mapped as follows:
   <tr><td>Button 5</td><td>Play "<a href="#additional-custom-sounds">key5.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key5l.mp3</a>"</td></tr>
   <tr><td>Button 6</td><td>Play "<a href="#additional-custom-sounds">key6.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key6l.mp3</a>"</td></tr>
   <tr><td>Button 7</td><td>Play "<a href="#additional-custom-sounds">key7.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key7l.mp3</a>"</td></tr>
-  <tr><td>Button 8</td><td>Play "<a href="#additional-custom-sounds">key9.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key9l.mp3</a>"</td></tr>
+  <tr><td>Button 8</td><td>Play "<a href="#additional-custom-sounds">key8.mp3</a>"</td><td>Play "<a href="#additional-custom-sounds">key8l.mp3</a>"</td></tr>
 </table>
-
-> 'key9' instead of 'key8' is no typo. The seemingly odd numbering is for synchronicity with other props, where keys 2, 5, 8 control the music player. Since the Remote has more buttons free for keyX play-back than other props, 'key2' and 'key5' are supported and only 'key8' is skipped. Note that 'key2', 'key5' as well as the 'keyXl' sounds cannot be played back through a TCD keypad command.
 
 If a "button" is configured as a maintained switch in the Config Portal, keyX will be played on every flip (ON->OFF, OFF->ON) by default. If the option **_Maintained: Audio on ON only_** is checked for a switch, keyX will only be played when the switch is brought into ON position. This is especially useful for three-position switches where each of the "ON" positions is wired to a different "Button" on the Control Board. Note that maintained switches cannot trigger play-back of keyXl.
 
@@ -277,10 +281,8 @@ The firmware supports some additional user-provided sound effects, which it will
 
 - "poweroff.mp3": Played when the Remote is (fake)-powered off.
 - "brakeoff.mp3": Played when the brake is switched off.
-- "key1.mp3", "key2.mp3", "key3.mp3", "key4.mp3", "key5.mp3", "key6.mp3", "key7.mp3", "key9.mp3": Will be played upon pressing the respective [button](#user-buttons), or - with the exceptions of "key2" and "key5" - by typing 700x on the [TCD's keypad](#tcd-remote-command-reference) (connected through BTTFN).
-- "key1l.mp3", "key2l.mp3", "key3l.mp3", "key4l.mp3", "key5l.mp3", "key6l.mp3", "key7l.mp3", "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons). Naturally, this only works for momentary buttons, not maintained switches.
-
-> The seemingly odd numbering for keyX files is because of synchronicity with other props, especially the TCD and its keymap where the Music Player occupies keys 2, 5, 8. Since there are more buttons for sound than keys, 2 and 5 are used but 8 is skipped.
+- "key1.mp3" - "key9.mp3": Will be played upon pressing the respective [button](#user-buttons) (except key9), and commands from the [TCD's keypad](#tcd-remote-command-reference) or [HA/MQTT](#control-the-remote-via-mqtt)
+- "key1l.mp3" - "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons) (except key9). Naturally, this only works for momentary buttons, not maintained switches. Those sounds also play on commands from the [TCD's keypad](#tcd-remote-command-reference) or [HA/MQTT](#control-the-remote-via-mqtt).
 
 Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
 
@@ -288,7 +290,7 @@ Those files are not provided here. You can use any mp3, with a bitrate of 128kpb
 
 Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
 
-Uploading through the Config Portal works exactly like [installing the default audio files](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
+Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
 In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
 
@@ -304,7 +306,7 @@ In order to be recognized, your mp3 files need to be organized in music folders 
 
 The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). *The maximum bitrate is 128kpbs.*
 
-Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you - provided you can live with the files being sorted in alphabetical order: Just copy your files with their original filenames to the music folder; upon boot or upon selecting a folder containing such files, they will be renamed following the 3-digit name scheme (as mentioned: in alphabetic order). You can also add files to a music folder later, they will be renamed properly; when you do so, delete the file "TCD_DONE.TXT" from the music folder on the SD card so that the firmware knows that something has changed. The renaming process can take a while (10 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the control board as this speeds up the process.
+Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you - provided you can live with the files being sorted in alphabetical order: Just copy your files with their original filenames to the music folder; upon boot or upon selecting a folder containing such files, they will be renamed following the 3-digit name scheme (as mentioned: in alphabetic order). You can also add files to a music folder later, they will be renamed properly; when you do so, delete the file "TCD_DONE.TXT" from the music folder on the SD card so that the firmware knows that something has changed. The renaming process can take a while (11 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the control board as this speeds up the process. _While the renaming is in progress, the Remote's display shows how many files are still left to be processed._
 
 To start and stop music playback, hold "O.O" for 2 seconds. Briefly pressing "O.O" jumps to the previous song, pressing "RESET" to the next one. (The same can be achieved by entering codes on the TCD's keypad: 7002 = previous song, 7005 = play/stop, 7008 = next song).
 
@@ -420,27 +422,43 @@ You can use BTTF-Network and MQTT at the same time.
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key1.mp3</a>"</td>
-     <td align="left">7001&#9166;</td>
+     <td align="left">7001&#9166; / 7501&#9166;</td>
+    </tr>
+    <tr>
+     <td align="left">Play "<a href="#additional-custom-sounds">key2.mp3</a>"</td>
+     <td align="left">7502&#9166;</td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key3.mp3</a>"</td>
-     <td align="left">7003&#9166;</td>
+     <td align="left">7003&#9166; / 7503&#9166;</td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key4.mp3</a>"</td>
-     <td align="left">7004&#9166;</td>
+     <td align="left">7004&#9166; / 7504&#9166;</td>
+    </tr>
+    <tr>
+     <td align="left">Play "<a href="#additional-custom-sounds">key5.mp3</a>"</td>
+     <td align="left">7505&#9166;</td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key6.mp3</a>"</td>
-     <td align="left">7006&#9166;</td>
+     <td align="left">7006&#9166; / 7506&#9166;</td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key7.mp3</a>"</td>
-     <td align="left">7007&#9166;</td>
+     <td align="left">7007&#9166; / 7507&#9166;</td>
+    </tr>
+    <tr>
+     <td align="left">Play "<a href="#additional-custom-sounds">key8.mp3</a>"</td>
+     <td align="left">7502&#9166;</td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key9.mp3</a>"</td>
-     <td align="left">7009&#9166;</td>
+     <td align="left">7009&#9166; / 7509&#9166;</td>
+    </tr>
+    <tr>
+     <td align="left">Play "<a href="#additional-custom-sounds">keyXl.mp3</a>" (X=1-9)</td>
+     <td align="left">7511&#9166; - 7519&#9166;</td>
     </tr>
     <tr>
      <td align="left">Display current IP address</td>
@@ -463,16 +481,17 @@ You can use BTTF-Network and MQTT at the same time.
      <td align="left">7096&#9166;</td>
     </tr> 
     <tr>
-     <td align="left">Reboot the device</td>
+     <td align="left">Reboot the device<sup>2</sup></td>
      <td align="left">7064738&#9166;</td>
     </tr>
      <tr>
-     <td align="left">Delete static IP address<br>and WiFi-AP password</td>
+     <td align="left">Delete static IP address<br>and WiFi-AP password<sup>2</sup></td>
      <td align="left">7123456&#9166;</td>
     </tr>
 </table>
 
 1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
+2: Not supported through HA/MQTT [_INJECT_](#the-inject_x-command) command
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
 
@@ -506,7 +525,11 @@ For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr
 
 ### Control the Remote via MQTT
 
-The Remote can - to some extent - be controlled through messages sent to topic **bttf/remote/cmd**. Supported commands are
+The Remote can be controlled through messages sent to topic **bttf/remote/cmd**. Supported commands are
+- AUTOTHROTTLE_ON, AUTOTHROTTLE_OFF: Enable/disable [auto-throttle](#-auto-throttle)
+- COASTING_ON, COASTING_OFF: Enable/disable [coasting](#-coasting-when-throttle-in-neutral)
+- MOVIEACCEL_ON, MOVIEACCEL_OFF: Switch between movie and linear [acceleration](#-movie-like-acceleration)
+- DISPTCDSPD_ON, DISPTCDSPD_OFF: Enable/disable [speed display while fake-off](#-display-tcd-speed-when-fake-off)
 - MP_PLAY: Starts the [Music Player](#the-music-player)
 - MP_STOP: Stops the [Music Player](#the-music-player)
 - MP_NEXT: Jump to next song
@@ -514,6 +537,20 @@ The Remote can - to some extent - be controlled through messages sent to topic *
 - MP_SHUFFLE_ON: Enables shuffle mode in [Music Player](#the-music-player)
 - MP_SHUFFLE_OFF: Disables shuffle mode in [Music Player](#the-music-player)
 - MP_FOLDER_x: x being 0-9, set folder number for [Music Player](#the-music-player)
+- PLAYKEY_x: Play keyX.mp3 (from SD card), X being in the range from 1 to 9.
+- PLAYKEY_xL: Play keyXl.mp3 (from SD card), X being in the range from 1 to 9.
+- STOPKEY: Stop playback of keyX file. Does nothing if no keyX file is currently played back.
+- INJECT_x: See immediately below.
+
+#### The INJECT_x command
+
+This command allows remote control of the Remote through HA/MQTT in the same way as through the TCD keypad by injecting commands in the Remote's command queue (hence the name). Commands are listed [here](#tcd-remote-command-reference); nearly all are supported. 
+
+To toggle movie/linear mode (7060), issue the following command: **INJECT_7060**
+
+To play "key2.mp3" (7502), issue **INJECT_7502**
+
+To select the 'music1' folder (7051), issue **INJECT_7051**
 
 ### Receive commands from Time Circuits Display
 
@@ -713,7 +750,7 @@ If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TC
 
 ##### &#9193; Display TCD speed when fake-off
 
-When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
+When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed.
 
 ##### &#9193; Brightness level
 
@@ -775,7 +812,7 @@ This procedure ensures that all your settings are copied from the old to the new
 This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
 
 - _Plays previous song in Music Player_: As it says, as part of Music Player control, O.O jumps to the previous song.
-- _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
+- _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a Time Travel, which is then triggered when pushing the throttle stick upward.
 
 ##### &#9193; Holding O.O/RESET when Fake-Power off
 
@@ -794,23 +831,27 @@ You might want use one or more switches of the Futaba remote for sound effects a
 
 If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
-##### &#9193; Use Power LED
+##### &#9193; Use Futaba Power LED
 
 This setting is for using the Futaba's original power LED. If this LED isn't connected to the control board, this setting has no effect.
 
-If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below.
+If unchecked, the power LED stays dark, which is the default. If checked, the power LED lights up on either real power or fake power.
 
-##### &#9193; Use Battery Level Meter
+##### &#9193; Power LED on fake power
+
+If unchecked, the power LED lights up on real power. If checked, it does so on fake power.
+
+##### &#9193; Use Futaba Battery Level Meter
 
 This setting is for using the Futaba's original battery level meter. If this meter isn't connected to the control board, this setting has no effect.
 
-If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75% on either real power or fake power, as per the **_Power LED/meter on fake power_** option, see below. 
+If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75%.
 
 Please note that the meter does not show actual battery level; the built-in battery monitor, as described below, only works through the Stanley display.
 
-##### &#9193; Power LED/meter on fake power
+##### &#9193; Level Meter on fake power
 
-If unchecked, the power LED and the battery level meter come to life on real power. If checked, they act on fake power.
+If unchecked, the level meter comes to life on real power. If checked, it does so on fake power.
 
 #### <ins>Battery monitoring</ins>
 
@@ -858,7 +899,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 
 ## Appendix B: Display messages
 
-- "AUD": Please install/update the [sound pack](#sound-pack-installation)
+- "ISP": Please install/update the [sound pack](#sound-pack-installation)
 - "BAT": Battery is low
 - "CAL", "UP", "DN": Shown during [calibration](#calibration)
 - "ERR": Error while installing the sound-pack, or during calibration. Please try again.
