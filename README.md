@@ -812,7 +812,7 @@ This procedure ensures that all your settings are copied from the old to the new
 This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
 
 - _Plays previous song in Music Player_: As it says, as part of Music Player control, O.O jumps to the previous song.
-- _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a BTTFN-wide Time Travel, which is then triggered when pushing the throttle stick upward.
+- _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a Time Travel, which is then triggered when pushing the throttle stick upward.
 
 ##### &#9193; Holding O.O/RESET when Fake-Power off
 
