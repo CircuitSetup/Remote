@@ -750,7 +750,7 @@ If a TCD is connected via BTTFN or MQTT, the Remote visually signals when the TC
 
 ##### &#9193; Display TCD speed when fake-off
 
-When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed. In a home setup with a Rotary Encoder for speed, the Remote will show the speed displayed on the TCD's speedo.
+When this is checked, the Remote (when fake-powered off) shows whatever the TCD displays on its speedo. For instance, if your TCD is in a car along with a GPS-equipped speedo, the Remote can show the GPS speed.
 
 ##### &#9193; Brightness level
 
