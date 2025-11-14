@@ -899,7 +899,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 
 ## Appendix B: Display messages
 
-- "AUD": Please install/update the [sound pack](#sound-pack-installation)
+- "ISP": Please install/update the [sound pack](#sound-pack-installation)
 - "BAT": Battery is low
 - "CAL", "UP", "DN": Shown during [calibration](#calibration)
 - "ERR": Error while installing the sound-pack, or during calibration. Please try again.
