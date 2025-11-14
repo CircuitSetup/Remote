@@ -136,6 +136,46 @@
 
 /*  Changelog
  *  
+ *  2025/11/14 (A10001986) [1.13]
+ *    - Remove BTTFN_MC conditional
+ *  2025/11/13 (A10001986)
+ *    - Move Music Player init into main_setup()
+ *    - Allow using TCD command codes 7xxx with MQTT-INJECT command
+ *    - Block BTTFN/MQTT commands while busy
+ *  2025/11/12 (A10001986)
+ *    - Finish stand-alone TT (count-up version)
+ *    - Cancel tcdIsInP0 if networkAbort
+ *    - Skip button actions while TTrunning or tcdIsInP0
+ *  2025/11/11 (A10001986)
+ *    - New sound pack (RM08)
+ *    - Add stand-alone time-travel sequence; triggered through O.O + throttle up
+ *      or hitting 88 through throttle-up when not connected to a TCD.
+ *    - Support "stalled P0" (TCD 3.9)
+ *  2025/11/10 (A10001986)
+ *    - Fixes for MQTT inter-prop communication; add support for MQTT TIMETRAVEL 
+ *      command with variable lead (TCD 3.9)
+ *  2025/11/09 (A10001986)
+ *    - Add BTTFN_NOT_BUSY support (TCD 3.9)
+ *  2025/11/08 (A10001986)
+ *    - Allocate MQTT buffer only if MQTT is actually used
+ *  2025/11/07 (A10001986)
+ *    - MP3/File-Renamer: Ignore non-mp3 files; display number of files-to-do while
+ *      renaming
+ *    - Remove hack to skip web handling in on mp3-playback start, remove stopping
+ *      sound in AP mode on CP access.
+ *  2025/11/05 (A10001986)
+ *    - Add MQTT command "INJECT_"
+ *  2025/11/04 (A10001986)
+ *    - Breaking change: Eliminated historical limitation of not having "key8.mp3". 
+ *      User button #8 now plays key8, not key9 as before! Please re-upload
+ *      your previous key9(l).mp3 as key8.
+ *      Key9 can be played through HA/MQTT and TCD-commands.
+ *  2025/11/03 (A10001986)
+ *    - Make separate option for Level Meter on real or fake power
+ *    - Add MQTT commands PLAYKEY_x (x=1-9), STOPKEY, AUTOTHROTTLE_xxx, COASTING_xxx,
+ *      MOVIEACCEL_xxx, DISPTCDSPD_xxx.
+ *    - Add TCD commands 7501-7509 (7511-7519) to play keyX.mp3 (keyXL.mp3) (x=1-9)
+ *      (Old short-hands 700x for a subset of keyX playback remain as well.)
  *  2025/11/02 (A10001986) [1.12]
  *    - WM: Generate HTML for checkboxes on-the-fly.
  *  2025/11/01 (A10001986)

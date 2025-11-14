@@ -87,10 +87,10 @@
 #define DECLARE_D_JSON(x,n) DynamicJsonDocument n(x);
 #endif
 
-#define NUM_AUDIOFILES 16
-#define SND_REQ_VERSION "RM07"
+#define NUM_AUDIOFILES 19
+#define SND_REQ_VERSION "RM08"
 #define AC_FMTV 2
-#define AC_TS   440061
+#define AC_TS   728120
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 static const char *CONFN  = "/REMA.bin";
 static const char *CONFND = "/REMA.old";
@@ -493,8 +493,9 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyCheckValidNumParm(json["b7MtO"], settings.bPb7MtO, sizeof(settings.bPb7MtO), 0, 1, DEF_BPMTOO);
 
         wd |= CopyCheckValidNumParm(json["uPLED"], settings.usePwrLED, sizeof(settings.usePwrLED), 0, 1, DEF_USE_PLED);
-        wd |= CopyCheckValidNumParm(json["uLvLM"], settings.useLvlMtr, sizeof(settings.useLvlMtr), 0, 1, DEF_USE_LVLMTR);
         wd |= CopyCheckValidNumParm(json["pLEDFP"], settings.pwrLEDonFP, sizeof(settings.pwrLEDonFP), 0, 1, DEF_PLEDFP);
+        wd |= CopyCheckValidNumParm(json["uLvLM"], settings.useLvlMtr, sizeof(settings.useLvlMtr), 0, 1, DEF_USE_LVLMTR);
+        wd |= CopyCheckValidNumParm(json["uLvLMFP"], settings.LvLMtronFP, sizeof(settings.LvLMtronFP), 0, 1, DEF_LVLFP);
 
         #ifdef HAVE_PM
         wd |= CopyCheckValidNumParm(json["uPM"], settings.usePwrMon, sizeof(settings.usePwrMon), 0, 1, DEF_USE_PWRMON);
@@ -622,8 +623,9 @@ void write_settings()
     json["b7MtO"] = (const char *)settings.bPb7MtO;
 
     json["uPLED"] = (const char *)settings.usePwrLED;
-    json["uLvLM"] = (const char *)settings.useLvlMtr;
     json["pLEDFP"] = (const char *)settings.pwrLEDonFP;
+    json["uLvLM"] = (const char *)settings.useLvlMtr;
+    json["uLvLMFP"] = (const char *)settings.LvLMtronFP;
 
     #ifdef HAVE_PM
     json["uPM"] = (const char *)settings.usePwrMon;

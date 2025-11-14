@@ -345,16 +345,18 @@ void remDisplay::setSpeed(int speed)    // times 10
     
         if(speed < 0) {
             b1 = b2 = b3 = *(_fontXSeg + 37);
+            _spdpd = 0;
         } else if(speed > 990) {
             b1 = *(_fontXSeg + ('H' - 'A' + 10));
             b2 = *(_fontXSeg + ('I' - 'A' + 10));
-            b3 = 0;
+            b3 = _spdpd = 0;
         } else {
             temp = speed / 100;
             b1 = temp ? *(_fontXSeg + temp) : 0;
             speed -= (temp * 100);
             b2 = *(_fontXSeg + (speed / 10));
-            b3 = *(_fontXSeg + (speed % 10));
+            _spdpd = speed % 10;
+            b3 =  *(_fontXSeg + _spdpd);
         }
     
         _displayBuffer[_speed_pos10] |= (b1 << _dig10_shift);
@@ -371,6 +373,11 @@ void remDisplay::setSpeed(int speed)    // times 10
 int remDisplay::getSpeed()    // times 10
 {
     return (int)_speed;
+}
+
+int remDisplay::getSpeedPostDot()
+{
+    return (int)_spdpd;
 }
 
 // Private functions ###########################################################
