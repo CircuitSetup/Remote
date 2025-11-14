@@ -281,8 +281,8 @@ The firmware supports some additional user-provided sound effects, which it will
 
 - "poweroff.mp3": Played when the Remote is (fake)-powered off.
 - "brakeoff.mp3": Played when the brake is switched off.
-- "key1.mp3" - "key9.mp3": Will be played upon pressing the respective [button](#user-buttons) (except key9), and commands from the [TCD's keypad](#tcd-remote-command-reference) or [HA/MQTT]
-- "key1l.mp3" - "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons) (except key9). Naturally, this only works for momentary buttons, not maintained switches. Those sounds also play through commands from the [TCD's keypad](#tcd-remote-command-reference) or [HA/MQTT]
+- "key1.mp3" - "key9.mp3": Will be played upon pressing the respective [button](#user-buttons) (except key9), and commands from the [TCD's keypad](#tcd-remote-command-reference) or [HA/MQTT](#control-the-remote-via-mqtt)
+- "key1l.mp3" - "key9l.mp3": Will be played upon long-pressing the respective [button](#user-buttons) (except key9). Naturally, this only works for momentary buttons, not maintained switches. Those sounds also play on commands from the [TCD's keypad](#tcd-remote-command-reference) or [HA/MQTT](#control-the-remote-via-mqtt).
 
 Those files are not provided here. You can use any mp3, with a bitrate of 128kpbs or less.
 
