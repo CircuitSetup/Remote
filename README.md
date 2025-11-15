@@ -624,7 +624,7 @@ This leads to the [Settings page](#settings).
 
 ##### &#9193; HA/MQTT Settings
 
-This leads to the [HomeAssistent/MQTT Settings page](#hamqtt-settings).
+This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
 ##### &#9193; Update
 
