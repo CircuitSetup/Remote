@@ -505,7 +505,7 @@ To release Fake-Power control, hold RESET when Fake-Power on the Remote is off.
 
 If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Portal, the Remote will take over Fake-Power control from the TCD at its startup, ie there is no need to initially press O.O.
 
-Notes:
+Remarks:
 - Buttons O.O/RESET need to configured for this function, see [here](#-holding-ooreset-when-fake-power-off).
 - The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority; state changes are tracked but do not become effective until the Remote releases Fake-Power control.
 
