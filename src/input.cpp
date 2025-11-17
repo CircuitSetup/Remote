@@ -165,18 +165,13 @@ enum DUV2_CONF2_PARAM {
 #define SCALE_TO_0_U  15
 #define SCALE_MULT_U  10000 / (100-SCALE_TO_0_U)
 
-#define SCALE_TO_0_D  20
+#define SCALE_TO_0_D  33 //20
 #define SCALE_MULT_D  10000 / (100-SCALE_TO_0_D)
 
-REMRotEnc::REMRotEnc(int numTypes, uint8_t addrArr[], TwoWire *awire)
+REMRotEnc::REMRotEnc(int numTypes, const uint8_t *addrArr)
 {
     _numTypes = min(6, numTypes);
-
-    for(int i = 0; i < _numTypes * 2; i++) {
-        _addrArr[i] = addrArr[i];
-    }
-
-    _wire = awire;
+    _addrArr = addrArr;
 }
 
 bool REMRotEnc::begin(bool forSpeed)
@@ -193,8 +188,8 @@ bool REMRotEnc::begin(bool forSpeed)
 
         _i2caddr = _addrArr[i];
 
-        _wire->beginTransmission(_i2caddr);
-        if(!_wire->endTransmission(true)) {
+        Wire.beginTransmission(_i2caddr);
+        if(!Wire.endTransmission(true)) {
 
             switch(_addrArr[i+1]) {
             case REM_RE_TYPE_ADA4991:
@@ -539,27 +534,27 @@ int REMRotEnc::read(uint16_t base, uint8_t reg, uint8_t *buf, uint8_t num)
 {
     int i2clen;
     
-    _wire->beginTransmission(_i2caddr);
-    if(base <= 0xff) _wire->write((uint8_t)base);
-    _wire->write(reg);
-    _wire->endTransmission(true);
+    Wire.beginTransmission(_i2caddr);
+    if(base <= 0xff) Wire.write((uint8_t)base);
+    Wire.write(reg);
+    Wire.endTransmission(true);
     delay(1);
-    i2clen = _wire->requestFrom(_i2caddr, (int)num);
+    i2clen = Wire.requestFrom(_i2caddr, (int)num);
     for(int i = 0; i < i2clen; i++) {
-        buf[i] = _wire->read();
+        buf[i] = Wire.read();
     }
     return i2clen;
 }
 
 void REMRotEnc::write(uint16_t base, uint8_t reg, uint8_t *buf, uint8_t num)
 {
-    _wire->beginTransmission(_i2caddr);
-    if(base <= 0xff) _wire->write((uint8_t)base);
-    _wire->write(reg);
+    Wire.beginTransmission(_i2caddr);
+    if(base <= 0xff) Wire.write((uint8_t)base);
+    Wire.write(reg);
     for(int i = 0; i < num; i++) {
-        _wire->write(buf[i]);
+        Wire.write(buf[i]);
     }
-    _wire->endTransmission();
+    Wire.endTransmission();
 }
 
 /*
@@ -702,15 +697,10 @@ void RemButton::transitionTo(ButState nextState)
 /*
  * Buttonpack Class
  */
-ButtonPack::ButtonPack(int numTypes, uint8_t addrArr[], TwoWire *awire)
+ButtonPack::ButtonPack(int numTypes, const uint8_t *addrArr)
 {
     _numTypes = min(4, numTypes);
-
-    for(int i = 0; i < _numTypes * 2; i++) {
-        _addrArr[i] = addrArr[i];
-    }
-
-    _wire = awire;
+    _addrArr = addrArr;
 }
 
 bool ButtonPack::begin()
@@ -721,8 +711,8 @@ bool ButtonPack::begin()
 
         _i2caddr = _addrArr[i];
 
-        _wire->beginTransmission(_i2caddr);
-        if(!_wire->endTransmission(true)) {
+        Wire.beginTransmission(_i2caddr);
+        if(!Wire.endTransmission(true)) {
 
             switch(_addrArr[i+1]) {
             case REM_BP_TYPE_PCA8574:
@@ -933,15 +923,15 @@ void ButtonPack::port_write(uint8_t reg, uint8_t val)
 {
     switch(_st) {
     case REM_BP_TYPE_PCA8574:
-        _wire->beginTransmission(_i2caddr);
-        _wire->write(val);
-        _wire->endTransmission();
+        Wire.beginTransmission(_i2caddr);
+        Wire.write(val);
+        Wire.endTransmission();
         break;
     case REM_BP_TYPE_PCA9554:
-        _wire->beginTransmission(_i2caddr);
-        _wire->write(reg);
-        _wire->write(val);
-        _wire->endTransmission(); 
+        Wire.beginTransmission(_i2caddr);
+        Wire.write(reg);
+        Wire.write(val);
+        Wire.endTransmission(); 
         break;
     }  
 }
@@ -952,16 +942,16 @@ int ButtonPack::port_read(uint8_t *buf)
 
     switch(_st) {
     case REM_BP_TYPE_PCA8574:
-        i2clen = _wire->requestFrom(_i2caddr, (int)1);
-        buf[0] = _wire->read();
+        i2clen = Wire.requestFrom(_i2caddr, (int)1);
+        buf[0] = Wire.read();
         break;
     case REM_BP_TYPE_PCA9554:
-        _wire->beginTransmission(_i2caddr);
-        _wire->write(0);
-        _wire->endTransmission();
+        Wire.beginTransmission(_i2caddr);
+        Wire.write(0);
+        Wire.endTransmission();
         delay(1);
-        i2clen = _wire->requestFrom(_i2caddr, (int)1);
-        buf[0] = _wire->read();
+        i2clen = Wire.requestFrom(_i2caddr, (int)1);
+        buf[0] = Wire.read();
         break;
     }
     return i2clen;

@@ -14,7 +14,7 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "AUD" briefly during boot, a re-installation/update is needed.
 
-The first step is to download "install/sound-pack-xxxxxxxx.zip" and extract it. It contains one file named "REMA.bin".
+The first step is to download "install/sound-pack-rmXX.zip" and extract it. It contains one file named "REMA.bin".
 
 Then there are two alternative ways to proceed. Note that both methods *require an SD card*.
 

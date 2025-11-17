@@ -58,10 +58,6 @@
 #include "power.h"
 #endif
 
-// Durations of tt phases as defined by TCD
-#define P0_DUR          5000    // etto lead
-#define P1_DUR          6600    // time tunnel phase
-
 extern unsigned long powerupMillis;
 
 extern uint32_t myRemID;
@@ -96,6 +92,11 @@ extern bool networkAlarm;
 extern uint16_t networkLead;
 extern uint16_t networkP1;
 
+extern bool doPrepareTT;
+extern bool doWakeup;
+
+extern bool remBusy;
+
 extern bool     calibMode;
 extern uint16_t tcdIsInP0;
 extern int32_t  throttlePos;
@@ -112,11 +113,17 @@ void flushDelayedSave();
 void increaseVolume();
 void decreaseVolume();
 
-void timeTravel(uint16_t P0Dur = P0_DUR, uint16_t P1Dur = P1_DUR);
+void updateVisMode();
+
+void setAutoThrottle(bool isOn);
+void setCoast(bool isOn);
+void setMovieMode(bool isOn);
+void setDisplayGPS(bool isOn);
 
 void showWaitSequence();
 void endWaitSequence();
 void showCopyError();
+void showNumber(int num);
 
 void allOff();
 void prepareReboot();
@@ -124,13 +131,12 @@ void prepareReboot();
 void prepareTT();
 void wakeup();
 
-void updateVisMode();
-
-void switchMusicFolder(uint8_t nmf);
+bool switchMusicFolder(uint8_t nmf, bool isSetup = false);
 void waitAudioDone(bool withBTTFN = false);
 
 void mydelay(unsigned long mydel, bool withBTTFN = false);
 
+void addCmdQueue(uint32_t command);
 void bttfn_loop();
 void bttfn_remote_unregister();
 

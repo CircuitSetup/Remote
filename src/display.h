@@ -110,6 +110,7 @@ class remDisplay {
         
         void setSpeed(int speed);
         int  getSpeed();
+        int  getSpeedPostDot();
 
     private:
 
@@ -125,7 +126,8 @@ class remDisplay {
         uint8_t _briCache = 0xfe;               // Cache for brightness
         uint8_t _blink = 0;
 
-        int     _speed = 0;
+        int      _speed = 0;
+        uint16_t _spdpd = 0;
 
         uint8_t _brightness = 15;
         uint8_t _origBrightness = 15;

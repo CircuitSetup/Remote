@@ -68,7 +68,7 @@
 class REMRotEnc {
   
     public:
-        REMRotEnc(int numTypes, uint8_t addrArr[], TwoWire *awire = &Wire);
+        REMRotEnc(int numTypes, const uint8_t *addrArr);
         bool    begin(bool forSpeed = true);
         
         void    zeroPos(bool calibMode = false);
@@ -95,12 +95,11 @@ class REMRotEnc {
         bool    zeroEnc();
 
         int           _numTypes = 0;
-        uint8_t       _addrArr[6*2];    // up to 6 types fit here
+        const uint8_t *_addrArr;
         int8_t        _st = -1;
         int8_t        _type = 0;        // 0=throttle; 1=vol
         
         int           _i2caddr;
-        TwoWire       *_wire;
 
         union {
             int32_t   throttlePos = 0;
@@ -193,7 +192,7 @@ class RemButton {
 class ButtonPack {
   
     public:
-        ButtonPack(int numTypes, uint8_t addrArr[], TwoWire *awire = &Wire);
+        ButtonPack(int numTypes, const uint8_t *addrArr);
 
         bool begin();
 
@@ -224,11 +223,10 @@ class ButtonPack {
         int _pack_size = PACK_SIZE;
 
         int           _numTypes = 0;
-        uint8_t       _addrArr[4*2];    // up to 4 types fit here
+        const uint8_t *_addrArr;
         int8_t        _st = -1;
         
         int           _i2caddr;
-        TwoWire       *_wire;
         
         unsigned int _debounceDur[PACK_SIZE];
         unsigned int _longPressDur[PACK_SIZE];

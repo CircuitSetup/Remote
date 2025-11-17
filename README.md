@@ -1,7 +1,5 @@
 # Remote Control (Delorean Time Machine)
 
-_Documentation is currently reflecting version 1.13 which will be released shortly_
-
 This [repository](https://remote.out-a-ti.me) holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://tcd.out-a-ti.me) with a connected speedo. Of course, the Remote can also be used stand-alone.
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
@@ -25,7 +23,7 @@ Firmware features:
 - [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://tcd.out-a-ti.me); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD-connected speedo. 
 - Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps towards each direction. When the speed on the TCD's speedo reaches 88mph, a time travel is triggered.
 - Optional [coasting](#-coasting-when-throttle-in-neutral), optional [auto-throttle](#-auto-throttle)
-- Supports controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
+- controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
 - Movie-accurate "Stop" light and stop switch behavior
 - Movie-accurate sound effects
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
@@ -354,7 +352,7 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
 - the Remote can be remote controlled through the TCD's keypad (command codes 7xxx; see below),
 - the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
 
-You can use BTTF-Network and MQTT at the same time.
+You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time-circuits-display).
 
 ### TCD remote command reference
 
@@ -507,7 +505,7 @@ To release Fake-Power control, hold RESET when Fake-Power on the Remote is off.
 
 If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Portal, the Remote will take over Fake-Power control from the TCD at its startup, ie there is no need to initially press O.O.
 
-Notes:
+Remarks:
 - Buttons O.O/RESET need to configured for this function, see [here](#-holding-ooreset-when-fake-power-off).
 - The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority; state changes are tracked but do not become effective until the Remote releases Fake-Power control.
 
@@ -626,7 +624,7 @@ This leads to the [Settings page](#settings).
 
 ##### &#9193; HA/MQTT Settings
 
-This leads to the [HomeAssistent/MQTT Settings page](#hamqtt-settings).
+This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
 ##### &#9193; Update
 

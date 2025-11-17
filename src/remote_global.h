@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.12"
-#define REMOTE_VERSION_EXTRA "NOV032025"
+#define REMOTE_VERSION "V1.13"
+#define REMOTE_VERSION_EXTRA "NOV142025"
 
 //#define REMOTE_DBG              // debug output on Serial
 
@@ -33,10 +33,11 @@
 // Uncomment for HomeAssistant MQTT protocol support
 #define REMOTE_HAVEMQTT
 
-// Uncomment to include BTTFN discover support (multicast)
-// This is required for proper operation with TCD firmwares dated Oct 26, 2024,
-// or later.
-#define BTTFN_MC
+// External time travel lead time, as defined by TCD firmware
+// If Remote is listening to MQTT (instead of BTTFN because TCD is configured
+// to publish MQTT time travels), and external props are connected by wire,
+// TCD might need a 5 second lead.
+#define ETTO_LEAD 5000
 
 // Uncomment to support a rotenc for volume
 // Adafruit 4991/5880, DFRobot Gravity 360 or DuPPA I2CEncoder 2.1
