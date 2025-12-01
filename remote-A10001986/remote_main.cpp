@@ -137,7 +137,7 @@ bool useRotEnc = false;
 static bool useBPack = true;
 static bool useRotEncVol = false;
 
-static bool remoteAllowed = false;
+bool        remoteAllowed = false;
 uint32_t    myRemID = 0x12345678;
 
 static bool pwrLEDonFP = true;
@@ -162,6 +162,8 @@ static bool powerState = false;
 static bool brakeState = false;
 bool        powerMaster;
 static bool triggerCompleteUpdate = false;
+static bool cancelBrakeWarning = false;
+static unsigned long brakeWarningNow = 0;
 
 int32_t        throttlePos = 0;
 static int32_t oldThrottlePos = 0;
@@ -192,6 +194,7 @@ static unsigned long enow = 0;
 static bool ooTT = true;
 static int  triggerTTonThrottle = 0;
 static int  triggerIntTTonThrottle = 0;
+static unsigned long triggerTTonThrottleNow = 0;
 
 bool ooresBri = true;
 
@@ -323,6 +326,8 @@ static bool          bootFlag = false;
 static bool          sendBootStatus = false;
 bool                 blockScan = false;
 
+static int           brakecnt = 0;
+
 static bool          havePOFFsnd = false;
 static bool          haveBOFFsnd = false;
 static bool          haveThUp = false;
@@ -331,7 +336,7 @@ static const char *  powerOffSnd = "/poweroff.mp3";  // No default sound
 static const char *  brakeOnSnd  = "/brakeon.mp3";   // Default provided
 static const char *  brakeOffSnd = "/brakeoff.mp3";  // No default sound
 static const char *  throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
-
+static char          brakeRem[]  = "/rbrake1.mp3";
 // BTTF network
 #define BTTFN_VERSION              1
 #define BTTFN_SUP_MC            0x80
@@ -402,8 +407,8 @@ static bool          bttfn_cmd_status = false;
 static unsigned long bttfnCurrLatency = 0, bttfnPacketSentNow = 0;
 static bool          tcdHasSpeedo = false;
 static int16_t       tcdCurrSpeed = -1;
-static bool          tcdSpdIsRotEnc = false;
-static bool          tcdSpdIsRemote = false;
+//static bool          tcdSpdIsRotEnc = false;
+//static bool          tcdSpdIsRemote = false;
 static int16_t       currSpeedOldGPS = -2;
 bool                 displayGPSMode = false;
 uint16_t             tcdIsInP0 = 0, tcdIsInP0Old = 1000;
@@ -983,10 +988,6 @@ void main_loop()
                 // Display ON
                 remdisplay.setBrightness(255);
 
-                if(powerMaster) {
-                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
-                }
-
                 // Scan brake switch
                 brake.scan();
 
@@ -998,6 +999,10 @@ void main_loop()
                     isBrakeKeyChange = false;
                     brakeState = isBrakeKeyPressed;
                     // Do NOT play sound
+                }
+
+                if(powerMaster) {
+                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
                 }
 
                 remdisplay.blink(false);
@@ -1012,6 +1017,7 @@ void main_loop()
                 lockThrottle = false;
 
                 networkTimeTravel = false;
+                networkAbort = false;
 
                 bttfn_remote_send_combined(powerState, brakeState, currSpeed);
 
@@ -1031,9 +1037,10 @@ void main_loop()
                 mp_stop();
                 stopAudio();
 
-                remledStop.setState(false);                
+                remledStop.setState(false);
+                cancelBrakeWarning = true;
 
-                TTrunning = false;
+                TTrunning = TTP0 = TTP1 = TTP2 = false;
                 IntP0running = false;
                 
                 offDisplayTimer = false;
@@ -1083,16 +1090,15 @@ void main_loop()
         if(isBrakeKeyChange) {
             isBrakeKeyChange = false;
             brakeState = isBrakeKeyPressed;
+            cancelBrakeWarning = !brakeState;
             bttfn_remote_send_combined(powerState, brakeState, currSpeed);
             sendBootStatus = false;
 
-            if(!TTrunning && !tcdIsInP0) {
+            if(!TTrunning) {
                 if(brakeState) {
                     play_file(brakeOnSnd, PA_ALLOWSD|PA_DYNVOL, 1.0);
-                } else {
-                    if(haveBOFFsnd) {
-                        play_file(brakeOffSnd, PA_ALLOWSD|PA_DYNVOL, 1.0);
-                    }
+                } else if(haveBOFFsnd) {
+                    play_file(brakeOffSnd, PA_ALLOWSD|PA_DYNVOL, 1.0);
                 }
             }
         }
@@ -1129,12 +1135,25 @@ void main_loop()
                     if(isbuttonAKeyPressed) {
                         if(ooTT) {
                             if(!triggerTTonThrottle) {
-                                triggerTTonThrottle = 1;
+                                // Here we only trigger a stand-alone TT
+                                // if we are not connected. If the TCD is
+                                // busy, we refuse. (Different to below
+                                // because when hitting 88 there is no time
+                                // for the TCD to change its busy status
+                                // and therefore not chance for an unwanted
+                                // dual-tt.)
                                 triggerIntTTonThrottle = 0;
                                 if(!bttfn_trigger_tt(true)) {
+                                    triggerTTonThrottle = 1;
                                     triggerIntTTonThrottle = 1;
+                                } else if(tcdIsBusy) {
+                                    play_bad();
+                                } else {
+                                    triggerTTonThrottle = 1;
                                 }
-                                play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                                if(triggerTTonThrottle) {
+                                    play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+                                }
                             } else if(triggerTTonThrottle == 1) {
                                 triggerTTonThrottle = 0;
                                 play_bad();
@@ -1442,12 +1461,24 @@ void main_loop()
     // Scan throttle position
     if(triggerTTonThrottle) {
         throttlePos = rotEnc.updateThrottlePos();
-        if(FPBUnitIsOn && !TTrunning && !tcdIsInP0) {
+        if(FPBUnitIsOn && !brakeState && !TTrunning && !tcdIsInP0) {
             if(triggerTTonThrottle == 1 && throttlePos > 0) {
                 triggerTTonThrottle++;
-                if(triggerIntTTonThrottle || !bttfn_trigger_tt(false)) {
+                if(triggerIntTTonThrottle) {
                     timeTravel(false, 65535);
                     triggerTTonThrottle = 0;
+                } else {
+                    bttfn_trigger_tt(false);
+                    triggerTTonThrottleNow = millis();
+                }
+            } else if(triggerTTonThrottle > 1) {
+                // If bttfn_trigger_tt() didn't lead to P0 or
+                // a tt for whatever reason, reset the flag.
+                // Might happen due to delay in mutual network 
+                // communication on brakeState, tt phases, ...
+                if(millis() - triggerTTonThrottleNow > 1000) {
+                    triggerTTonThrottle = 0;
+                    play_bad();
                 }
             }
         }
@@ -1537,6 +1568,9 @@ void main_loop()
                             currSpeedF = 880;
                             keepCounting = false;
                             if(!IntP0running) {
+                                // Here we trigger a stand-alone TT if the
+                                // TCD is busy. See above on why this is
+                                // handled differently to tt-on-throttle.
                                 if(!BTTFNConnected() || tcdIsBusy) {
                                     timeTravel(false, 0, P1_DUR);
                                 }
@@ -1601,7 +1635,7 @@ void main_loop()
         unsigned long now = millis();
         if(!tcdIsInP0Old || (tcdSpeedP0 != tcdSpeedP0Old)) {
             if(!tcdIsInP0Old) {
-                triggerTTonThrottle =  0;
+                triggerTTonThrottle = 0;
                 tcdIsInP0Old = tcdIsInP0;
                 tcdClickNow = 0;
                 tcdInP0now = now;
@@ -1624,12 +1658,13 @@ void main_loop()
                         play_click();
                     }
                 }
-                int temp = tcdSpeedP0 * 10;
+                currSpeed = tcdSpeedP0;
+                currSpeedF = tcdSpeedP0 * 10;
                 if(tcdIsInP0stalled) {
-                    temp += remdisplay.getSpeedPostDot();
+                    currSpeedF += remdisplay.getSpeedPostDot();
                 }
                 remdisplay.on();
-                remdisplay.setSpeed(temp);
+                remdisplay.setSpeed(currSpeedF);
                 remdisplay.show();
                 tcdSpeedP0Old = tcdSpeedP0;
                 tcdSpdChgNow = now;
@@ -1638,21 +1673,23 @@ void main_loop()
         } else if(FPBUnitIsOn) {
             // Fake .1s
             if(!tcdIsInP0stalled && (now - tcdSpdChgNow > accelDelays[4])) {
+                tcdSpdChgNow = now;
                 tcdSpdFake100++;
                 if(tcdSpdFake100 > 9) tcdSpdFake100 = 1;
-                tcdSpdChgNow = now;
+                currSpeed = tcdSpeedP0;
+                currSpeedF = (tcdSpeedP0 * 10) + tcdSpdFake100;
                 remdisplay.on();
-                remdisplay.setSpeed((tcdSpeedP0 * 10) + tcdSpdFake100);
+                remdisplay.setSpeed(currSpeedF);
                 remdisplay.show();
             }
         }
-        if(networkAbort || (now - tcdInP0now > 10*1000)) {
+        if(now - tcdInP0now > 10*1000) {
             #ifdef REMOTE_DBG
-            Serial.printf("Ending P0: networkAbort %d, delay %ums (limit 10000)\n", networkAbort, now - tcdInP0now);
+            Serial.printf("Ending P0: delay %ums (limit 10000)\n", now - tcdInP0now);
             #endif
             tcdIsInP0 = 0;
-            networkAbort = false;
             doForceDispUpd = true;
+            triggerTTonThrottle = 0;
         }
     } else if(tcdIsInP0Old) {
         tcdSpeedP0Old = 2000;
@@ -1697,7 +1734,11 @@ void main_loop()
         if(!TTrunning) {
             if(networkTimeTravel) {
                 networkTimeTravel = false;
-                timeTravel(true, networkLead, networkP1);
+                if(!networkAbort) {
+                    timeTravel(true, networkLead, networkP1);
+                } else {
+                    networkAbort = false;
+                }
             }
         }
 
@@ -1719,12 +1760,6 @@ void main_loop()
                 
             } else if(!extTT && !TTP0end && (now - TTstart < P0duration)) {
 
-                /*
-                if(!TTFlag && IntP0running && !triggerP1NoLead && (now - TTstart > triggerP1)) {
-                    play_file("/travelstart.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, TT_SOUND_FACT);
-                    TTFlag = true;
-                }
-                */
                 if(!TTFlag && !triggerP1NoLead && currSpeedF > triggerP1) {
                     play_file("/travelstart.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, TT_SOUND_FACT);
                     TTFlag = true;
@@ -1737,23 +1772,32 @@ void main_loop()
                 }
 
                 TTP0 = IntP0running = false;
-                TTP1 = true;
+
+                if(networkAbort) {
+
+                    // If we were aborted during P0, we skip P1
+                    TTP2 = true;
+                    
+                } else {
+
+                    TTP1 = true;
+
+                    remdisplay.setText("88.0");
+                    remdisplay.show();
+                    remdisplay.on();
+                }
 
                 tcdIsInP0 = 0;
                 
                 TTFlag = false;
                 TTstart = now;
 
-                remdisplay.setText("88.0");
-                remdisplay.show();
-                remdisplay.on();
-
             }
         }
 
-        if(TTP1) {   // Peak/"time tunnel" - ends with "REENTRY" or "ABORT" (or a long timeout)
+        if(TTP1) {   // Peak/"time tunnel" 
 
-            if(extTT) {
+            if(extTT) {         // external TT: ends with "REENTRY" or "ABORT" (or a long timeout)
 
                 if(!networkReentry && !networkAbort && (now - TTstart < P1_maxtimeout)) {
                     
@@ -1793,9 +1837,9 @@ void main_loop()
 
                 }
               
-            } else {    // stand alone
+            } else {            // stand alone: runs for P1duration ms
 
-                if((now - TTstart < P1duration)) {
+                if(now - TTstart < P1duration) {
 
                     if(!TTFlag && (now - TTstart > P1duration / 2)) {
     
@@ -1830,6 +1874,7 @@ void main_loop()
             }
 
         }
+
         if(TTP2) {   // Reentry - up to us
 
             if(TTFlag || networkAbort) {
@@ -1844,6 +1889,7 @@ void main_loop()
   
                 TTP2 = false;
                 TTrunning = false;
+                networkAbort = false;
 
             } else if(now - TTstart > P1duration) {
               
@@ -1877,11 +1923,9 @@ void main_loop()
             lastBTTFNpacket = 0;
             BTTFNBootTO = true;
             tcdCurrSpeed = -1;
+            // P0 expires automatically
         }
     }
-
-    // We get speed via MC now, no need to poll so frequently
-    //bttfnRemPollInt = (!FPBUnitIsOn && displayGPSMode && (tcdCurrSpeed >= 0)) ? BTTFN_POLL_INT_FAST : BTTFN_POLL_INT;
 
     // Poll RotEnv for volume. Don't in calibmode, P0 or during acceleration
     #ifdef HAVE_VOL_ROTENC
@@ -2298,6 +2342,7 @@ static void execute_remote_command()
             break;
         case 61:                              // 7061  enable/disable "display TCD speed while fake-off"
             toggleDisplayGPS();
+            triggerCompleteUpdate = true;
             break;
         case 62:                              // 7062  enable/disable autoThrottle
             toggleAutoThrottle();
@@ -2307,6 +2352,7 @@ static void execute_remote_command()
             break;
         case 90:                              // 7090: Display IP address
             flushDelayedSave();
+            remdisplay.on();
             display_ip();
             if(FPBUnitIsOn) {
                 doForceDispUpd = true;
@@ -2404,7 +2450,7 @@ static void execute_remote_command()
             }
         }
 
-    } else if(command < 10000) {                     // MQTT commands
+    } else if(command < 10000) {                      // MQTT/internal commands
 
         #ifdef REMOTE_HAVEMQTT
         if(!injected) {
@@ -2449,6 +2495,22 @@ static void execute_remote_command()
             case 15:
                 if(!FPBUnitIsOn) return;
                 if(haveMusic) mp_prev(mpActive);
+                break;
+            // Internal commands
+            case 900:
+                if((millis() - brakeWarningNow < 2000) && !cancelBrakeWarning) {
+                    if(brakecnt <= 4) {
+                        brakeRem[7] = brakecnt + '1';
+                        brakecnt++;
+                    } else {
+                        char t;
+                        do {
+                            t = (char)(esp_random() % 4) + '1';
+                        } while(t == brakeRem[7]);
+                        brakeRem[7] = t;
+                    }
+                    play_file(brakeRem, PA_NOINTR|PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
+                }
                 break;
             }
 
@@ -2526,6 +2588,7 @@ static bool display_soc_voltage(int type, bool displayAndReturn)
     bool blink = false;
 
     if(havePwrMon) {
+        remdisplay.on();
         switch(type) {
         case 0:
             if(!pwrMon._haveSOC) {
@@ -2941,6 +3004,10 @@ void addCmdQueue(uint32_t command)
     commandQueue[iCmdIdx] = command;
     iCmdIdx++;
     iCmdIdx &= 0x0f;
+
+    if(command == 1900) { 
+        brakeWarningNow = millis();
+    }
 }
 
 static void bttfn_setup()
@@ -3041,23 +3108,11 @@ static void handle_tcd_notification(uint8_t *buf)
             switch(t) {
             case BTTFN_SSRC_P0:
                 tcdSpeedP0 = (uint16_t)tcdCurrSpeed;
-                tcdIsInP0 = (FPBUnitIsOn && !TTP1 && !TTP2 && !remBusy) ? 1 : 0;
+                tcdIsInP0 = (FPBUnitIsOn && remoteAllowed && !TTP1 && !TTP2 && !remBusy) ? 1 : 0;
                 tcdIsInP0stalled = buf[10] | (buf[11] << 8);  // TCD 3.9+
-                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
-                break;
-            case BTTFN_SSRC_REM:
-                tcdIsInP0 = 0;
-                tcdSpdIsRotEnc = false;
-                tcdSpdIsRemote = true;
-                break;
-            case BTTFN_SSRC_ROTENC:
-                tcdIsInP0 = 0;
-                tcdSpdIsRotEnc = true;
-                tcdSpdIsRemote = false;
                 break;
             default:
                 tcdIsInP0 = 0;
-                tcdSpdIsRotEnc = tcdSpdIsRemote = false;
             }
             #ifdef REMOTE_DBG
             Serial.printf("TCD sent NOT_SPD: %d src %d (IsP0:%d)\n", tcdCurrSpeed, t, tcdIsInP0);
@@ -3073,11 +3128,13 @@ static void handle_tcd_notification(uint8_t *buf)
         // Prepare for TT. Comes at some undefined point,
         // an undefined time before the actual tt, and
         // may not come at all.
-        doPrepareTT = true;
+        if(remoteAllowed) {
+            doPrepareTT = true;
+        }
         break;
     case BTTFN_NOT_TT:
         // Trigger Time Travel (if not running already)
-        if(FPBUnitIsOn && !TTrunning && !remBusy) {
+        if(FPBUnitIsOn && remoteAllowed && !TTrunning && !remBusy) {
             networkTimeTravel = true;
             networkReentry = false;
             networkAbort = false;
@@ -3087,13 +3144,13 @@ static void handle_tcd_notification(uint8_t *buf)
         break;
     case BTTFN_NOT_REENTRY:
         // Start re-entry (if TT currently running)
-        if(TTrunning) {
+        if(networkTimeTravel || TTrunning) {
             networkReentry = true;
         }
         break;
     case BTTFN_NOT_ABORT_TT:
-        // Abort TT (if TT currently running or we are in tcdIsInP0 mode)
-        if(TTrunning || tcdIsInP0) {
+        // Abort TT (if TT currently running)
+        if(networkTimeTravel || TTrunning) {
             networkAbort = true;
         }
         break;
@@ -3106,20 +3163,21 @@ static void handle_tcd_notification(uint8_t *buf)
         }
         break;
     case BTTFN_NOT_WAKEUP:
-        doWakeup = true;
+        if(remoteAllowed) {
+            doWakeup = true;
+        }
         break;
     case BTTFN_NOT_BUSY:
-        if((tcdIsBusy = !!(buf[8]))) {
-            if(triggerTTonThrottle == 1) {
-                triggerIntTTonThrottle = 1;
-            }
+        if(!(remoteAllowed = !(buf[6] & 0x01))) {
+            tcdIsInP0 = 0;
         }
+        tcdIsBusy = !!(buf[8]);
         break;
     case BTTFN_NOT_REM_SPD:     // TCD fw < 10/26/2024 (non-MC)
         seqCnt = GET32(buf, 12);
         if(seqCnt > bttfnTCDSeqCnt || seqCnt == 1) {
             tcdSpeedP0 = buf[6] | (buf[7] << 8);
-            if(!remBusy) {
+            if(remoteAllowed && !remBusy) {
                 tcdIsInP0  = buf[8] | (buf[9] << 8);
             } else {
                 tcdIsInP0 = 0;
@@ -3244,20 +3302,19 @@ static void BTTFNCheckPacket()
             remoteAllowed = (BTTFUDPBuf[26] & 0x04) ? true : false;
             tcdHasSpeedo  = (BTTFUDPBuf[26] & 0x08) ? true : false;
             tcdIsBusy     = (BTTFUDPBuf[26] & 0x10) ? true : false;
-            if(tcdIsBusy) {
-                if(triggerTTonThrottle == 1) {
-                    triggerIntTTonThrottle = 1;
-                }
+            if(!remoteAllowed) {
+                tcdIsInP0 = 0;
             }
         } else {
             remoteAllowed = false;
+            tcdIsInP0 = 0;
         }
 
         if(BTTFUDPBuf[5] & 0x02) {
             tcdCurrSpeed = (int16_t)(BTTFUDPBuf[18] | (BTTFUDPBuf[19] << 8));
             if(tcdCurrSpeed > 88) tcdCurrSpeed = 88;
-            tcdSpdIsRotEnc = (BTTFUDPBuf[26] & 0x80) ? true : false; 
-            tcdSpdIsRemote = (BTTFUDPBuf[26] & 0x20) ? true : false;
+            //tcdSpdIsRotEnc = (BTTFUDPBuf[26] & 0x80) ? true : false; 
+            //tcdSpdIsRemote = (BTTFUDPBuf[26] & 0x20) ? true : false;
         }
 
         if(BTTFUDPBuf[5] & 0x40) {
@@ -3377,14 +3434,28 @@ static bool BTTFNConnected()
 
 static bool bttfn_trigger_tt(bool probe)
 {
+    // BBTFN-wide TT can be triggered even
+    // if remoteAllowed is false; Remote will,
+    // however, not take part in the sequence
+    // in that case.
+    
     if(!BTTFNConnected())
         return false;
 
-    if(TTrunning || tcdIsBusy)
-        return false;
-
+    // "Probe" to decide between stand-alone
+    // or BTTFN-wide TT. Since the flags below
+    // are not 100% reliable (due to communication
+    // delays), and a stand-alone TT while
+    // seemingly connected to a TCD is confusing,
+    // we stop the probe here, and live with
+    // a TT simply not starting if the TCD refuses.
+    // Still less confusing than a Remote doing
+    // a TT sequence while the TCD is not.
     if(probe)
         return true;
+
+    if(TTrunning || tcdIsBusy)
+        return false;
 
     BTTFNPreparePacket();
 
@@ -3402,10 +3473,7 @@ static bool bttfn_trigger_tt(bool probe)
 
 static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2)
 {
-    if(!BTTFNConnected())
-        return false;
-
-    if(!remoteAllowed)
+    if(!remoteAllowed && !BTTFNConnected())
         return false;
 
     BTTFNPreparePacket();
@@ -3445,9 +3513,10 @@ static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t
 {
     if(!triggerCompleteUpdate) {
         uint8_t p1 = 0;
-        if(powerstate)  p1 |= 0x01;
-        if(brakestate)  p1 |= 0x02;
-        if(powerMaster) p1 |= 0x08;  // 4 tainted by buggy TCD 3.7
+        if(powerstate)     p1 |= 0x01;
+        if(brakestate)     p1 |= 0x02;
+        if(powerMaster)    p1 |= 0x08;  // 4 tainted by buggy TCD 3.7
+        if(displayGPSMode) p1 |= 0x10;
         if(!bttfn_send_command(BTTFN_REMCMD_COMBINED, p1, speed)) {
             triggerCompleteUpdate = true;
         }

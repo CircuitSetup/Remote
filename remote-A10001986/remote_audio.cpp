@@ -105,6 +105,7 @@ static int      sampleCnt = 0;
 
 static bool     throttleup_playing = false;
 static uint32_t key_playing = 0;
+static bool     no_interrupt = false;
 
 static char     append_audio_file[256];
 static float    append_vol;
@@ -187,6 +188,7 @@ void audio_loop()
         if(!mp3->loop()) {
             mp3->stop();
             key_playing = 0;
+            no_interrupt = false;
             if(appendFile) {
                 play_file(append_audio_file, append_flags, append_vol);
             } else if(mpActive) {
@@ -202,7 +204,7 @@ void audio_loop()
     } else if(wav->isRunning()) {
         if(!wav->loop()) {
             wav->stop();
-            throttleup_playing = false;
+            throttleup_playing = no_interrupt = false;
             if(appendFile) {
                 play_file(append_audio_file, append_flags, append_vol);
             } else if(mpActive) {
@@ -271,6 +273,8 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
     if(audioMute) return;
 
+    if(no_interrupt) return;
+
     if(flags & PA_INTRMUS) {
         mpActive = false;
     } else {
@@ -291,6 +295,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
     curVolFact = volumeFactor;
     dynVol     = (flags & PA_DYNVOL) ? true : false;
     throttleup_playing = (flags & PA_THRUP) ? true : false;
+    no_interrupt = (flags & PA_NOINTR) ? true : false;
     key_playing = flags & 0x1ff80;
     
     out->SetGain(getVolume());
@@ -349,6 +354,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
         #endif
     } else {
         throttleup_playing = false;
+        no_interrupt = false;
         key_playing = 0;
         #ifdef REMOTE_DBG
         Serial.println("Audio file not found");
@@ -362,7 +368,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
 void play_click()
 {
-    if(!playClicks || throttleup_playing || key_playing || audioMute) {
+    if(!playClicks || throttleup_playing || key_playing || audioMute || no_interrupt) {
         return;
     }
 
@@ -371,7 +377,7 @@ void play_click()
     }
 
     if(mp3->isRunning()) {
-        return;   //mp3->stop();
+        return;
     } else if(wav->isRunning()) {
         wav->stop();
     }
@@ -396,7 +402,7 @@ void play_key(int k, bool l, bool stopOnly)
       pa_key |= 0x80;
     } else {
       if(!haveKeySnd[k]) return;
-    } 
+    }
 
     if(pa_key == key_playing) {
         mp3->stop();
@@ -472,6 +478,7 @@ void stopAudio()
     appendFile = false;   // Clear appended, stop means stop.
     key_playing = 0;
     throttleup_playing = false;
+    no_interrupt = false;
 }
 
 void stopAudioAtLoopEnd()

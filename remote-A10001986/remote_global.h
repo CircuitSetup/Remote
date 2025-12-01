@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.13"
-#define REMOTE_VERSION_EXTRA "NOV142025"
+#define REMOTE_VERSION "V1.14"
+#define REMOTE_VERSION_EXTRA "DEC012025"
 
 //#define REMOTE_DBG              // debug output on Serial
 

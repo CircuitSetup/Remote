@@ -87,10 +87,10 @@
 #define DECLARE_D_JSON(x,n) DynamicJsonDocument n(x);
 #endif
 
-#define NUM_AUDIOFILES 19
-#define SND_REQ_VERSION "RM08"
+#define NUM_AUDIOFILES 23
+#define SND_REQ_VERSION "RM09"
 #define AC_FMTV 2
-#define AC_TS   728120
+#define AC_TS   841381
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 static const char *CONFN  = "/REMA.bin";
 static const char *CONFND = "/REMA.old";
@@ -511,6 +511,7 @@ static bool read_settings(File configFile, int cfgReadCount)
         #ifdef REMOTE_HAVEMQTT
         CopyCheckValidNumParm(json["useMQTT"], settings.useMQTT, sizeof(settings.useMQTT), 0, 1, 0);
         CopyTextParm(json["mqttServer"], settings.mqttServer, sizeof(settings.mqttServer));
+        // mqttV never saved in main settings
         CopyTextParm(json["mqttUser"], settings.mqttUser, sizeof(settings.mqttUser));
         handleMQTTButton(json["mqttb1t"], settings.mqttbt[0], sizeof(settings.mqttbt[0]) - 1);
         handleMQTTButton(json["mqttb1o"], settings.mqttbo[0], sizeof(settings.mqttbo[0]) - 1);
@@ -794,6 +795,7 @@ static void read_mqtt_settings()
             wd = false;
             wd |= CopyCheckValidNumParm(json["useMQTT"], settings.useMQTT, sizeof(settings.useMQTT), 0, 1, 0);
             wd |= CopyTextParm(json["mqttServer"], settings.mqttServer, sizeof(settings.mqttServer));
+            wd |= CopyCheckValidNumParm(json["mqttV"], settings.mqttVers, sizeof(settings.mqttVers), 0, 1, 0);
             wd |= CopyTextParm(json["mqttUser"], settings.mqttUser, sizeof(settings.mqttUser));
             wd |= handleMQTTButton(json["mqttb1t"], settings.mqttbt[0], sizeof(settings.mqttbt[0]) - 1);
             wd |= handleMQTTButton(json["mqttb1o"], settings.mqttbo[0], sizeof(settings.mqttbo[0]) - 1);
@@ -843,6 +845,7 @@ void write_mqtt_settings()
     
     json["useMQTT"] = (const char *)settings.useMQTT;
     json["mqttServer"] = (const char *)settings.mqttServer;
+    json["mqttV"] = (const char *)settings.mqttVers;
     json["mqttUser"] = (const char *)settings.mqttUser;
     json["mqttb1t"] = (const char *)settings.mqttbt[0];
     json["mqttb1o"] = (const char *)settings.mqttbo[0];

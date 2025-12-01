@@ -103,7 +103,7 @@ static const char *acul_errs[]  = {
 };
 
 static const char *apChannelCustHTMLSrc[14] = {
-    "<div class='cmp0'><label for='apchnl'>WiFi channel</label><select class='sel0' value='",
+    "<div class='cmp0'><label class='mp0' for='apchnl'>WiFi channel</label><select class='sel0' value='",
     "apchnl",
     ">Random%s1'",
     ">1%s2'",
@@ -137,7 +137,7 @@ static const char *oottCustHTMLSrc[5] = {
 
 #ifdef HAVE_PM
 static const char *batTypeHTMLSrc[7] = {
-    "<div class='cmp0'><label for='bty'>Battery type</label><select class='sel0' value='",
+    "<div class='cmp0'><label class='mp0' for='bty'>Battery type</label><select class='sel0' value='",
     "bty",
     ">3.7V/4.2V LiPo%s3'",
     ">3.8V/4.35V LiPo%s4'",
@@ -148,26 +148,59 @@ static const char *batTypeHTMLSrc[7] = {
 static const char *wmBuildBatType(const char *dest);
 #endif
 
+#ifdef REMOTE_HAVEMQTT
+static const char *mqttpCustHTMLSrc[4] = {
+    "<div class='cmp0'><label class='mp0' for='mprot'>Protocol version</label><select class='sel0' value='",
+    "mprot",
+    ">3.1.1%s1'",
+    ">5.0%s"
+};
+static const char mqttMsgDisabled[] = "Disabled";
+static const char mqttMsgConnecting[] = "Connecting...";
+static const char mqttMsgTimeout[] = "Connection time-out";
+static const char mqttMsgFailed[] = "Connection failed";
+static const char mqttMsgDisconnected[] = "Disconnected";
+static const char mqttMsgConnected[] = "Connected";
+static const char mqttMsgBadProtocol[] = "Protocol error";
+static const char mqttMsgUnavailable[] = "Server unavailable/busy";
+static const char mqttMsgBadCred[] = "Login failed";
+static const char mqttMsgGenError[] = "Error";
+#endif
+
 static const char *wmBuildApChnl(const char *dest);
 static const char *wmBuildBestApChnl(const char *dest);
 
 static const char *wmBuildOORST(const char *dest);
 static const char *wmBuildOOTT(const char *dest);
-
 static const char *wmBuildHaveSD(const char *dest);
 
+#ifdef REMOTE_HAVEMQTT
+static const char *wmBuildMQTTprot(const char *dest);
+static const char *wmBuildMQTTstate(const char *dest);
+#endif
+
 // double-% since this goes through sprintf!
-static const char bestAP[]   = "<div class='c' style='background-color:#%s;color:#fff;font-size:80%%;border-radius:5px'>Proposed channel at current location: %d<br>%s(Non-WiFi devices not taken into account)</div>";
+static const char bannerStart[] = "<div class='c' style='background-color:#";
+static const char bannerMid[] = ";color:#fff;font-size:80%;border-radius:5px'>";
+
+static const char bestAP[]   = "%s%s%sProposed channel at current location: %d<br>%s(Non-WiFi devices not taken into account)</div>";
 static const char badWiFi[]  = "<br><i>Operating in AP mode not recommended</i>";
 
 static const char haveNoSD[] = "<div class='c' style='background-color:#dc3630;color:#fff;font-size:80%;border-radius:5px'><i>No SD card present</i></div>";
 
-static const char custHTMLSel[] = " selected";
+#ifdef REMOTE_HAVEMQTT
+static const char mqttStatus[] = "%s%s%s%s%s (%d)</div>";
+#endif
+
 static const char *osde = "</option></select></div>";
 static const char *ooe  = "</option><option value='";
-
+static const char custHTMLSel[] = " selected";
+static const char custHTMLSelFmt[] = "' name='%s' id='%s' autocomplete='off'><option value='0'";
+static const char col_g[] = "609b71";
+static const char col_r[] = "dc3630";
+static const char col_gr[] = "777";
 static const char rad0[] = "<div class='cmp0'><fieldset class='%s' style='border:none;padding:0;'><legend style='padding:0;margin-bottom:2px'>";
-static const char rad1[] = "<input type='radio' id='%s%d' name='%s' value='%d'%s style='margin:5px 5px 5px 10px'><label for='%s%d'>%s</label><br>";
+static const char rad1[] = "<input type='radio' id='%s%d' name='%s' value='%d'%s style='margin:5px 5px 5px 10px'><label class='mp0' for='%s%d'>%s</label><br>";
 static const char radchk[] = " checked";
 static const char rad99[] = "</fieldset></div>";
 
@@ -183,8 +216,8 @@ WiFiManagerParameter custom_wifiConRetries("wifiret", "Connection attempts (1-10
 WiFiManagerParameter custom_wifiConTimeout("wificon", "Connection timeout (7-25[seconds])", settings.wifiConTimeout, 2, "type='number' min='7' max='25'");
 WiFiManagerParameter custom_reconAtmp("recAtmt", "Re-attempt connection on Fake Power", settings.reconOnFP, 1, "class='mt5'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 
-WiFiManagerParameter custom_sysID("sysID", "Network name (SSID) appendix<br><span style='font-size:80%'>Will be appended to \"REM-AP\" to create a unique SSID if multiple remotes are in range. [a-z/0-9/-]</span>", settings.systemID, 7, "pattern='[A-Za-z0-9\\-]+'");
-WiFiManagerParameter custom_appw("appw", "Password<br><span style='font-size:80%'>Password to protect REM-AP. Empty or 8 characters [a-z/0-9/-]<br><b>Write this down, you might lock yourself out!</b></span>", settings.appw, 8, "minlength='8' pattern='[A-Za-z0-9\\-]+'");
+WiFiManagerParameter custom_sysID("sysID", "Network name (SSID) appendix<br><span style='font-size:80%'>Will be appended to \"REM-AP\" [a-z/0-9/-]</span>", settings.systemID, 7, "pattern='[A-Za-z0-9\\-]+'");
+WiFiManagerParameter custom_appw("appw", "Password<br><span style='font-size:80%'>Password to protect REM-AP. Empty or 8 characters [a-z/0-9/-]</span>", settings.appw, 8, "minlength='8' pattern='[A-Za-z0-9\\-]+'");
 WiFiManagerParameter custom_apch(wmBuildApChnl);
 WiFiManagerParameter custom_bapch(wmBuildBestApChnl);
 WiFiManagerParameter custom_wifiAPOffDelay("wifiAPoff", "Power save timer<br><span style='font-size:80%'>(10-99[minutes]; 0=off)</span>", settings.wifiAPOffDelay, 2, "type='number' min='0' max='99'");
@@ -249,8 +282,10 @@ WiFiManagerParameter custom_bca("bCa", "Capacity per cell (1000-6000)", settings
 #endif
 
 #ifdef REMOTE_HAVEMQTT
-WiFiManagerParameter custom_useMQTT("uMQTT", "Use Home Assistant (MQTT 3.1.1)", settings.useMQTT, 1, "class='mt5 mb10'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
+WiFiManagerParameter custom_useMQTT("uMQTT", "Home Assistant support (MQTT)", settings.useMQTT, 1, "class='mt5 mb10'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
+WiFiManagerParameter custom_state(wmBuildMQTTstate);
 WiFiManagerParameter custom_mqttServer("ha_server", "Broker IP[:port] or domain[:port]", settings.mqttServer, 79, "pattern='[a-zA-Z0-9\\.:\\-]+' placeholder='Example: 192.168.1.5'");
+WiFiManagerParameter custom_mqttVers(wmBuildMQTTprot);
 WiFiManagerParameter custom_mqttUser("ha_usr", "User[:Password]", settings.mqttUser, 63, "placeholder='Example: ronald:mySecret' class='mb15'");
 WiFiManagerParameter custom_mqttb1t("ha_b1t", "Button 1 topic", settings.mqttbt[0], 127, "placeholder='Example: home/lights/1/'");
 WiFiManagerParameter custom_mqttb1o("ha_b1o", "Button 1 message on ON", settings.mqttbo[0], 63, "placeholder='Example: ON'");
@@ -398,10 +433,6 @@ static void mystrcpy(char *sv, WiFiManagerParameter *el);
 static void strcpyCB(char *sv, WiFiManagerParameter *el);
 static void setCBVal(WiFiManagerParameter *el, char *sv);
 
-#ifdef HAVE_PM
-static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting);
-#endif
-
 static void setupWebServerCallback();
 static void handleUploadDone();
 static void handleUploading();
@@ -515,7 +546,9 @@ void wifi_setup()
 
       &custom_sectstart_head,  // 3
       &custom_useMQTT,
+      &custom_state,
       &custom_mqttServer,
+      &custom_mqttVers,
       &custom_mqttUser,
 
       &custom_sectstart,       // 24
@@ -724,6 +757,8 @@ void wifi_setup2()
         origWiFiOffDelay = wifiOffDelay = 0;
 
         mqttClient.setBufferSize(MQTT_MAX_PACKET_SIZE);
+        mqttClient.setVersion(atoi(settings.mqttVers) > 0 ? 5 : 3);
+        mqttClient.setClientID(settings.hostName);
         
         if((t = strchr(settings.mqttServer, ':'))) {
             size_t ts = (t - settings.mqttServer) + 1;
@@ -1030,6 +1065,7 @@ void wifi_loop()
             #ifdef REMOTE_HAVEMQTT
             strcpyCB(settings.useMQTT, &custom_useMQTT);
             strcpytrim(settings.mqttServer, custom_mqttServer.getValue());
+            getParam("mprot", settings.mqttVers, 1, 0);
             strcpyutf8(settings.mqttUser, custom_mqttUser.getValue(), sizeof(settings.mqttUser));
 
             strcpyutf8(settings.mqttbt[0], custom_mqttb1t.getValue(), sizeof(settings.mqttbt[0]));
@@ -1751,13 +1787,32 @@ void updateConfigPortalVisValues()
     setCBVal(&custom_pwrMst, settings.pwrMst);
 }
 
+static unsigned int calcSelectMenu(const char **theHTML, int cnt, char *setting)
+{
+    int sr = atoi(setting);
+
+    unsigned int l = 0;
+    
+    l += strlen(theHTML[0]);
+    l += strlen(setting);
+    l += (STRLEN(custHTMLSelFmt) - (2*2));
+    l += (2*strlen(theHTML[1]));
+    for(int i = 0; i < cnt - 2; i++) {
+        if(sr == i) l += STRLEN(custHTMLSel);
+        l += (strlen(theHTML[i+2]) - 2);
+        l += strlen((i == cnt - 3) ? osde : ooe);
+    }
+
+    return l + 16;
+}
+
 static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting)
 {
     int sr = atoi(setting);
     
     strcpy(target, theHTML[0]);
     strcat(target, setting);
-    sprintf(target + strlen(target), "' name='%s' id='%s' autocomplete='off'><option value='0'", theHTML[1], theHTML[1]);
+    sprintf(target + strlen(target), custHTMLSelFmt, theHTML[1], theHTML[1]);
     for(int i = 0; i < cnt - 2; i++) {
         if(sr == i) strcat(target, custHTMLSel);
         sprintf(target + strlen(target), 
@@ -1772,8 +1827,9 @@ static const char *wmBuildBatType(const char *dest)
         free((void *)dest);
         return NULL;
     }
-    
-    char *str = (char *)malloc(512);    // actual length ca. 330
+
+    unsigned int l = calcSelectMenu(batTypeHTMLSrc, 7, settings.batType);
+    char *str = (char *)malloc(l);
 
     buildSelectMenu(str, batTypeHTMLSrc, 7, settings.batType);
     
@@ -1787,8 +1843,9 @@ static const char *wmBuildApChnl(const char *dest)
         free((void *)dest);
         return NULL;
     }
-    
-    char *str = (char *)malloc(600);    // actual length 564
+
+    unsigned int l = calcSelectMenu(apChannelCustHTMLSrc, 14, settings.apChnl);
+    char *str = (char *)malloc(l);
 
     str[0] = 0;
     buildSelectMenu(str, apChannelCustHTMLSrc, 14, settings.apChnl);
@@ -1807,8 +1864,8 @@ static const char *wmBuildBestApChnl(const char *dest)
     int qual = 0;
 
     if(wm.getBestAPChannel(mychan, qual)) {
-        char *str = (char *)malloc(STRLEN(bestAP) + 4 + 7 + STRLEN(badWiFi) + 1);
-        sprintf(str, bestAP, qual < 0 ? "dc3630" : (qual > 0 ? "609b71" : "777"), mychan, qual < 0 ? badWiFi : "");
+        char *str = (char *)malloc(STRLEN(bestAP) + STRLEN(bannerStart) + 7 + STRLEN(bannerMid) + 4 + STRLEN(badWiFi) + 1);
+        sprintf(str, bestAP, bannerStart, qual < 0 ? col_r : (qual > 0 ? col_g : col_gr), bannerMid, mychan, qual < 0 ? badWiFi : "");
         return str;
     }
 
@@ -1831,7 +1888,7 @@ static unsigned int lengthRadioButtons(const char **theHTML, int cnt, char *sett
     for(i = 0; i < cnt; i++) {
         mysize += STRLEN(rad1) + (3*j) + (3*2) + ((i==sr) ? STRLEN(radchk) : 0) + strlen(theHTML[3+i]);
     }
-    mysize += strlen(rad99);
+    mysize += STRLEN(rad99);
 
     return mysize;
 }
@@ -1876,6 +1933,100 @@ static const char *wmBuildOOTT(const char *dest)
         
     return str;
 }
+
+#ifdef REMOTE_HAVEMQTT
+static const char *wmBuildMQTTprot(const char *dest)
+{
+    if(dest) {
+        free((void *)dest);
+        return NULL;
+    }
+
+    unsigned int l = calcSelectMenu(mqttpCustHTMLSrc, 4, settings.mqttVers);
+    char *str = (char *)malloc(l);
+
+    str[0] = 0;
+    buildSelectMenu(str, mqttpCustHTMLSrc, 4, settings.mqttVers);
+    
+    return str;
+}
+static const char *wmBuildMQTTstate(const char *dest)
+{
+    // Check original setting, not "useMQTT" which
+    // might be overruled.
+    if(!atoi(settings.useMQTT)) {
+        return NULL;
+    }
+    
+    if(dest) {
+        free((void *)dest);
+        return NULL;
+    }
+
+    int s = 0;
+    const char *msg = NULL;
+    const char *cls = col_r;
+
+    if(!useMQTT) {
+        msg = mqttMsgDisabled;
+        cls = col_gr;
+    } else {
+        s = mqttClient.state();
+        switch(s) {
+        case MQTT_CONNECTED:
+            msg = mqttMsgConnected;
+            cls = col_g;
+            break;
+        case MQTT_CONNECTING:
+            msg = mqttMsgConnecting;
+            cls = col_gr;
+            break;
+        case MQTT_CONNECTION_TIMEOUT:
+            msg = mqttMsgTimeout;
+            break;
+        case MQTT_CONNECTION_LOST:
+        case MQTT_CONNECT_FAILED:
+            msg = mqttMsgFailed;
+            break;
+        case MQTT_DISCONNECTED:
+            msg = mqttMsgDisconnected;
+            break;
+        case MQTT_CONNECT_BAD_PROTOCOL:
+        case MQTT_CONNECT_BAD_CLIENT_ID:
+        case 129:
+        case 130:
+        case 132:
+        case 133:
+            msg = mqttMsgBadProtocol;
+            break;
+        case MQTT_CONNECT_UNAVAILABLE:
+        case 136:
+        case 137:
+            msg = mqttMsgUnavailable;
+            break;
+        case MQTT_CONNECT_BAD_CREDENTIALS:
+        case MQTT_CONNECT_UNAUTHORIZED:
+        case 134:
+        case 135:
+        case 138:
+        case 140:
+        case 156:
+        case 157:
+            msg = mqttMsgBadCred;
+            break;
+        default:
+            msg = mqttMsgGenError;
+            break;
+        }
+    }
+
+    char *str = (char *)malloc(STRLEN(mqttStatus) + STRLEN(bannerStart) + strlen(cls) + 20 + STRLEN(bannerMid) + strlen(msg) + 6);
+
+    sprintf(str, mqttStatus, bannerStart, cls, ";margin-bottom:10px", bannerMid, msg, s);
+
+    return str;
+}
+#endif
 
 
 /*
@@ -2359,8 +2510,6 @@ static void mqttCallback(char *topic, byte *payload, unsigned int length)
 
     if(!length) return;
 
-    if(remBusy) return;
-
     memcpy(tempBuf, (const char *)payload, ml);
     tempBuf[ml] = 0;
     for(j = 0; j < ml; j++) {
@@ -2386,11 +2535,13 @@ static void mqttCallback(char *topic, byte *payload, unsigned int length)
             // Prepare for TT. Comes at some undefined point,
             // an undefined time before the actual tt, and may
             // not come at all.
-            doPrepareTT = true;
+            if(remoteAllowed) {
+                doPrepareTT = true;
+            }
             break;
         case 1:
             // Trigger Time Travel (if not running already)
-            if(FPBUnitIsOn && !TTrunning) {
+            if(FPBUnitIsOn && remoteAllowed && !TTrunning && !remBusy) {
                 networkTimeTravel = true;
                 networkReentry = false;
                 networkAbort = false;
@@ -2410,21 +2561,22 @@ static void mqttCallback(char *topic, byte *payload, unsigned int length)
             }
             break;
         case 3:   // Abort TT (TCD fake-powered down during TT)
-            if(TTrunning) {
+            if(TTrunning || tcdIsInP0) {
                 networkAbort = true;
             }
-            tcdIsInP0 = 0;
             break;
         case 4:
             networkAlarm = true;
             // Eval this at our convenience
             break;
         case 5:
-            doWakeup = true;
+            if(remoteAllowed) {
+                doWakeup = true;
+            }
             break;
         }
        
-    } else if(!strcmp(topic, "bttf/remote/cmd")) {
+    } else if(!remBusy && !strcmp(topic, "bttf/remote/cmd")) {
 
         // User commands
 
@@ -2522,9 +2674,9 @@ static bool mqttReconnect(bool force)
                 #endif
     
                 if(strlen(mqttUser)) {
-                    success = mqttClient.connect(settings.hostName, mqttUser, strlen(mqttPass) ? mqttPass : NULL);
+                    success = mqttClient.connect(mqttUser, strlen(mqttPass) ? mqttPass : NULL);
                 } else {
-                    success = mqttClient.connect(settings.hostName);
+                    success = mqttClient.connect();
                 }
     
                 mqttReconnectNow = millis();

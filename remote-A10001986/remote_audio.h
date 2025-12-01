@@ -59,12 +59,12 @@
 #define PA_INTRMUS 0x0002
 #define PA_ALLOWSD 0x0004
 #define PA_DYNVOL  0x0008
-#define PA_IGNNM   0x0010
+#define PA_NOINTR  0x0010
 #define PA_WAV     0x0020
 #define PA_THRUP   0x0040
 #define PA_KLONG   0x0080
 // upper 8 bits all taken
-#define PA_MASKA   (PA_LOOP|PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL|PA_IGNNM)
+#define PA_MASKA   (PA_LOOP|PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL|PA_NOINTR)
 
 void audio_setup();
 void audio_loop();
