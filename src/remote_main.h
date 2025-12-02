@@ -61,6 +61,7 @@
 extern unsigned long powerupMillis;
 
 extern uint32_t myRemID;
+extern bool     remoteAllowed;
 
 extern REMRotEnc rotEnc;
 

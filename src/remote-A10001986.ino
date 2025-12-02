@@ -105,12 +105,11 @@
  * - Go to "Sketch" -> "Upload" to compile and upload the firmware to your ESP32 board.
  *
  * - Install the sound-pack:
- *   Method 1:
  *   - Go to Config Portal, click "Update" and upload the sound-pack (REMA.bin, extracted
  *     from install/sound-pack-xxxxxxxx.zip) through the bottom file selector.
  *     A FAT32 (not ExFAT!) formatted SD card must be present in the slot during this 
  *     operation.
- *   Method 2:
+ *   Alternatively:
  *   - Copy REMA.bin to the top folder of a FAT32 (not ExFAT!) formatted SD card (max 
  *     32GB) and put this card into the slot while the remote is powered down. 
  *   - Now power-up. The sound-pack will now be installed. When finished, the remote will 
@@ -136,6 +135,38 @@
 
 /*  Changelog
  *  
+ *  2025/11/29 (A10001986) [1.14] [requires TCD 3.10 for proper operation]
+ *    - Make TCD<->Remote communication more robust; timeout for throttle-
+ *      triggered BTTFN-TT; stand-alone TT-on-throttle only if not connected 
+ *      to TCD; timeout for brake warning; fix fake-power-off during TT
+ *  2025/11/28 (A10001986)
+ *    - P0: Fix speed-jumps on brake (Remote and TCD firmwares)
+ *  2025/11/24 (A10001986)
+ *    - Add internal command to react on brake-prohibited TT on behalf of the TCD
+ *    - Add audio flag "no interrupt" 
+ *    - Signal TCD when we want speed even when off; this flag is used on the
+ *      TCD to accept the Remote as speedo-replacement even when not currently
+ *      speedmaster (= when fake off), and do TT sequences with speedo parts
+ *    - New sound pack (RM09): Re-do some sounds, add new.
+ *  2025/11/22 (A10001986)
+ *    - TCD-controlled TT: If brake is hit while accelerating, TT is aborted
+ *    - Fix IP & SOC not being displayed while fake-off
+ *  2025/11/21 (A10001986)
+ *    - WM: Minor HTML tweaks; make page width dynamic for better display on
+ *      handheld devices
+ *  2025/11/19 (A10001986)
+ *    - Add support for MQTT v5.0 (tested with mosquitto only). Has no advantages
+ *      over 3.1.1 (but more overhead), only there to use brokers that lack
+ *      support for 3.1.1.
+ *    - Add MQTT connection state info on HA/MQTT Settings page
+ *  2025/11/17 (A10001986)
+ *    - If remote controlling is not allowed by the TCD, the Remote, unlike the
+ *      other props, does not take part in BTTFN-wide time travel. It can, however, 
+ *      still trigger a BTTFN-wide TT.
+ *  2025/11/16 (A10001986)
+ *    - WM: Require HTTP_POST for params save pages. Also, check if request 
+ *      has parameter, do not overwrite current value with null (protects from 
+ *      overwriting settings by errorneous page reloads)
  *  2025/11/14 (A10001986) [1.13]
  *    - Remove BTTFN_MC conditional
  *  2025/11/13 (A10001986)

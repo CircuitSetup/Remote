@@ -30,7 +30,7 @@ Firmware features:
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
-- [Home Assistant](#home-assistant--mqtt) (MQTT 3.1.1) support
+- [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires M-version Control Board, or non-M-board with BatMon add-on)
 - Built-in OTA installer for firmware updates and audio files
 
@@ -48,17 +48,17 @@ The firmware comes with a sound-pack which needs to be installed separately. The
 
 The first step is to download "install/sound-pack-rmXX.zip" and extract it. It contains one file named "REMA.bin".
 
-Then there are two alternative ways to proceed. Note that both methods *require an SD card*.
+Next, head to the [Config Portal](#the-config-portal), click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*.
 
-1) Through the [Config Portal](#the-config-portal). Click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*.
+<details>
+<summary>More...</summary>
 
-2) Via SD card:
-- Copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
+Alternatively, you can install the sound-pack the following way:
+- Using a computer, copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
 - power down the Remote,
 - insert this SD card into the slot and 
 - power up the Remote; the sound-pack will be installed automatically.
-
-After installation, the SD card can be re-used for [other purposes](#sd-card).
+</details>
 
 ## Initial Configuration
 
@@ -511,7 +511,7 @@ Remarks:
 
 ## Home Assistant / MQTT
 
-The Remote supports the MQTT protocol version 3.1.1 for the following features:
+The Remote supports MQTT protocol versions 3.1.1 and 5.0 for the following features:
 
 ### Send messages through User Buttons
 
@@ -552,9 +552,9 @@ To select the 'music1' folder (7051), issue **INJECT_7051**
 
 ### Receive commands from Time Circuits Display
 
-If both TCD and Remote are connected to the same broker, and the option **_Send time travel/alarm event notifications_** is checked on the TCD's side, the Remote will receive information on time travel and alarm and play their sequences in sync with the TCD. Unlike BTTFN, however, no other communication takes place. The actual remote controlling requires a BTTFN connection.
+If both TCD and Remote are connected to the same broker, and the option **_Publish time travel and alarm events_** is checked on the TCD's side, the Remote will receive information on time travel and alarm and play their sequences in sync with the TCD. Unlike BTTFN, however, no other communication takes place. The actual remote controlling requires a BTTFN connection.
 
-MQTT and BTTFN can co-exist. However, the TCD only sends out time travel and alarm notifications through either MQTT or BTTFN, never both. If you have other MQTT-aware devices listening to the TCD's public topic (bttf/tcd/pub) in order to react to time travel or alarm messages, use MQTT (ie check **_Send time travel/alarm event notifications_**). If only BTTFN-aware devices are to be used, uncheck this option to use BTTFN as it has less latency.
+MQTT and BTTFN can co-exist. However, the TCD only sends out time travel and alarm notifications through either MQTT or BTTFN, never both. If you have other MQTT-aware devices listening to the TCD's public topic (bttf/tcd/pub) in order to react to time travel or alarm messages, use MQTT (ie check **_Publish time travel and alarm events_**). If only BTTFN-aware devices are to be used, uncheck this option to use BTTFN as it has less latency.
 
 ### Setup
 
@@ -564,9 +564,11 @@ MQTT requires a "broker" (such as [mosquitto](https://mosquitto.org/), [EMQ X](h
 
 The broker's address needs to be configured in the Config Portal. It can be specified either by domain or IP (IP preferred, spares us a DNS call). The default port is 1883. If a different port is to be used, append a ":" followed by the port number to the domain/IP, such as "192.168.1.5:1884". 
 
+If your broker supports protocol version 3.1.1, stick with 3.1.1. Version 5.0 has no advantages, but more overhead.
+
 If your broker does not allow anonymous logins, a username and password can be specified.
 
-Limitations: MQTT Protocol version 3.1.1; TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
+Limitations: TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
 
 ## Car setup
 
@@ -875,13 +877,17 @@ The battery CircuitSetup supplies as part of their kit is a dual-cell 5000mAh Li
 
 ### HA/MQTT Settings
 
-##### &#9193; Use Home Assistant (MQTT 3.1.1)
+##### &#9193; Home Assistant support (MQTT)
 
 If checked, the Remote will connect to the broker (if configured) and send and receive messages via [MQTT](#home-assistant--mqtt)
 
 ##### &#9193; Broker IP[:port] or domain[:port]
 
 The broker server address. Can be a domain (eg. "myhome.me") or an IP address (eg "192.168.1.5"). The default port is 1883. If different port is to be used, it can be specified after the domain/IP and a colon ":", for example: "192.168.1.5:1884". Specifying the IP address is preferred over a domain since the DNS call adds to the network overhead. Note that ".local" (MDNS) domains are not supported.
+
+##### &#9193; Protocol version
+
+The firmware supports MQTT 3.1.1 and 5.0. There is no difference in features, so there is no advantage in selecting 5.0. This was implemented only for brokers that do not support 3.1.1.
 
 ##### &#9193; User[:Password]
 
