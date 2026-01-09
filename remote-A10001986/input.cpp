@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024-2025 Thomas Winischhofer (A10001986)
+ * (C) 2024-2026 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -938,7 +938,7 @@ void ButtonPack::port_write(uint8_t reg, uint8_t val)
 
 int ButtonPack::port_read(uint8_t *buf)
 {
-    int i2clen;
+    int i2clen = 0;
 
     switch(_st) {
     case REM_BP_TYPE_PCA8574:

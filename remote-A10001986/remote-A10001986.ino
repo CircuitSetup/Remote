@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024-2025 Thomas Winischhofer (A10001986)
+ * (C) 2024-2026 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -82,7 +82,7 @@
  *   /dev/cu.usbserial-XXXX (XXXX being some random number), and the maximum upload 
  *   speed is 460800.
  *   Windows:
- *   For the SLAB CP210x (which is used by NodeMCU-boards distributed by CircuitSetup)
+ *   For the SLAB CP210x (which is on the NodeMCU-boards distributed by CircuitSetup)
  *   installing a driver is required:
  *   https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers?tab=downloads
  *   After installing this driver, connect your ESP32, start the Device Manager, 
@@ -135,6 +135,14 @@
 
 /*  Changelog
  *  
+ *  2026/01/09 (A10001986) [1.15]
+ *    - P0: Don't jump to TCD speed if it's lower than our currently displayed 
+ *      one, instead wait until TCD caught up.
+ *    - Issue a brake warning if brake is on when throttle-up TT should be
+ *      triggered.
+ *    - New sound-pack (RM10): Timetravel sounds changed.
+ *    - BTTFN enhancements in sync with TCD capabilities
+ *    - Code refinements
  *  2025/11/29 (A10001986) [1.14] [requires TCD 3.10 for proper operation]
  *    - Make TCD<->Remote communication more robust; timeout for throttle-
  *      triggered BTTFN-TT; stand-alone TT-on-throttle only if not connected 

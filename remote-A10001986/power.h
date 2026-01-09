@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024-2025 Thomas Winischhofer (A10001986)
+ * (C) 2024-2026 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -88,7 +88,7 @@ class remPowMon {
 
         uint16_t _soc = 0;
         uint16_t _tte = 0;
-        float    _voltage = 0;
+        float    _voltage = 0.0f;
         bool     _charging = false;
 
         bool     _battWarn = false;
