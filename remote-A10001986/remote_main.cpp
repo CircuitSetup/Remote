@@ -419,6 +419,7 @@ static byte          BTTFMCBuf[BTTF_PACKET_SIZE];
 static IPAddress     bttfnMcIP(224, 0, 0, 224);
 static uint32_t      bttfnSeqCnt[BTTFN_REM_MAX_COMMAND+1] = { 1 };
 static uint32_t      bttfnTCDDataSeqCnt = 0;
+static uint32_t      bttfnSessionID = 0;
 static unsigned long bttfnCurrLatency = 0, bttfnPacketSentNow = 0;
 static int16_t       tcdCurrSpeed = -1;
 //static bool          tcdSpdIsRotEnc = false;
@@ -3118,6 +3119,11 @@ static void handle_tcd_notification(uint8_t *buf)
         if(TCDSupportsNOTData) {
             bttfnDataNotEnabled = true;
             bttfnLastNotData = millis();
+            seqCnt = GET32(buf, 27);
+            if(bttfnSessionID && (bttfnSessionID != seqCnt)) {
+                bttfnTCDDataSeqCnt = 1;
+            }
+            bttfnSessionID = seqCnt;
             seqCnt = GET32(buf, 6);
             if(seqCnt > bttfnTCDDataSeqCnt || seqCnt == 1) {
                 #ifdef REMOTE_DBG
@@ -3588,7 +3594,11 @@ void bttfn_loop()
         if(now - bttfnLastNotData > BTTFN_DATA_TO) {
             // Return to polling if no NOT_DATA for too long
             bttfnDataNotEnabled = false;
-            bttfnTCDDataSeqCnt = 0;
+            bttfnTCDDataSeqCnt = 1;
+            // Re-do DISCOVER, TCD might have got new IP address
+            if(tcdHostNameHash) {
+                haveTCDIP = false;
+            }
             #ifdef REMOTE_DBG
             Serial.println("NOT_DATA timeout, returning to polling");
             #endif

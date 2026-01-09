@@ -135,6 +135,10 @@
 
 /*  Changelog
  *  
+ *  2026/01/09 (A10001986) [1.16]
+ *    - BTTFN: Fall back to DISCOVER upon NOT_DATA timeout. TCD might have 
+ *      got a new IP address.
+ *    - BTTFN: Fix re-connection after a TCD-reboot.
  *  2026/01/09 (A10001986) [1.15]
  *    - P0: Don't jump to TCD speed if it's lower than our currently displayed 
  *      one, instead wait until TCD caught up.
