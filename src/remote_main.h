@@ -140,5 +140,6 @@ void mydelay(unsigned long mydel, bool withBTTFN = false);
 void addCmdQueue(uint32_t command);
 void bttfn_loop();
 void bttfn_remote_unregister();
+void fakePower(bool on);
 
 #endif
