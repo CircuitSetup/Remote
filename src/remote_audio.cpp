@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024-2025 Thomas Winischhofer (A10001986)
+ * (C) 2024-2026 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -90,22 +90,20 @@ static int  mpCurrIdx = 0;
 bool        mpShuffle = false;
 
 static const float volTable[20] = {
-    0.00, 0.02, 0.04, 0.06,
-    0.08, 0.10, 0.13, 0.16,
-    0.19, 0.22, 0.26, 0.30,
-    0.35, 0.40, 0.50, 0.60,
-    0.70, 0.80, 0.90, 1.00
+    0.00f, 0.02f, 0.04f, 0.06f,
+    0.08f, 0.10f, 0.13f, 0.16f,
+    0.19f, 0.22f, 0.26f, 0.30f,
+    0.35f, 0.40f, 0.50f, 0.60f,
+    0.70f, 0.80f, 0.90f, 1.00f
 };
 uint8_t         curSoftVol = DEFAULT_VOLUME;
 static uint32_t g(uint32_t a, int o) { return a << (PA_MASKA - o); }
 
-static float    curVolFact = 1.0;
+static float    curVolFact = 1.0f;
 static bool     dynVol     = true;
 static int      sampleCnt = 0;
 
-static bool     throttleup_playing = false;
-static uint32_t key_playing = 0;
-static bool     no_interrupt = false;
+static uint32_t playflags = 0;
 
 static char     append_audio_file[256];
 static float    append_vol;
@@ -136,15 +134,13 @@ static void     mpren_quickSort(char **a, int s, int e);
  * audio_setup()
  */
 void audio_setup()
-{
-    bool waitShown = false;
-    
+{   
     #ifdef REMOTE_DBG
     audioLogger = &Serial;
     #endif
 
     out = new AudioOutputI2S(0, 0, 32, 0);
-    out->SetOutputModeMono(true);
+    out->SetOutputModeMono(false);  // Hardware does auto-mono
     out->SetPinout(I2S_BCLK_PIN, I2S_LRCLK_PIN, I2S_DIN_PIN);
 
     mp3  = new AudioGeneratorMP3();
@@ -187,8 +183,7 @@ void audio_loop()
     if(mp3->isRunning()) {
         if(!mp3->loop()) {
             mp3->stop();
-            key_playing = 0;
-            no_interrupt = false;
+            playflags = 0;
             if(appendFile) {
                 play_file(append_audio_file, append_flags, append_vol);
             } else if(mpActive) {
@@ -204,7 +199,7 @@ void audio_loop()
     } else if(wav->isRunning()) {
         if(!wav->loop()) {
             wav->stop();
-            throttleup_playing = no_interrupt = false;
+            playflags = 0;
             if(appendFile) {
                 play_file(append_audio_file, append_flags, append_vol);
             } else if(mpActive) {
@@ -241,17 +236,6 @@ static int skipID3(char *buf)
     return 0;
 }
 
-static int findWAVdata(char *buf)
-{
-    // Q&D: Assume 'data' within buffer at 32-bit aligned positions
-    for(int i = 0; i <= 60; i += 4) {
-        if(buf[i] == 'd' && buf[i+1] == 'a' && buf[i+2] == 't' && buf[i+3] == 'a')
-            return i+8;   // Return actual data start
-    }
-
-    return 0;
-}
-
 void append_file(const char *audio_file, uint32_t flags, float volumeFactor)
 {
     strcpy(append_audio_file, audio_file);
@@ -273,7 +257,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
     if(audioMute) return;
 
-    if(no_interrupt) return;
+    if(playflags & PA_NOINTR) return;
 
     if(flags & PA_INTRMUS) {
         mpActive = false;
@@ -294,25 +278,19 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
     curVolFact = volumeFactor;
     dynVol     = (flags & PA_DYNVOL) ? true : false;
-    throttleup_playing = (flags & PA_THRUP) ? true : false;
-    no_interrupt = (flags & PA_NOINTR) ? true : false;
-    key_playing = flags & 0x1ff80;
+    playflags  = flags & (PA_KMASK | PA_THRUP | PA_NOINTR);
     
     out->SetGain(getVolume());
 
     buf[0] = 0;
 
     if(haveSD && ((flags & PA_ALLOWSD) || FlashROMode) && mySD0L->open(audio_file)) {
+        
         mySD0L->setPlayLoop((flags & PA_LOOP));
 
         if(flags & PA_WAV) {
-            if(flags & PA_LOOP) {
-                mySD0L->read((void *)buf, 64);
-                curSeek = findWAVdata(buf);
-                mySD0L->setStartPos(curSeek);
-                mySD0L->seek(0, SEEK_SET);
-            }
             wav->begin(mySD0L, out);
+            if(flags & PA_LOOP) mySD0L->setStartPos(wav->startPos);
         } else {
             mySD0L->read((void *)buf, 10);
             curSeek = skipID3(buf);
@@ -332,15 +310,10 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
     #endif
     {
         myFS0L->setPlayLoop((flags & PA_LOOP));
-        
+
         if(flags & PA_WAV) {
-            if(flags & PA_LOOP) {
-                myFS0L->read((void *)buf, 64);
-                curSeek = findWAVdata(buf);
-                myFS0L->setStartPos(curSeek);
-                myFS0L->seek(0, SEEK_SET);
-            }
             wav->begin(myFS0L, out);
+            if(flags & PA_LOOP) myFS0L->setStartPos(wav->startPos);
         } else {
             myFS0L->read((void *)buf, 10);
             curSeek = skipID3(buf);
@@ -353,9 +326,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
         Serial.println("Playing from flash FS");
         #endif
     } else {
-        throttleup_playing = false;
-        no_interrupt = false;
-        key_playing = 0;
+        playflags = 0;
         #ifdef REMOTE_DBG
         Serial.println("Audio file not found");
         #endif
@@ -368,28 +339,52 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
 void play_click()
 {
-    if(!playClicks || throttleup_playing || key_playing || audioMute || no_interrupt) {
+    if(!playClicks || playflags || audioMute) {
         return;
     }
 
     if(mpActive) {
         mp_stop();
-    }
-
-    if(mp3->isRunning()) {
+    } else if(mp3->isRunning()) {
         return;
     } else if(wav->isRunning()) {
         wav->stop();
     }
 
-    appendFile = false;
+    appendFile = dynVol = false;
 
-    curVolFact = 1.0;
+    curVolFact = 1.0f;
 
     out->SetGain(getVolume());
 
     myPM->open(data_click_wav, data_click_wav_len);
-    wav->begin(myPM, out);
+    wav->beginQuick(myPM, out, 1, 44);
+}
+
+void play_throttleup()
+{
+    if(audioMute) return;
+
+    if(playflags & PA_NOINTR) return;
+    
+    playflags = PA_THRUP;
+
+    if(mpActive) {
+        mp_stop();
+    } else if(mp3->isRunning()) {
+        mp3->stop();
+    } else if(wav->isRunning()) {
+        wav->stop();
+    }
+
+    appendFile = dynVol = false;
+
+    curVolFact = 1.0f;
+
+    out->SetGain(getVolume());
+    
+    myPM->open(data_throttleup_wav, data_throttleup_wav_len);
+    wav->beginQuick(myPM, out, 1, 44);
 }
 
 void play_key(int k, bool l, bool stopOnly)
@@ -404,13 +399,13 @@ void play_key(int k, bool l, bool stopOnly)
       if(!haveKeySnd[k]) return;
     }
 
-    if(pa_key == key_playing) {
+    if(pa_key == (playflags & PA_KMASK)) {
         mp3->stop();
-        key_playing = 0;
+        playflags = 0;
         return;
     }
 
-    if(stopOnly) 
+    if(stopOnly)
         return;
 
     if(!l) {
@@ -425,7 +420,7 @@ void play_key(int k, bool l, bool stopOnly)
 
 void play_bad()
 {
-    play_file("/bad.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0);
+    play_file("/bad.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0f);
 }
 
 static float getVolume()
@@ -435,13 +430,13 @@ static float getVolume()
     vol_val = volTable[curSoftVol];
 
     // If user muted, return 0
-    if(vol_val == 0.0) return vol_val;
+    if(vol_val == 0.0f) return vol_val;
 
     vol_val *= curVolFact;
 
     // Do not totally mute
     // 0.02 is the lowest audible gain
-    if(vol_val < 0.02) vol_val = 0.02;
+    if(vol_val < 0.02f) vol_val = 0.02f;
 
     return vol_val;
 }
@@ -476,9 +471,7 @@ void stopAudio()
         wav->stop();
     }
     appendFile = false;   // Clear appended, stop means stop.
-    key_playing = 0;
-    throttleup_playing = false;
-    no_interrupt = false;
+    playflags = 0;
 }
 
 void stopAudioAtLoopEnd()
@@ -493,9 +486,9 @@ void stopAudioAtLoopEnd()
 
 void stop_key()
 {
-    if(key_playing) {
+    if(playflags & PA_KMASK) {
         mp3->stop();
-        key_playing = 0;
+        playflags = 0;
     }
 }
 
@@ -522,7 +515,6 @@ void mp_init(bool isSetup)
     mpCurrIdx = 0;
     
     if(haveSD) {
-        int i, j;
 
         #ifdef REMOTE_DBG
         Serial.println("MusicPlayer: Checking for music files");
@@ -712,7 +704,7 @@ static bool mp_play_int(bool force)
 
     mp_buildFileName(fnbuf, playList[mpCurrIdx]);
     if(SD.exists(fnbuf)) {
-        if(force) play_file(fnbuf, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0);
+        if(force) play_file(fnbuf, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0f);
         return true;
     }
     return false;
@@ -845,7 +837,6 @@ static bool mp_renameFilesInDir(bool isSetup)
     int fileNum = 0;
     int strLength;
     int nameOffs = 8;
-    int allocBufs = 1;
     int allocBufIdx = 0;
     const unsigned long bufSizes[8] = {
         16384, 16384, 8192, 8192, 8192, 8192, 8192, 4096 
@@ -1100,7 +1091,7 @@ static bool mpren_strLT(const char *a, const char *b)
         unsigned char bbb = mpren_toUpper(*b);
         if(aaa < bbb) return true;
         if(aaa > bbb) return false;
-        *a++; *b++;
+        a++; b++;
     }
 
     return false;

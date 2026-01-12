@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024-2025 Thomas Winischhofer (A10001986)
+ * (C) 2024-2026 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.14"
-#define REMOTE_VERSION_EXTRA "DEC012025"
+#define REMOTE_VERSION "V1.16"
+#define REMOTE_VERSION_EXTRA "JAN092026"
 
 //#define REMOTE_DBG              // debug output on Serial
 

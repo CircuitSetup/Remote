@@ -1,7 +1,7 @@
  /*
  * -------------------------------------------------------------------
  * Remote Control
- * (C) 2024-2025 Thomas Winischhofer (A10001986)
+ * (C) 2024-2026 Thomas Winischhofer (A10001986)
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
@@ -65,14 +65,16 @@
 #define PA_KLONG   0x0080
 // upper 8 bits all taken
 #define PA_MASKA   (PA_LOOP|PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL|PA_NOINTR)
+#define PA_KMASK   0x1ff80
 
 void audio_setup();
 void audio_loop();
 
-void play_file(const char *audio_file, uint32_t flags, float volumeFactor = 1.0);
-void append_file(const char *audio_file, uint32_t flags, float volumeFactor = 1.0);
+void play_file(const char *audio_file, uint32_t flags, float volumeFactor = 1.0f);
+void append_file(const char *audio_file, uint32_t flags, float volumeFactor = 1.0f);
 
 void play_click();
+void play_throttleup();
 void play_key(int k, bool l = false, bool stopOnly = false);
 void play_bad();
 
