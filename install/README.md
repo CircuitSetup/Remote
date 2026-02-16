@@ -3,3 +3,5 @@ This folder holds all files necessary for immediate installation on your Remote.
 - the latest matching sound-pack ("sound-pack-rmXX.zip")
 
 For installation instructions, see [here](../README.md#firmware-installation).
+
+Note: As of version 1.20, the internally used file format for settings was changed. Version 1.20 will automatically update old files to the new format, later versions will not. If you intend to update from a version below 1.20 to a version above 1.20, please install version 1.20 as an intermediate to have your settings converted.
