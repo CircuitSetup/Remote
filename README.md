@@ -46,7 +46,7 @@ If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://
 
 ### Sound-pack installation
 
-The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "ISP" briefly during boot, a re-installation/update of the sound-pack is needed.
+The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. There will be a message in the Config Portal and the Remote will briefly display "ISP" during boot if a new sound-pack needs to be installed.
 
 The first step is to extract "sound-pack-rmXX.zip" (which is included in the Release package). It contains one file, named "REMA.bin".
 
@@ -912,6 +912,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 - "FUL": Battery is full, ie 100% charged
 - "IP": IP address is going to be shown.
 - "RST": WiFi password temporarily cleared; static IP permanently deleted
+- "UPD": Firmware update available; shown briefly at power-up (optional).
 
 ---
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
