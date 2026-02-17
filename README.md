@@ -36,31 +36,7 @@ Firmware features:
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
 
-## Firmware Installation
-
-If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on *Update*, select the pre-compiled binary file ("xxx.bin") provided in the Release package, and click on *Update*.
-
-If you are using a fresh ESP32 board, please see [remote-A10001986.ino](https://github.com/realA10001986/Remote/blob/main/remote-A10001986/remote-A10001986.ino) for detailed build and upload information, or, if you don't want to deal with source code, compilers and all that nerd stuff, go [here](https://install.out-a-ti.me) and follow the instructions.
-
-*After a firmware update, the "wait" symbol might be shown a bit longer while booting. Do NOT switch off the device during this time.*
-
-### Sound-pack installation
-
-The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. If you have previously installed the latest version of the sound-pack, you normally don't have to re-install it when you update the firmware. Only if the Remote displays "ISP" briefly during boot, a re-installation/update of the sound-pack is needed.
-
-The first step is to extract "sound-pack-rmXX.zip" (which is included in the Release package). It contains one file, named "REMA.bin".
-
-Next, head to the [Config Portal](#the-config-portal), click on *Update*, select the "REMA.bin" file in the bottom file selector and click on *Upload*.
-
-<details>
-<summary>More...</summary>
-
-Alternatively, you can install the sound-pack the following way:
-- Using a computer, copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
-- power down the Remote,
-- insert this SD card into the slot and 
-- power up the Remote; the sound-pack will be installed automatically.
-</details>
+For information on updating the firmware on your Remote, see [here](#firmware-installation--firmware-update).
 
 ## Initial Configuration
 
@@ -614,6 +590,38 @@ Flash memory has a somewhat limited lifetime. It can be written to only between 
 
 In order to reduce the number of write operations and thereby prolong the life of your Remote, it is recommended to use a good-quality SD card and to check **_[Save secondary settings on SD](#-save-secondary-settings-on-sd)_** in the Config Portal; secondary settings are then stored on the SD card (which also suffers from wear but is easy to replace). See [here](#-save-secondary-settings-on-sd) for more information.
 
+## Firmware Installation / Firmware Update
+
+If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on "Update", select the pre-compiled binary file ("**remote-A10001986.ino.nodemcu-32s.bin**" or "**Remote_vX.YY.bin**") provided in the [Release package](https://github.com/realA10001986/Remote/releases), and click on *Update*.
+
+<details>
+<summary>Installing on a fresh ESP32...</summary>
+If you are using a fresh ESP32, please go <a href="https://install.out-a-ti.me">here</a> and follow the instructions, or - if you are a nerd and want to deal with source code, compilers'n'stuff - see <a href="https://github.com/realA10001986/Remote/blob/main/remote-A10001986/remote-A10001986.ino">remote-A10001986.ino</a> for detailed build and upload information.
+</details>
+
+*After a firmware update, the "wait" symbol might be shown a bit longer while booting. Do NOT switch off the device during this time.*
+
+### Sound-pack installation
+
+The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. There will be a message in the Config Portal and the Remote will briefly display "ISP" during boot when/if the sound-pack needs to be updated.
+
+_Note that installing the sound-pack requires an [SD card](#sd-card)._
+
+The first step is to extract "sound-pack-rmXX.zip" (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)). It contains one file, named "REMA.bin".
+
+Next, head to the [Config Portal](#the-config-portal), click on "Update", select the "REMA.bin" file in the _bottom_ file selector and click on *Upload*.
+
+<details>
+<summary>Alternative way</summary>
+Alternatively, you can install the sound-pack the following way:
+- Using a computer, copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
+- power down the Remote,
+- insert this SD card into the slot and 
+- power up the Remote; the sound-pack will be installed automatically.
+</details>
+
+---
+
 ## Appendix A: The Config Portal
 
 ### Main page
@@ -632,13 +640,15 @@ This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
 ##### &#9193; Update
 
-This leads to the firmware and audio update page. 
+This leads to the firmware update and audio upload page.
 
-In order to upload a new firmware binary (such as the ones published here in the install/ folder), select that image file in the top file selector and click "Update".
+In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986.ino.nodemcu-32s.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
 
-You can also install the Remote's sound-pack on this page; download the current sound-pack, extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click "Upload". Note that an SD card is required for this operation.
+You can also install the Remote's sound-pack on this page; download the sound-pack (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)), extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click *Upload*. Note that an SD card is required for this operation.
 
-Finally, this page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card. Select an mp3 file in the bottom file selector and click upload. (Requires firmware 1.06 or later. Maximum 16 files at a time.)
+See also [here](#firmware-installation--firmware-update).
+
+Finally, this page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card. Select an mp3 file in the bottom file selector and click *Upload*. (Maximum 16 files at a time.)
 
 ---
 
@@ -912,6 +922,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 - "FUL": Battery is full, ie 100% charged
 - "IP": IP address is going to be shown.
 - "RST": WiFi password temporarily cleared; static IP permanently deleted
+- "UPD": Firmware update available; shown briefly at power-up (optional).
 
 ---
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ https://remote.out-a-ti.me  
