@@ -63,6 +63,7 @@
 #include "remote_settings.h"
 #include "remote_audio.h"
 #include "remote_wifi.h"
+#include "elrs_crsf.h"
 
 // i2c slave addresses
 
@@ -136,6 +137,7 @@ ButtonPack butPack(4, butPackAddr);
 bool useRotEnc = false;
 static bool useBPack = true;
 static bool useRotEncVol = false;
+static bool useElrsCrsfMode = false;
 
 bool showUpdAvail = true;
 
@@ -687,6 +689,7 @@ void main_setup()
 
     loadMovieMode();
     loadDisplayGPSMode();
+    useElrsCrsfMode = !strcmp(settings.controlMode, CONTROL_MODE_ELRS_CRSF);
     
     // Eval from main settings
     autoThrottle = evalBool(settings.autoThrottle);
@@ -753,6 +756,34 @@ void main_setup()
         }
         doCopyAudioFiles();
         // We never return here. The ESP is rebooted.
+    }
+
+    if(useElrsCrsfMode) {
+        Serial.println("Control mode: ELRS/CRSF");
+
+        if((useBPack = butPack.begin())) {
+            butPack.setScanInterval(50);
+        } else {
+            #ifdef REMOTE_DBG
+            Serial.println("ButtonPack not detected");
+            #endif
+        }
+
+        elrsMode.begin(
+            useBPack ? &butPack : NULL,
+            useBPack,
+            &remdisplay,
+            &pwrled,
+            &bLvLMeter,
+            &remledStop,
+            usePwrLED,
+            useLvlMtr,
+            pwrLEDonFP,
+            LvLMtronFP
+        );
+        FPBUnitIsOn = elrsMode.fakePowerOn();
+        calibMode = elrsMode.isCalibrating();
+        return;
     }
 
     // Init music player (don't check for SD here)
@@ -906,6 +937,19 @@ void main_setup()
 void main_loop()
 {
     unsigned long now = millis();
+
+    if(useElrsCrsfMode) {
+        #ifdef HAVE_PM
+        battWarn = pwrMon.loop();
+        #else
+        battWarn = 0;
+        #endif
+
+        elrsMode.loop(battWarn);
+        FPBUnitIsOn = elrsMode.fakePowerOn();
+        calibMode = elrsMode.isCalibrating();
+        return;
+    }
 
     if(triggerCompleteUpdate) {
         triggerCompleteUpdate = false;

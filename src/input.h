@@ -205,6 +205,7 @@ class ButtonPack {
         void attachLongPressStop(void (*newFunction)(int));   // released after "hold" (=long)
 
         int  getPackSize();
+        uint8_t readStates();
         void scan();
 
     private:

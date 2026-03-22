@@ -84,6 +84,9 @@ extern uint8_t musFolderNum;
 
 #define DEF_TCD_IP          ""    // TCD ip address or hostname for networked polling
 #define DEF_PWR_MST         0     // 0: Remote is not BTTFN-wide power-master, 1: Remote is.
+#define DEF_CONTROL_MODE    "legacy"
+#define CONTROL_MODE_LEGACY "legacy"
+#define CONTROL_MODE_ELRS_CRSF "elrs_crsf"
 #define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
 #define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
 
@@ -102,6 +105,14 @@ extern uint8_t musFolderNum;
 #define DEF_USE_PWRMON      1     // 1: Use Power Monitor (if present), 0: do not
 #define DEF_BAT_TYPE        0     // 0=3.7/4.2V
 #define DEF_BAT_CAP         2000  // battery capacity per cell
+
+#define ELRS_GIMBAL_AXIS_COUNT 4
+
+struct ELRSAxisCalibrationData {
+    int16_t minimum;
+    int16_t center;
+    int16_t maximum;
+};
 
 
 struct Settings {
@@ -125,6 +136,7 @@ struct Settings {
 
     char tcdIP[32]          = DEF_TCD_IP;
     char pwrMst[4]          = MS(DEF_PWR_MST);
+    char controlMode[16]    = DEF_CONTROL_MODE;
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";
@@ -204,6 +216,8 @@ bool evalBool(char *s);
 
 void loadCalib();
 void saveCalib();
+void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
+void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 
 void loadBrightness();
 void storeBrightness();

@@ -128,6 +128,12 @@ static struct [[gnu::packed]] {
     uint8_t movieMode      = DEF_MOV_MD;
     uint8_t displayGPSMode = DEF_DISP_GPS;
     uint8_t showUpdAvail   = 1;
+    ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT] = {
+        { 0, 1024, 2047 },
+        { 0, 1024, 2047 },
+        { 0, 1024, 2047 },
+        { 0, 1024, 2047 }
+    };
 } secSettings;
 
 // Tertiary settings (SD only)
@@ -556,6 +562,17 @@ static bool read_settings(File configFile, int cfgReadCount)
         
         wd |= CopyTextParm(json["tcdIP"], settings.tcdIP, sizeof(settings.tcdIP));
         wd |= CopyCheckValidNumParm(json["pwM"], settings.pwrMst, sizeof(settings.pwrMst), 0, 1, DEF_PWR_MST);
+        if(json["controlMode"]) {
+            CopyTextParm(json["controlMode"], settings.controlMode, sizeof(settings.controlMode));
+            if(strcmp(settings.controlMode, CONTROL_MODE_LEGACY) &&
+               strcmp(settings.controlMode, CONTROL_MODE_ELRS_CRSF)) {
+                strcpy(settings.controlMode, DEF_CONTROL_MODE);
+                wd = true;
+            }
+        } else {
+            strcpy(settings.controlMode, DEF_CONTROL_MODE);
+            wd = true;
+        }
         
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
@@ -676,6 +693,7 @@ void write_settings()
     
     json["tcdIP"] = (const char *)settings.tcdIP;
     json["pwM"] = (const char *)settings.pwrMst;
+    json["controlMode"] = (const char *)settings.controlMode;
     
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
@@ -1025,6 +1043,31 @@ void saveCalib()
         secSettings.zero = (!rotEnc.dynZeroPos()) ? rotEnc.getZeroPos() : 0;
         saveSecSettings(true);
     }
+}
+
+void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
+{
+    if(!cal) {
+        return;
+    }
+
+    count = min(count, ELRS_GIMBAL_AXIS_COUNT);
+    for(int i = 0; i < count; i++) {
+        cal[i] = secSettings.elrsAxis[i];
+    }
+}
+
+void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
+{
+    if(!cal) {
+        return;
+    }
+
+    count = min(count, ELRS_GIMBAL_AXIS_COUNT);
+    for(int i = 0; i < count; i++) {
+        secSettings.elrsAxis[i] = cal[i];
+    }
+    saveSecSettings(true);
 }
 
 /*
