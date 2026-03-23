@@ -52,6 +52,8 @@
 #ifndef _REMOTE_SETTINGS_H
 #define _REMOTE_SETTINGS_H
 
+#include "elrs_crsf_shared.h"
+
 extern bool haveFS;
 extern bool haveSD;
 extern bool FlashROMode;
@@ -105,15 +107,6 @@ extern uint8_t musFolderNum;
 #define DEF_USE_PWRMON      1     // 1: Use Power Monitor (if present), 0: do not
 #define DEF_BAT_TYPE        0     // 0=3.7/4.2V
 #define DEF_BAT_CAP         2000  // battery capacity per cell
-
-#define ELRS_GIMBAL_AXIS_COUNT 4
-
-struct ELRSAxisCalibrationData {
-    int16_t minimum;
-    int16_t center;
-    int16_t maximum;
-};
-
 
 struct Settings {
     char ssid[34]           = "";

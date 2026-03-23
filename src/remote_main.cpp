@@ -781,8 +781,11 @@ void main_setup()
             pwrLEDonFP,
             LvLMtronFP
         );
-        FPBUnitIsOn = elrsMode.fakePowerOn();
-        calibMode = elrsMode.isCalibrating();
+        {
+            ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
+            FPBUnitIsOn = elrsStatus.fakePowerOn;
+            calibMode = elrsStatus.calibrating;
+        }
         return;
     }
 
@@ -946,8 +949,11 @@ void main_loop()
         #endif
 
         elrsMode.loop(battWarn);
-        FPBUnitIsOn = elrsMode.fakePowerOn();
-        calibMode = elrsMode.isCalibrating();
+        {
+            ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
+            FPBUnitIsOn = elrsStatus.fakePowerOn;
+            calibMode = elrsStatus.calibrating;
+        }
         return;
     }
 
