@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 
+/*
+ * Define CRSF at build time to enable the ELRS/CRSF integration in the main
+ * firmware. When undefined, the main program falls back to legacy-only mode.
+ */
+
 #define ELRS_GIMBAL_AXIS_COUNT 4
 
 #define ELRS_PACKET_RATE_50HZ  50

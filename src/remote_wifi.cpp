@@ -167,7 +167,9 @@ static const char mqttMsgBadCred[] = "Login failed";
 static const char mqttMsgGenError[] = "Error";
 #endif
 
+#ifdef CRSF
 static char controlModeCB[4] = "0";
+#endif
 
 static const char *wmBuildApChnl(const char *dest, int op);
 static const char *wmBuildBestApChnl(const char *dest, int op);
@@ -241,8 +243,10 @@ WiFiManagerParameter custom_sStrict("sStrict", "Movie-like acceleration<br><span
 WiFiManagerParameter custom_playclick("plyCLK", "Play acceleration 'click' sound", settings.playClick, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_playALSnd("plyALS", "Play TCD-alarm sound", settings.playALsnd, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_dGPS("dGPS", "Display TCD speed when Fake-Power is off", settings.dgps, "class='mb10'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
+#ifdef CRSF
 WiFiManagerParameter custom_controlMode("ctlm", "Use ELRS/CRSF control mode<br><span>Boot into basic CRSF transmitter mode for an external ExpressLRS module connected to the data pin. ELRS Lua/config menu support is not included.</span>", controlModeCB, "class='mt5 mb10'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_elrsPacketRate("elpr", "ELRS packet rate<br><span>Must match the external module packet rate. Allowed values: 50, 100, 150, 250Hz. Higher rates are unsupported on this board.</span>", settings.elrsPacketRateHz, 3, "type='number' min='50' max='250'");
+#endif
 
 WiFiManagerParameter custom_sectstart_mp("MusicPlayer", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_musicFolder("mfol", "Music folder (0-9)", settings.musicFolder, 2, "type='number' min='0' max='9'");
@@ -493,8 +497,10 @@ void wifi_setup()
       &custom_playclick,
       &custom_playALSnd,
       &custom_dGPS,
+      #ifdef CRSF
       &custom_controlMode,
       &custom_elrsPacketRate,
+      #endif
   
       &custom_sectstart_mp,   // 3
       &custom_musicFolder,
@@ -966,15 +972,19 @@ void wifi_loop()
             evalCB(settings.autoThrottle, &custom_at);
             evalCB(settings.coast, &custom_coast);
             evalCB(settings.pwrMst, &custom_pwrMst);
+            #ifdef CRSF
             evalCB(controlModeCB, &custom_controlMode);
+            #endif
             setBool(settings.autoThrottle[0], autoThrottle);
             setBool(settings.coast[0], doCoast);
             setBool(settings.pwrMst[0], powerMaster);
+            #ifdef CRSF
             strcpy(settings.controlMode, (controlModeCB[0] != '0') ? CONTROL_MODE_ELRS_CRSF : CONTROL_MODE_LEGACY);
             getParam("elpr", settings.elrsPacketRateHz, 3, DEF_ELRS_PACKET_RATE);
             if(!elrsPacketRateSupported((uint16_t)atoi(settings.elrsPacketRateHz))) {
                 sprintf(settings.elrsPacketRateHz, "%u", (unsigned)DEF_ELRS_PACKET_RATE);
             }
+            #endif
             updateVisMode();
             saveAllTerCP();
 
@@ -1703,9 +1713,11 @@ static void updateConfigPortalValues()
     
     setCBVal(&custom_playclick, settings.playClick);
     setCBVal(&custom_playALSnd, settings.playALsnd);
+    #ifdef CRSF
     strcpy(controlModeCB, (!strcmp(settings.controlMode, CONTROL_MODE_ELRS_CRSF)) ? "1" : "0");
     setCBVal(&custom_controlMode, controlModeCB);
     custom_elrsPacketRate.setValue(settings.elrsPacketRateHz, 3);
+    #endif
 
     custom_tcdIP.setValue(settings.tcdIP, 31);
 

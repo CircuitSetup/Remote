@@ -63,7 +63,9 @@
 #include "remote_settings.h"
 #include "remote_audio.h"
 #include "remote_wifi.h"
+#ifdef CRSF
 #include "elrs_crsf.h"
+#endif
 
 // i2c slave addresses
 
@@ -689,7 +691,11 @@ void main_setup()
 
     loadMovieMode();
     loadDisplayGPSMode();
+    #ifdef CRSF
     useElrsCrsfMode = !strcmp(settings.controlMode, CONTROL_MODE_ELRS_CRSF);
+    #else
+    useElrsCrsfMode = false;
+    #endif
     
     // Eval from main settings
     autoThrottle = evalBool(settings.autoThrottle);
@@ -758,6 +764,7 @@ void main_setup()
         // We never return here. The ESP is rebooted.
     }
 
+    #ifdef CRSF
     if(useElrsCrsfMode) {
         Serial.println("Control mode: ELRS/CRSF");
 
@@ -788,6 +795,7 @@ void main_setup()
         }
         return;
     }
+    #endif
 
     // Init music player (don't check for SD here)
     switchMusicFolder(musFolderNum, true);
@@ -941,6 +949,7 @@ void main_loop()
 {
     unsigned long now = millis();
 
+    #ifdef CRSF
     if(useElrsCrsfMode) {
         #ifdef HAVE_PM
         battWarn = pwrMon.loop();
@@ -956,6 +965,7 @@ void main_loop()
         }
         return;
     }
+    #endif
 
     if(triggerCompleteUpdate) {
         triggerCompleteUpdate = false;

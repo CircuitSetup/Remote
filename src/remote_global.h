@@ -105,12 +105,4 @@
 
 #define BALM_PIN          4       // Battery monitor alarm (CB 1.6; act. low)     (PU on CB 1.6)
 
-                          // -------- ELRS/CRSF module
-
-#define CRSF_RX_PIN       34      // CRSF telemetry input from module data line
-#define CRSF_TX_PIN        2      // CRSF output to module data line driver
-#define CRSF_OE_PIN        0      // CRSF line-driver output-enable
-#define CRSF_OE_ENABLE_LEVEL  LOW
-#define CRSF_OE_DISABLE_LEVEL HIGH
-
 #endif

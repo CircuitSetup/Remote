@@ -1,6 +1,8 @@
 #ifndef _ELRS_CRSF_H
 #define _ELRS_CRSF_H
 
+#ifdef CRSF
+
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
@@ -90,5 +92,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 };
 
 extern ELRSCrsfMode elrsMode;
+
+#endif
 
 #endif

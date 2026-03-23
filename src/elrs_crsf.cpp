@@ -1,5 +1,7 @@
 #include "remote_global.h"
 
+#ifdef CRSF
+
 #include <Arduino.h>
 #include <Wire.h>
 
@@ -7,6 +9,9 @@
 
 namespace {
 
+constexpr uint8_t CRSF_RX_PIN = 34;
+constexpr uint8_t CRSF_TX_PIN = 2;
+constexpr uint8_t CRSF_OE_PIN = 0;
 constexpr uint8_t ADS1015_ADDR = 0x48;
 constexpr uint8_t ADS_REG_CONVERT = 0x00;
 constexpr uint8_t ADS_REG_CONFIG = 0x01;
@@ -316,3 +321,5 @@ void ELRSCrsfMode::saveCalibration(const ELRSAxisCalibrationData *cal, int count
 {
     saveELRSCalibration(cal, count);
 }
+
+#endif

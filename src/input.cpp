@@ -813,12 +813,20 @@ int ButtonPack::getPackSize()
     return _pack_size;
 }
 
+#ifdef CRSF
 uint8_t ButtonPack::readStates()
 {
-    uint8_t states = 0;
+    uint8_t port = 0xff;
 
-    if(sampleStates(states)) {
-        return states;
+    switch(_st) {
+    case REM_BP_TYPE_PCA8574:
+    case REM_BP_TYPE_PCA9554:
+        if(port_read(&port) != 1) {
+            return 0;
+        }
+        return (uint8_t)(~port);
+    default:
+        break;
     }
 
     return 0;
@@ -843,6 +851,7 @@ bool ButtonPack::sampleStates(uint8_t &states)
     states = 0;
     return false;
 }
+#endif
 
 // Check input of the pin and advance the state machine
 void ButtonPack::scan()

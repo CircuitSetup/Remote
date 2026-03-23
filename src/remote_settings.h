@@ -52,7 +52,9 @@
 #ifndef _REMOTE_SETTINGS_H
 #define _REMOTE_SETTINGS_H
 
+#ifdef CRSF
 #include "elrs_crsf_shared.h"
+#endif
 
 extern bool haveFS;
 extern bool haveSD;
@@ -88,8 +90,10 @@ extern uint8_t musFolderNum;
 #define DEF_PWR_MST         0     // 0: Remote is not BTTFN-wide power-master, 1: Remote is.
 #define DEF_CONTROL_MODE    "legacy"
 #define CONTROL_MODE_LEGACY "legacy"
+#ifdef CRSF
 #define CONTROL_MODE_ELRS_CRSF "elrs_crsf"
 #define DEF_ELRS_PACKET_RATE ELRS_PACKET_RATE_DEFAULT
+#endif
 #define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
 #define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
 
@@ -130,8 +134,10 @@ struct Settings {
 
     char tcdIP[32]          = DEF_TCD_IP;
     char pwrMst[4]          = MS(DEF_PWR_MST);
+    #ifdef CRSF
     char controlMode[16]    = DEF_CONTROL_MODE;
     char elrsPacketRateHz[4]= MS(DEF_ELRS_PACKET_RATE);
+    #endif
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";
@@ -211,8 +217,10 @@ bool evalBool(char *s);
 
 void loadCalib();
 void saveCalib();
+#ifdef CRSF
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
+#endif
 
 void loadBrightness();
 void storeBrightness();

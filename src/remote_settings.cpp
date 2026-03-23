@@ -128,12 +128,16 @@ static struct [[gnu::packed]] {
     uint8_t movieMode      = DEF_MOV_MD;
     uint8_t displayGPSMode = DEF_DISP_GPS;
     uint8_t showUpdAvail   = 1;
+    #ifdef CRSF
     ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT] = {
         { 0, 1024, 2047 },
         { 0, 1024, 2047 },
         { 0, 1024, 2047 },
         { 0, 1024, 2047 }
     };
+    #else
+    uint8_t reserved2[24]  = { 0 };
+    #endif
 } secSettings;
 
 // Tertiary settings (SD only)
@@ -225,7 +229,9 @@ static bool CopyCheckValidNumParm(const char *json, char *text, uint8_t psize, i
 static bool CopyCheckValidNumParmF(const char *json, char *text, uint8_t psize, float lowerLim, float upperLim, float setDefault);
 static bool checkValidNumParm(char *text, int lowerLim, int upperLim, int setDefault);
 static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float setDefault);
+#ifdef CRSF
 static bool normalizeELRSPacketRateText(char *text);
+#endif
 static bool handleMQTTButton(const char *json, char *text, uint8_t psize);
 
 static void loadUpdAvail();
@@ -563,6 +569,7 @@ static bool read_settings(File configFile, int cfgReadCount)
         
         wd |= CopyTextParm(json["tcdIP"], settings.tcdIP, sizeof(settings.tcdIP));
         wd |= CopyCheckValidNumParm(json["pwM"], settings.pwrMst, sizeof(settings.pwrMst), 0, 1, DEF_PWR_MST);
+        #ifdef CRSF
         if(json["controlMode"]) {
             CopyTextParm(json["controlMode"], settings.controlMode, sizeof(settings.controlMode));
             if(strcmp(settings.controlMode, CONTROL_MODE_LEGACY) &&
@@ -581,6 +588,7 @@ static bool read_settings(File configFile, int cfgReadCount)
             sprintf(settings.elrsPacketRateHz, "%u", (unsigned)DEF_ELRS_PACKET_RATE);
             wd = true;
         }
+        #endif
         
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
@@ -701,8 +709,10 @@ void write_settings()
     
     json["tcdIP"] = (const char *)settings.tcdIP;
     json["pwM"] = (const char *)settings.pwrMst;
+    #ifdef CRSF
     json["controlMode"] = (const char *)settings.controlMode;
     json["elrsPacketRateHz"] = (const char *)settings.elrsPacketRateHz;
+    #endif
     
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
@@ -850,6 +860,7 @@ static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float
     return ret;
 }
 
+#ifdef CRSF
 static bool normalizeELRSPacketRateText(char *text)
 {
     uint16_t packetRateHz = ELRS_PACKET_RATE_DEFAULT;
@@ -868,6 +879,7 @@ static bool normalizeELRSPacketRateText(char *text)
     sprintf(text, "%u", (unsigned)packetRateHz);
     return changed;
 }
+#endif
 
 bool evalBool(char *s)
 {
@@ -1073,6 +1085,7 @@ void saveCalib()
     }
 }
 
+#ifdef CRSF
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
 {
     if(!cal) {
@@ -1097,6 +1110,7 @@ void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
     }
     saveSecSettings(true);
 }
+#endif
 
 /*
  *  Load/save display brightness
