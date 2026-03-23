@@ -545,6 +545,118 @@ static void test_baud_fallback_clears_pending_rx()
     TEST_ASSERT_EQUAL_UINT8(73, core.linkQuality());
 }
 
+static void test_comm_codes_show_fallback_then_no_sync_until_valid_frame()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+
+    core.loop(host, 3001, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_FAL, statusOf(core).commCode);
+    TEST_ASSERT_FALSE(statusOf(core).everSynced);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("FAL", host.displayText.c_str());
+
+    core.loop(host, 5001, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NSY, statusOf(core).commCode);
+    TEST_ASSERT_FALSE(statusOf(core).everSynced);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("NSY", host.displayText.c_str());
+
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 73, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 5100, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+    TEST_ASSERT_TRUE(statusOf(core).everSynced);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("NSY", host.displayText.c_str());
+
+    core.loop(host, 6600, 0);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING(" 73", host.displayText.c_str());
+}
+
+static void test_lost_telemetry_sets_los_until_valid_frame()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 44, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+    TEST_ASSERT_TRUE(statusOf(core).everSynced);
+
+    core.loop(host, 2100, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_LOS, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("LOS", host.displayText.c_str());
+
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 45, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 2200, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+    TEST_ASSERT_TRUE(statusOf(core).everSynced);
+}
+
+static void test_crc_burst_sets_crc_comm_code()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> bad = makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 12, 0, 0, 0, 0, 0, 0, 0 });
+
+    bad.back() ^= 0xFF;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 55, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+
+    host.queueFrame(bad);
+    core.loop(host, 1200, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+
+    host.queueFrame(bad);
+    core.loop(host, 1300, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+
+    host.queueFrame(bad);
+    core.loop(host, 1400, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_CRC, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("CRC", host.displayText.c_str());
+
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 56, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 1500, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+}
+
+static void test_frame_burst_sets_frm_comm_code()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 61, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+
+    queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
+    core.loop(host, 1200, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+
+    queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
+    core.loop(host, 1300, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+
+    queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
+    core.loop(host, 1400, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_FRM, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("FRM", host.displayText.c_str());
+
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 62, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 1500, 0);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
+}
+
 static void test_display_policy_prefers_gps_then_airspeed_then_link_quality()
 {
     FakeHost host;
@@ -573,6 +685,91 @@ static void test_display_policy_prefers_gps_then_airspeed_then_link_quality()
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
+}
+
+static void test_battery_overlay_beats_comm_overlay()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 42, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+
+    core.loop(host, 30000, 1);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_LOS, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
+}
+
+static void test_calibration_prompt_beats_comm_overlay()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 42, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+
+    host.calibrationButton = true;
+    core.loop(host, 200, 0);
+    core.loop(host, 300, 0);
+    core.loop(host, 2301, 0);
+
+    TEST_ASSERT_TRUE(core.isCalibrating());
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_LOS, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
+}
+
+static void test_adc_overlay_beats_comm_overlay()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> bad = makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 12, 0, 0, 0, 0, 0, 0, 0 });
+
+    bad.back() ^= 0xFF;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 52, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+
+    host.axesAvailable = false;
+    host.queueFrame(bad);
+    core.loop(host, 250, 0);
+    host.queueFrame(bad);
+    core.loop(host, 350, 0);
+    host.queueFrame(bad);
+    core.loop(host, 450, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_CRC, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("ADC", host.displayText.c_str());
+}
+
+static void test_button_pack_overlay_beats_comm_overlay()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 57, 0, 0, 0, 0, 0, 0, 0 }));
+    core.loop(host, 100, 0);
+    core.loop(host, 120, 0);
+
+    host.packAvailable = false;
+    queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
+    core.loop(host, 1300, 0);
+    queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
+    core.loop(host, 1400, 0);
+    queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
+    core.loop(host, 1500, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_BUTTONPACK_STALE);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_FRM, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("BPK", host.displayText.c_str());
 }
 
 static void test_battery_overlay_calibration_overlay_and_baud_fallback()
@@ -630,7 +827,15 @@ int main(int argc, char **argv)
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);
     RUN_TEST(test_parser_recovers_after_bad_crc_followed_by_valid_frame);
     RUN_TEST(test_baud_fallback_clears_pending_rx);
+    RUN_TEST(test_comm_codes_show_fallback_then_no_sync_until_valid_frame);
+    RUN_TEST(test_lost_telemetry_sets_los_until_valid_frame);
+    RUN_TEST(test_crc_burst_sets_crc_comm_code);
+    RUN_TEST(test_frame_burst_sets_frm_comm_code);
     RUN_TEST(test_display_policy_prefers_gps_then_airspeed_then_link_quality);
+    RUN_TEST(test_battery_overlay_beats_comm_overlay);
+    RUN_TEST(test_calibration_prompt_beats_comm_overlay);
+    RUN_TEST(test_adc_overlay_beats_comm_overlay);
+    RUN_TEST(test_button_pack_overlay_beats_comm_overlay);
     RUN_TEST(test_battery_overlay_calibration_overlay_and_baud_fallback);
     return UNITY_END();
 }

@@ -14,6 +14,15 @@ enum ELRSCrsfFaultFlags : uint8_t {
     ELRS_FAULT_FALLBACK_BAUD = (1 << 3)
 };
 
+enum ELRSCrsfCommCode : uint8_t {
+    ELRS_COMM_NONE = 0,
+    ELRS_COMM_FAL,
+    ELRS_COMM_NSY,
+    ELRS_COMM_LOS,
+    ELRS_COMM_CRC,
+    ELRS_COMM_FRM
+};
+
 struct ELRSCrsfStatus {
     uint32_t baudRate = 420000;
     bool telemetryActive = false;
@@ -23,6 +32,8 @@ struct ELRSCrsfStatus {
     uint8_t remoteBatteryPercent = 0;
     float remoteBatteryVoltage = 0.0f;
     uint8_t faultFlags = ELRS_FAULT_NONE;
+    uint8_t commCode = ELRS_COMM_NONE;
+    bool everSynced = false;
     bool fakePowerOn = false;
     bool calibrating = false;
 };
@@ -145,12 +156,18 @@ class ELRSCrsfCore {
         bool buttonPackFaultActive(unsigned long now) const;
         uint16_t getDisplaySpeed10(unsigned long now, SpeedSource *source = NULL) const;
         void showOverlay(const char *text, unsigned long now, unsigned long durationMs);
+        void showCommOverlay(const char *text, unsigned long now, unsigned long durationMs);
+        void setCommCode(ELRSCrsfHost &host, uint8_t code, unsigned long now);
+        void clearCommCode();
+        void noteBadCrc(ELRSCrsfHost &host, unsigned long now);
+        void noteFrameError(ELRSCrsfHost &host, unsigned long now);
 
         void log(ELRSCrsfHost &host, const char *message) const;
         void logf(ELRSCrsfHost &host, const char *fmt, ...) const;
 
         static uint16_t readBE16(const uint8_t *data);
         static const char *speedSourceName(SpeedSource source);
+        static const char *commCodeText(uint8_t code);
 
         ELRSCrsfCoreConfig _config;
 
@@ -161,6 +178,7 @@ class ELRSCrsfCore {
 
         uint32_t _baudRate = 420000;
         unsigned long _startedAt = 0;
+        unsigned long _fallbackAt = 0;
         unsigned long _lastAxisAttemptAt = 0;
         unsigned long _lastGoodAxesAt = 0;
         unsigned long _lastGoodPackAt = 0;
@@ -173,6 +191,9 @@ class ELRSCrsfCore {
         unsigned long _batteryBlinkAt = 0;
         unsigned long _batteryBannerAt = 0;
         unsigned long _overlayUntil = 0;
+        unsigned long _commOverlayUntil = 0;
+        unsigned long _crcBurstAt = 0;
+        unsigned long _frameBurstAt = 0;
 
         uint16_t _channels[16];
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT];
@@ -183,8 +204,11 @@ class ELRSCrsfCore {
         uint8_t _remoteBattery = 0;
         float _remoteBatteryVoltage = 0.0f;
         uint8_t _faultFlags = ELRS_FAULT_NONE;
+        uint8_t _commCode = ELRS_COMM_NONE;
         uint16_t _gpsSpeed10 = 0;
         uint16_t _airspeed10 = 0;
+        uint8_t _crcBurstCount = 0;
+        uint8_t _frameBurstCount = 0;
         bool _telemetryActive = false;
         SpeedSource _activeSpeedSource = SPEED_SOURCE_NONE;
         bool _hasValidPackState = false;
@@ -201,6 +225,7 @@ class ELRSCrsfCore {
         uint8_t _rxFrame[64];
         size_t _rxFrameLen = 0;
         char _overlayText[4];
+        char _commOverlayText[4];
 };
 
 #endif

@@ -23,6 +23,10 @@ constexpr unsigned long CRSF_DISPLAY_INTERVAL = 200;
 constexpr unsigned long CRSF_TELEMETRY_TIMEOUT = 2000;
 constexpr unsigned long CRSF_BAUD_FALLBACK_MS = 3000;
 constexpr unsigned long CRSF_INPUT_STALE_MS = 100;
+constexpr unsigned long CRSF_COMM_OVERLAY_MS = 1000;
+constexpr unsigned long CRSF_COMM_NSY_OVERLAY_MS = 1500;
+constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
+constexpr uint8_t CRSF_COMM_BURST_THRESHOLD = 3;
 constexpr unsigned long BATTERY_BANNER_INTERVAL = 30000;
 constexpr unsigned long BATTERY_BANNER_DURATION = 1000;
 
@@ -53,12 +57,14 @@ ELRSCrsfCore::ELRSCrsfCore()
 
     memset(_rxFrame, 0, sizeof(_rxFrame));
     memset(_overlayText, 0, sizeof(_overlayText));
+    memset(_commOverlayText, 0, sizeof(_commOverlayText));
 }
 
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now)
 {
     _config = config;
     _startedAt = now;
+    _fallbackAt = 0;
     _lastAxisAttemptAt = 0;
     _lastGoodAxesAt = 0;
     _lastGoodPackAt = 0;
@@ -71,12 +77,16 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _batteryBlinkAt = 0;
     _batteryBannerAt = 0;
     _overlayUntil = 0;
+    _commOverlayUntil = 0;
+    _crcBurstAt = 0;
+    _frameBurstAt = 0;
     _linkQuality = 0;
     _gpsSpeed10 = 0;
     _airspeed10 = 0;
     _remoteBattery = 0;
     _remoteBatteryVoltage = 0.0f;
     _faultFlags = ELRS_FAULT_NONE;
+    _commCode = ELRS_COMM_NONE;
     _haveAds = false;
     _synced = false;
     _fallbackApplied = false;
@@ -84,6 +94,8 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _calStage = CAL_IDLE;
     _telemetryActive = false;
     _activeSpeedSource = SPEED_SOURCE_NONE;
+    _crcBurstCount = 0;
+    _frameBurstCount = 0;
     _hasValidPackState = false;
     _lastPackStates = 0;
     _adcFaultActive = false;
@@ -95,6 +107,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _calibPressedAt = 0;
     _rxFrameLen = 0;
     memset(_overlayText, 0, sizeof(_overlayText));
+    memset(_commOverlayText, 0, sizeof(_commOverlayText));
 
     host.loadCalibration(_axisCal, ELRS_GIMBAL_AXIS_COUNT);
 
@@ -149,10 +162,12 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, int battWarn)
 
     if(!_synced && !_fallbackApplied && (now - _startedAt > CRSF_BAUD_FALLBACK_MS)) {
         _fallbackApplied = true;
+        _fallbackAt = now;
         _faultFlags |= ELRS_FAULT_FALLBACK_BAUD;
         log(host, "ELRS/CRSF: no telemetry sync at 420000, falling back to 400000");
         beginSerial(host, 400000);
         host.discardSerialInput();
+        setCommCode(host, ELRS_COMM_FAL, now);
     }
 
     if(now - _lastTx >= CRSF_SEND_INTERVAL) {
@@ -236,6 +251,8 @@ ELRSCrsfStatus ELRSCrsfCore::getStatus() const
     status.remoteBatteryPercent = _remoteBattery;
     status.remoteBatteryVoltage = _remoteBatteryVoltage;
     status.faultFlags = _faultFlags;
+    status.commCode = _commCode;
+    status.everSynced = _synced;
     status.fakePowerOn = _fakePowerOn;
     status.calibrating = (_calStage != CAL_IDLE);
 
@@ -513,6 +530,7 @@ void ELRSCrsfCore::pollTelemetry(ELRSCrsfHost &host, unsigned long now)
         }
 
         if(_rxFrameLen >= sizeof(_rxFrame)) {
+            noteFrameError(host, now);
             _rxFrameLen = 0;
             if((uint8_t)ch != CRSF_SYNC_BYTE) {
                 continue;
@@ -523,6 +541,7 @@ void ELRSCrsfCore::pollTelemetry(ELRSCrsfHost &host, unsigned long now)
 
         if(_rxFrameLen == 2) {
             if(_rxFrame[1] < 2 || _rxFrame[1] > 62) {
+                noteFrameError(host, now);
                 resyncRxBuffer();
             }
             continue;
@@ -531,6 +550,7 @@ void ELRSCrsfCore::pollTelemetry(ELRSCrsfHost &host, unsigned long now)
         if(_rxFrameLen >= 2) {
             size_t expectLen = _rxFrame[1] + 2;
             if(expectLen > sizeof(_rxFrame)) {
+                noteFrameError(host, now);
                 resyncRxBuffer();
                 continue;
             }
@@ -539,6 +559,7 @@ void ELRSCrsfCore::pollTelemetry(ELRSCrsfHost &host, unsigned long now)
                     handleFrame(host, _rxFrame, expectLen, now);
                     _rxFrameLen = 0;
                 } else {
+                    noteBadCrc(host, now);
                     resyncRxBuffer();
                 }
             }
@@ -575,6 +596,7 @@ void ELRSCrsfCore::handleFrame(ELRSCrsfHost &host, const uint8_t *frame, size_t 
     (void)host;
     _synced = true;
     _lastTelemetry = now;
+    clearCommCode();
 
     switch(type) {
     case CRSF_FRAME_LINK_STATS:
@@ -694,6 +716,13 @@ void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
     bool telemetryActive = hasRecentTelemetry(now);
     SpeedSource speedSource = SPEED_SOURCE_NONE;
 
+    if(_fallbackApplied && !_synced && _fallbackAt && (now - _fallbackAt >= CRSF_TELEMETRY_TIMEOUT)) {
+        if(_commCode != ELRS_COMM_NSY) {
+            log(host, "ELRS/CRSF: no valid telemetry after fallback");
+            setCommCode(host, ELRS_COMM_NSY, now);
+        }
+    }
+
     getDisplaySpeed10(now, &speedSource);
 
     if(telemetryActive != _telemetryActive) {
@@ -702,6 +731,9 @@ void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
             logf(host, "ELRS/CRSF: telemetry sync at %lu baud", (unsigned long)_baudRate);
         } else {
             log(host, "ELRS/CRSF: telemetry timeout, still transmitting RC");
+            if(_synced) {
+                setCommCode(host, ELRS_COMM_LOS, now);
+            }
         }
     }
 
@@ -740,6 +772,13 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
     if(battWarn && !_config.usePowerLed && now - _batteryBannerAt < BATTERY_BANNER_DURATION) {
         host.displayOn();
         host.displaySetText("BAT");
+        host.displayShow();
+        return;
+    }
+
+    if(_commOverlayUntil > now) {
+        host.displayOn();
+        host.displaySetText(_commOverlayText);
         host.displayShow();
         return;
     }
@@ -826,6 +865,80 @@ void ELRSCrsfCore::showOverlay(const char *text, unsigned long now, unsigned lon
     _overlayUntil = now + durationMs;
 }
 
+void ELRSCrsfCore::showCommOverlay(const char *text, unsigned long now, unsigned long durationMs)
+{
+    if(!text) {
+        return;
+    }
+
+    memset(_commOverlayText, 0, sizeof(_commOverlayText));
+    strncpy(_commOverlayText, text, sizeof(_commOverlayText) - 1);
+    _commOverlayUntil = now + durationMs;
+}
+
+void ELRSCrsfCore::setCommCode(ELRSCrsfHost &host, uint8_t code, unsigned long now)
+{
+    (void)host;
+    if(code == ELRS_COMM_NONE) {
+        clearCommCode();
+        return;
+    }
+
+    if(_commCode == code) {
+        return;
+    }
+
+    _commCode = code;
+    showCommOverlay(commCodeText(code), now, (code == ELRS_COMM_NSY) ? CRSF_COMM_NSY_OVERLAY_MS : CRSF_COMM_OVERLAY_MS);
+}
+
+void ELRSCrsfCore::clearCommCode()
+{
+    _commCode = ELRS_COMM_NONE;
+    _crcBurstAt = 0;
+    _frameBurstAt = 0;
+    _crcBurstCount = 0;
+    _frameBurstCount = 0;
+}
+
+void ELRSCrsfCore::noteBadCrc(ELRSCrsfHost &host, unsigned long now)
+{
+    if(!_synced) {
+        return;
+    }
+
+    if(!_crcBurstAt || (now - _crcBurstAt > CRSF_COMM_BURST_WINDOW_MS)) {
+        _crcBurstAt = now;
+        _crcBurstCount = 1;
+    } else {
+        _crcBurstCount++;
+    }
+
+    if(_crcBurstCount == CRSF_COMM_BURST_THRESHOLD) {
+        log(host, "ELRS/CRSF: repeated bad CRC frames");
+        setCommCode(host, ELRS_COMM_CRC, now);
+    }
+}
+
+void ELRSCrsfCore::noteFrameError(ELRSCrsfHost &host, unsigned long now)
+{
+    if(!_synced) {
+        return;
+    }
+
+    if(!_frameBurstAt || (now - _frameBurstAt > CRSF_COMM_BURST_WINDOW_MS)) {
+        _frameBurstAt = now;
+        _frameBurstCount = 1;
+    } else {
+        _frameBurstCount++;
+    }
+
+    if(_frameBurstCount == CRSF_COMM_BURST_THRESHOLD) {
+        log(host, "ELRS/CRSF: repeated malformed CRSF frames");
+        setCommCode(host, ELRS_COMM_FRM, now);
+    }
+}
+
 void ELRSCrsfCore::log(ELRSCrsfHost &host, const char *message) const
 {
     if(message && *message) {
@@ -908,5 +1021,23 @@ const char *ELRSCrsfCore::speedSourceName(SpeedSource source)
         return "airspeed";
     default:
         return "none";
+    }
+}
+
+const char *ELRSCrsfCore::commCodeText(uint8_t code)
+{
+    switch(code) {
+    case ELRS_COMM_FAL:
+        return "FAL";
+    case ELRS_COMM_NSY:
+        return "NSY";
+    case ELRS_COMM_LOS:
+        return "LOS";
+    case ELRS_COMM_CRC:
+        return "CRC";
+    case ELRS_COMM_FRM:
+        return "FRM";
+    default:
+        return "";
     }
 }
