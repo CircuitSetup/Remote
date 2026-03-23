@@ -39,7 +39,8 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
         void logMessage(const char *message) override;
 
-        void startSerial(uint32_t baud) override;
+        void startSerial(uint32_t baud, bool invert) override;
+        void stopSerial() override;
         int serialAvailable() override;
         int serialRead() override;
         size_t serialWrite(const uint8_t *data, size_t len) override;
@@ -83,6 +84,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool _powerLedOnFakePower = false;
         bool _levelMeterOnFakePower = false;
         bool _haveAds = false;
+        bool _oeActiveLow = true;
 
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
 };

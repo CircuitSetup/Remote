@@ -44,6 +44,7 @@ bool ELRSCrsfMode::begin(
     _powerLedOnFakePower = powerLedOnFakePower;
     _levelMeterOnFakePower = levelMeterOnFakePower;
     _haveAds = false;
+    _oeActiveLow = true;
 
     pinMode(FPOWER_IO_PIN, INPUT_PULLUP);
     pinMode(STOPS_IO_PIN, INPUT);
@@ -51,7 +52,7 @@ bool ELRSCrsfMode::begin(
     pinMode(BUTA_IO_PIN, INPUT_PULLUP);
     pinMode(BUTB_IO_PIN, INPUT_PULLUP);
 
-    digitalWrite(CRSF_OE_PIN, CRSF_OE_DISABLE_LEVEL);
+    digitalWrite(CRSF_OE_PIN, _oeActiveLow ? HIGH : LOW);
     pinMode(CRSF_OE_PIN, OUTPUT);
     setDriverEnabled(false);
 
@@ -62,6 +63,13 @@ bool ELRSCrsfMode::begin(
     config.useLevelMeter = _useLevelMeter;
     config.powerLedOnFakePower = _powerLedOnFakePower;
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
+    config.transport.baudRate = 400000;
+    config.transport.invertLine = false;
+    config.transport.frameIntervalMs = 10;
+    config.transport.telemetryTimeoutMs = 2000;
+    config.transport.replyTimeoutMs = 20;
+    config.transport.debugEnabled = false;
+    config.transport.oeActiveLow = _oeActiveLow;
 
     return _core.begin(*this, config, millis());
 }
@@ -143,12 +151,17 @@ void ELRSCrsfMode::logMessage(const char *message)
     Serial.println(message);
 }
 
-void ELRSCrsfMode::startSerial(uint32_t baud)
+void ELRSCrsfMode::startSerial(uint32_t baud, bool invert)
 {
     _serial.end();
-    _serial.begin((unsigned long)baud, SERIAL_8N1, CRSF_RX_PIN, CRSF_TX_PIN);
+    _serial.begin((unsigned long)baud, SERIAL_8N1, CRSF_RX_PIN, CRSF_TX_PIN, invert);
     setDriverEnabled(false);
     discardSerialInput();
+}
+
+void ELRSCrsfMode::stopSerial()
+{
+    _serial.end();
 }
 
 int ELRSCrsfMode::serialAvailable()
@@ -173,7 +186,8 @@ void ELRSCrsfMode::serialFlush()
 
 void ELRSCrsfMode::setDriverEnabled(bool enabled)
 {
-    digitalWrite(CRSF_OE_PIN, enabled ? CRSF_OE_ENABLE_LEVEL : CRSF_OE_DISABLE_LEVEL);
+    bool level = enabled ? !_oeActiveLow : _oeActiveLow;
+    digitalWrite(CRSF_OE_PIN, level ? HIGH : LOW);
 }
 
 void ELRSCrsfMode::discardSerialInput()

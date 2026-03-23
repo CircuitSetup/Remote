@@ -10,23 +10,15 @@ constexpr uint16_t CRSF_CHANNEL_MIN = 172;
 constexpr uint16_t CRSF_CHANNEL_MID = 992;
 constexpr uint16_t CRSF_CHANNEL_MAX = 1811;
 
-constexpr uint8_t CRSF_FRAME_RC_CHANNELS_PACKED = 0x16;
 constexpr uint8_t CRSF_FRAME_GPS = 0x02;
 constexpr uint8_t CRSF_FRAME_BATTERY = 0x08;
 constexpr uint8_t CRSF_FRAME_AIRSPEED = 0x0A;
 constexpr uint8_t CRSF_FRAME_LINK_STATS = 0x14;
 
-constexpr uint8_t CRSF_SYNC_BYTE = 0xC8;
-constexpr size_t CRSF_MAX_FRAME = 64;
-constexpr unsigned long CRSF_SEND_INTERVAL = 10;
 constexpr unsigned long CRSF_DISPLAY_INTERVAL = 200;
-constexpr unsigned long CRSF_TELEMETRY_TIMEOUT = 2000;
-constexpr unsigned long CRSF_BAUD_FALLBACK_MS = 3000;
 constexpr unsigned long CRSF_INPUT_STALE_MS = 100;
 constexpr unsigned long CRSF_COMM_OVERLAY_MS = 1000;
 constexpr unsigned long CRSF_COMM_NSY_OVERLAY_MS = 1500;
-constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
-constexpr uint8_t CRSF_COMM_BURST_THRESHOLD = 3;
 constexpr unsigned long BATTERY_BANNER_INTERVAL = 30000;
 constexpr unsigned long BATTERY_BANNER_DURATION = 1000;
 
@@ -55,7 +47,6 @@ ELRSCrsfCore::ELRSCrsfCore()
         _axisCal[i].maximum = 2047;
     }
 
-    memset(_rxFrame, 0, sizeof(_rxFrame));
     memset(_overlayText, 0, sizeof(_overlayText));
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
 }
@@ -63,12 +54,14 @@ ELRSCrsfCore::ELRSCrsfCore()
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now)
 {
     _config = config;
+    _transport = ELRSCrsfTransport();
+    _transport.setSink(this);
+
     _startedAt = now;
-    _fallbackAt = 0;
+    _selfTestUntil = 0;
     _lastAxisAttemptAt = 0;
     _lastGoodAxesAt = 0;
     _lastGoodPackAt = 0;
-    _lastTx = 0;
     _lastDisplay = 0;
     _lastTelemetry = 0;
     _lastLinkStats = 0;
@@ -78,34 +71,27 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _batteryBannerAt = 0;
     _overlayUntil = 0;
     _commOverlayUntil = 0;
-    _crcBurstAt = 0;
-    _frameBurstAt = 0;
     _linkQuality = 0;
-    _gpsSpeed10 = 0;
-    _airspeed10 = 0;
     _remoteBattery = 0;
     _remoteBatteryVoltage = 0.0f;
     _faultFlags = ELRS_FAULT_NONE;
-    _commCode = ELRS_COMM_NONE;
-    _haveAds = false;
-    _synced = false;
-    _fallbackApplied = false;
-    _baudRate = 420000;
-    _calStage = CAL_IDLE;
-    _telemetryActive = false;
+    _gpsSpeed10 = 0;
+    _airspeed10 = 0;
     _activeSpeedSource = SPEED_SOURCE_NONE;
-    _crcBurstCount = 0;
-    _frameBurstCount = 0;
+    _haveAds = false;
+    _fakePowerOn = false;
+    _selfTestActive = false;
     _hasValidPackState = false;
     _lastPackStates = 0;
     _adcFaultActive = false;
     _buttonPackFaultActive = false;
+    _lastCommCode = ELRS_COMM_NONE;
     _calibRaw = false;
     _calibPressed = false;
     _calibLongSent = false;
     _calibDebounceAt = 0;
     _calibPressedAt = 0;
-    _rxFrameLen = 0;
+    _calStage = CAL_IDLE;
     memset(_overlayText, 0, sizeof(_overlayText));
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
 
@@ -123,10 +109,12 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
         _channels[i] = CRSF_CHANNEL_MID;
     }
 
-    beginSerial(host, _baudRate);
     _fakePowerOn = host.readFakePowerSwitch();
     applyIdleOutputs(host, _fakePowerOn);
     host.setStopLed(false);
+
+    _transport.begin(host, _config.transport, now);
+
     showOverlay("ELR", now, 1000);
     if(!_haveAds) {
         _faultFlags |= ELRS_FAULT_ADC_MISSING;
@@ -156,27 +144,40 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, int battWarn)
 
     sampleAxes(host, now);
     updateInputFaults(host, now);
-    updateCalibrationButton(host, now, battWarn);
+
+    if(_selfTestActive && _selfTestUntil && now >= _selfTestUntil) {
+        stopSelfTest();
+        log(host, "ELRS/CRSF: self-test stopped");
+    }
+
+    if(!_selfTestActive) {
+        updateCalibrationButton(host, now, battWarn);
+    }
+
     updateChannels(now, fakePower, stopOn, buttonAOn, buttonBOn, packStates);
-    pollTelemetry(host, now);
-
-    if(!_synced && !_fallbackApplied && (now - _startedAt > CRSF_BAUD_FALLBACK_MS)) {
-        _fallbackApplied = true;
-        _fallbackAt = now;
-        _faultFlags |= ELRS_FAULT_FALLBACK_BAUD;
-        log(host, "ELRS/CRSF: no telemetry sync at 420000, falling back to 400000");
-        beginSerial(host, 400000);
-        host.discardSerialInput();
-        setCommCode(host, ELRS_COMM_FAL, now);
-    }
-
-    if(now - _lastTx >= CRSF_SEND_INTERVAL) {
-        sendChannels(host, now);
-    }
+    _transport.setChannels(_channels);
+    _transport.loop(host, now);
 
     updateBatteryWarning(host, now, battWarn, fakePower);
     updateBenchState(host, now);
     updateDisplay(host, now, battWarn);
+}
+
+void ELRSCrsfCore::startSelfTest(unsigned long now, unsigned long durationMs)
+{
+    _selfTestActive = true;
+    _selfTestUntil = now + durationMs;
+}
+
+void ELRSCrsfCore::stopSelfTest()
+{
+    _selfTestActive = false;
+    _selfTestUntil = 0;
+}
+
+bool ELRSCrsfCore::selfTestActive() const
+{
+    return _selfTestActive;
 }
 
 bool ELRSCrsfCore::isCalibrating() const
@@ -191,7 +192,7 @@ bool ELRSCrsfCore::fakePowerOn() const
 
 uint32_t ELRSCrsfCore::baudRate() const
 {
-    return _baudRate;
+    return _transport.status().baudRate;
 }
 
 uint16_t ELRSCrsfCore::channelAt(uint8_t index) const
@@ -226,12 +227,12 @@ uint16_t ELRSCrsfCore::airspeed10() const
 
 bool ELRSCrsfCore::telemetryActive() const
 {
-    return _telemetryActive;
+    return _transport.status().telemetryActive;
 }
 
 bool ELRSCrsfCore::synced() const
 {
-    return _synced;
+    return _transport.status().synced;
 }
 
 ELRSCrsfCore::SpeedSource ELRSCrsfCore::activeSpeedSource() const
@@ -241,20 +242,30 @@ ELRSCrsfCore::SpeedSource ELRSCrsfCore::activeSpeedSource() const
 
 ELRSCrsfStatus ELRSCrsfCore::getStatus() const
 {
+    const ELRSCrsfTransportStatus &transportStatus = _transport.status();
     ELRSCrsfStatus status;
 
-    status.baudRate = _baudRate;
-    status.telemetryActive = _telemetryActive;
-    status.synced = _synced;
+    status.baudRate = transportStatus.baudRate;
+    status.telemetryActive = transportStatus.telemetryActive;
+    status.synced = transportStatus.synced;
     status.activeSpeedSource = (uint8_t)_activeSpeedSource;
     status.linkQuality = _linkQuality;
     status.remoteBatteryPercent = _remoteBattery;
     status.remoteBatteryVoltage = _remoteBatteryVoltage;
     status.faultFlags = _faultFlags;
-    status.commCode = _commCode;
-    status.everSynced = _synced;
+    status.commCode = transportStatus.commCode;
+    status.everSynced = transportStatus.everSynced;
+    status.invertLine = transportStatus.invertLine;
+    status.debugEnabled = transportStatus.debugEnabled;
+    status.lastTxAt = transportStatus.lastTxAt;
+    status.lastRxAt = transportStatus.lastRxAt;
+    status.lastReplyTimeoutAt = transportStatus.lastReplyTimeoutAt;
+    status.lastRawFrameType = transportStatus.lastRawFrame.type;
+    status.lastRawFrameLength = transportStatus.lastRawFrame.length;
+    status.lastRawFrameCrcValid = transportStatus.lastRawFrame.crcValid;
     status.fakePowerOn = _fakePowerOn;
     status.calibrating = (_calStage != CAL_IDLE);
+    status.selfTestActive = _selfTestActive;
 
     return status;
 }
@@ -263,7 +274,7 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
 {
     int16_t axes[ELRS_GIMBAL_AXIS_COUNT];
 
-    if(!force && (now - _lastAxisAttemptAt < CRSF_SEND_INTERVAL)) {
+    if(!force && (now - _lastAxisAttemptAt < _config.transport.frameIntervalMs)) {
         return _haveAds;
     }
 
@@ -300,6 +311,40 @@ uint8_t ELRSCrsfCore::samplePackStates(ELRSCrsfHost &host, unsigned long now)
     return packStates;
 }
 
+void ELRSCrsfCore::onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now)
+{
+    _lastTelemetry = now;
+
+    switch(type) {
+    case CRSF_FRAME_LINK_STATS:
+        if(payloadLen >= 10) {
+            _linkQuality = payload[2];
+            _lastLinkStats = now;
+        }
+        break;
+    case CRSF_FRAME_BATTERY:
+        if(payloadLen >= 8) {
+            _remoteBatteryVoltage = (float)readBE16(payload) * 0.00001f;
+            _remoteBattery = payload[7];
+        }
+        break;
+    case CRSF_FRAME_GPS:
+        if(payloadLen >= 15) {
+            _gpsSpeed10 = readBE16(payload + 8) / 10;
+            _lastGpsSpeed = now;
+        }
+        break;
+    case CRSF_FRAME_AIRSPEED:
+        if(payloadLen >= 2) {
+            _airspeed10 = readBE16(payload);
+            _lastAirspeed = now;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 void ELRSCrsfCore::updateCalibrationButton(ELRSCrsfHost &host, unsigned long now, int battWarn)
 {
     bool raw = host.readCalibrationButton();
@@ -331,7 +376,7 @@ void ELRSCrsfCore::updateCalibrationButton(ELRSCrsfHost &host, unsigned long now
 
 void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now, int battWarn)
 {
-    if(_fakePowerOn) {
+    if(_fakePowerOn || _selfTestActive) {
         return;
     }
 
@@ -395,7 +440,7 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
 
 void ELRSCrsfCore::handleCalibrationLong(ELRSCrsfHost &host, unsigned long now, int battWarn)
 {
-    if(_fakePowerOn) {
+    if(_fakePowerOn || _selfTestActive) {
         return;
     }
 
@@ -431,6 +476,20 @@ const char *ELRSCrsfCore::getCalibrationPrompt() const
 
 void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stopOn, bool buttonAOn, bool buttonBOn, uint8_t packStates)
 {
+    (void)now;
+
+    if(_selfTestActive) {
+        _channels[0] = CRSF_CHANNEL_MID;
+        _channels[1] = CRSF_CHANNEL_MID;
+        _channels[2] = CRSF_CHANNEL_MIN;
+        _channels[3] = CRSF_CHANNEL_MID;
+        _channels[4] = CRSF_CHANNEL_MAX;
+        for(int i = 5; i < 16; i++) {
+            _channels[i] = CRSF_CHANNEL_MIN;
+        }
+        return;
+    }
+
     if(adcFaultActive(now)) {
         _channels[0] = CRSF_CHANNEL_MID;
         _channels[1] = CRSF_CHANNEL_MID;
@@ -486,146 +545,6 @@ uint16_t ELRSCrsfCore::mapTicks(int16_t raw, int16_t inMin, int16_t inMax, uint1
     mapped = clampLong(mapped, outLo, outHi);
 
     return (uint16_t)mapped;
-}
-
-void ELRSCrsfCore::beginSerial(ELRSCrsfHost &host, uint32_t baud)
-{
-    _baudRate = baud;
-    host.startSerial(_baudRate);
-    host.setDriverEnabled(false);
-    logf(host, "ELRS/CRSF: UART at %lu baud", (unsigned long)_baudRate);
-}
-
-void ELRSCrsfCore::sendChannels(ELRSCrsfHost &host, unsigned long now)
-{
-    uint8_t frame[26];
-    size_t frameLen = packRcChannelsFrame(_channels, frame, sizeof(frame));
-
-    if(!frameLen) {
-        return;
-    }
-
-    host.setDriverEnabled(true);
-    host.serialWrite(frame, frameLen);
-    host.serialFlush();
-    host.setDriverEnabled(false);
-
-    _lastTx = now;
-}
-
-void ELRSCrsfCore::pollTelemetry(ELRSCrsfHost &host, unsigned long now)
-{
-    while(host.serialAvailable()) {
-        int ch = host.serialRead();
-        if(ch < 0) {
-            break;
-        }
-
-        if(_rxFrameLen == 0) {
-            if((uint8_t)ch != CRSF_SYNC_BYTE) {
-                continue;
-            }
-            _rxFrame[_rxFrameLen++] = (uint8_t)ch;
-            continue;
-        }
-
-        if(_rxFrameLen >= sizeof(_rxFrame)) {
-            noteFrameError(host, now);
-            _rxFrameLen = 0;
-            if((uint8_t)ch != CRSF_SYNC_BYTE) {
-                continue;
-            }
-        }
-
-        _rxFrame[_rxFrameLen++] = (uint8_t)ch;
-
-        if(_rxFrameLen == 2) {
-            if(_rxFrame[1] < 2 || _rxFrame[1] > 62) {
-                noteFrameError(host, now);
-                resyncRxBuffer();
-            }
-            continue;
-        }
-
-        if(_rxFrameLen >= 2) {
-            size_t expectLen = _rxFrame[1] + 2;
-            if(expectLen > sizeof(_rxFrame)) {
-                noteFrameError(host, now);
-                resyncRxBuffer();
-                continue;
-            }
-            if(_rxFrameLen == expectLen) {
-                if(crc8D5(_rxFrame + 2, expectLen - 3) == _rxFrame[expectLen - 1]) {
-                    handleFrame(host, _rxFrame, expectLen, now);
-                    _rxFrameLen = 0;
-                } else {
-                    noteBadCrc(host, now);
-                    resyncRxBuffer();
-                }
-            }
-        }
-    }
-}
-
-void ELRSCrsfCore::resyncRxBuffer(size_t startIndex)
-{
-    size_t syncIndex = startIndex;
-
-    while(syncIndex < _rxFrameLen) {
-        if(_rxFrame[syncIndex] == CRSF_SYNC_BYTE) {
-            break;
-        }
-        syncIndex++;
-    }
-
-    if(syncIndex >= _rxFrameLen) {
-        _rxFrameLen = 0;
-        return;
-    }
-
-    memmove(_rxFrame, _rxFrame + syncIndex, _rxFrameLen - syncIndex);
-    _rxFrameLen -= syncIndex;
-}
-
-void ELRSCrsfCore::handleFrame(ELRSCrsfHost &host, const uint8_t *frame, size_t frameSize, unsigned long now)
-{
-    uint8_t type = frame[2];
-    const uint8_t *payload = frame + 3;
-    size_t payloadLen = frameSize - 4;
-
-    (void)host;
-    _synced = true;
-    _lastTelemetry = now;
-    clearCommCode();
-
-    switch(type) {
-    case CRSF_FRAME_LINK_STATS:
-        if(payloadLen >= 10) {
-            _linkQuality = payload[2];
-            _lastLinkStats = now;
-        }
-        break;
-    case CRSF_FRAME_BATTERY:
-        if(payloadLen >= 8) {
-            _remoteBatteryVoltage = (float)readBE16(payload) * 0.00001f;
-            _remoteBattery = payload[7];
-        }
-        break;
-    case CRSF_FRAME_GPS:
-        if(payloadLen >= 15) {
-            _gpsSpeed10 = readBE16(payload + 8) / 10;
-            _lastGpsSpeed = now;
-        }
-        break;
-    case CRSF_FRAME_AIRSPEED:
-        if(payloadLen >= 2) {
-            _airspeed10 = readBE16(payload);
-            _lastAirspeed = now;
-        }
-        break;
-    default:
-        break;
-    }
 }
 
 void ELRSCrsfCore::applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn)
@@ -713,34 +632,26 @@ void ELRSCrsfCore::updateInputFaults(ELRSCrsfHost &host, unsigned long now)
 
 void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
 {
-    bool telemetryActive = hasRecentTelemetry(now);
+    const ELRSCrsfTransportStatus &transportStatus = _transport.status();
     SpeedSource speedSource = SPEED_SOURCE_NONE;
-
-    if(_fallbackApplied && !_synced && _fallbackAt && (now - _fallbackAt >= CRSF_TELEMETRY_TIMEOUT)) {
-        if(_commCode != ELRS_COMM_NSY) {
-            log(host, "ELRS/CRSF: no valid telemetry after fallback");
-            setCommCode(host, ELRS_COMM_NSY, now);
-        }
-    }
+    uint8_t commCode = transportStatus.commCode;
 
     getDisplaySpeed10(now, &speedSource);
 
-    if(telemetryActive != _telemetryActive) {
-        _telemetryActive = telemetryActive;
-        if(telemetryActive) {
-            logf(host, "ELRS/CRSF: telemetry sync at %lu baud", (unsigned long)_baudRate);
-        } else {
-            log(host, "ELRS/CRSF: telemetry timeout, still transmitting RC");
-            if(_synced) {
-                setCommCode(host, ELRS_COMM_LOS, now);
-            }
+    if(commCode != _lastCommCode) {
+        if(commCode != ELRS_COMM_NONE) {
+            const char *text = commCodeText(commCode);
+            unsigned long durationMs = (commCode == ELRS_COMM_NSY) ? CRSF_COMM_NSY_OVERLAY_MS : CRSF_COMM_OVERLAY_MS;
+            showCommOverlay(text, now, durationMs);
+            logf(host, "ELRS/CRSF: communication state %s", text);
         }
+        _lastCommCode = commCode;
     }
 
     if(speedSource != _activeSpeedSource) {
         _activeSpeedSource = speedSource;
         if(speedSource == SPEED_SOURCE_NONE) {
-            if(_lastLinkStats && (now - _lastLinkStats < CRSF_TELEMETRY_TIMEOUT)) {
+            if(_lastLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) {
                 log(host, "ELRS/CRSF: no recent speed telemetry, displaying link quality");
             }
         } else {
@@ -793,7 +704,7 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
     if(speedSource != SPEED_SOURCE_NONE) {
         host.displaySetSpeed((int)speed10);
     } else {
-        snprintf(buf, sizeof(buf), "%3d", (_lastLinkStats && (now - _lastLinkStats < CRSF_TELEMETRY_TIMEOUT)) ? _linkQuality : 0);
+        snprintf(buf, sizeof(buf), "%3d", (_lastLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) ? _linkQuality : 0);
         host.displaySetText(buf);
     }
     host.displayShow();
@@ -801,7 +712,8 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
 
 bool ELRSCrsfCore::hasRecentTelemetry(unsigned long now) const
 {
-    return (_lastTelemetry && (now - _lastTelemetry < CRSF_TELEMETRY_TIMEOUT));
+    (void)now;
+    return _transport.status().telemetryActive;
 }
 
 bool ELRSCrsfCore::adcFaultActive(unsigned long now) const
@@ -839,10 +751,10 @@ uint16_t ELRSCrsfCore::getDisplaySpeed10(unsigned long now, SpeedSource *source)
     SpeedSource activeSource = SPEED_SOURCE_NONE;
     uint16_t speed10 = 0;
 
-    if(_lastGpsSpeed && (now - _lastGpsSpeed < CRSF_TELEMETRY_TIMEOUT)) {
+    if(_lastGpsSpeed && (now - _lastGpsSpeed < _config.transport.telemetryTimeoutMs)) {
         activeSource = SPEED_SOURCE_GPS;
         speed10 = _gpsSpeed10;
-    } else if(_lastAirspeed && (now - _lastAirspeed < CRSF_TELEMETRY_TIMEOUT)) {
+    } else if(_lastAirspeed && (now - _lastAirspeed < _config.transport.telemetryTimeoutMs)) {
         activeSource = SPEED_SOURCE_AIRSPEED;
         speed10 = _airspeed10;
     }
@@ -876,69 +788,6 @@ void ELRSCrsfCore::showCommOverlay(const char *text, unsigned long now, unsigned
     _commOverlayUntil = now + durationMs;
 }
 
-void ELRSCrsfCore::setCommCode(ELRSCrsfHost &host, uint8_t code, unsigned long now)
-{
-    (void)host;
-    if(code == ELRS_COMM_NONE) {
-        clearCommCode();
-        return;
-    }
-
-    if(_commCode == code) {
-        return;
-    }
-
-    _commCode = code;
-    showCommOverlay(commCodeText(code), now, (code == ELRS_COMM_NSY) ? CRSF_COMM_NSY_OVERLAY_MS : CRSF_COMM_OVERLAY_MS);
-}
-
-void ELRSCrsfCore::clearCommCode()
-{
-    _commCode = ELRS_COMM_NONE;
-    _crcBurstAt = 0;
-    _frameBurstAt = 0;
-    _crcBurstCount = 0;
-    _frameBurstCount = 0;
-}
-
-void ELRSCrsfCore::noteBadCrc(ELRSCrsfHost &host, unsigned long now)
-{
-    if(!_synced) {
-        return;
-    }
-
-    if(!_crcBurstAt || (now - _crcBurstAt > CRSF_COMM_BURST_WINDOW_MS)) {
-        _crcBurstAt = now;
-        _crcBurstCount = 1;
-    } else {
-        _crcBurstCount++;
-    }
-
-    if(_crcBurstCount == CRSF_COMM_BURST_THRESHOLD) {
-        log(host, "ELRS/CRSF: repeated bad CRC frames");
-        setCommCode(host, ELRS_COMM_CRC, now);
-    }
-}
-
-void ELRSCrsfCore::noteFrameError(ELRSCrsfHost &host, unsigned long now)
-{
-    if(!_synced) {
-        return;
-    }
-
-    if(!_frameBurstAt || (now - _frameBurstAt > CRSF_COMM_BURST_WINDOW_MS)) {
-        _frameBurstAt = now;
-        _frameBurstCount = 1;
-    } else {
-        _frameBurstCount++;
-    }
-
-    if(_frameBurstCount == CRSF_COMM_BURST_THRESHOLD) {
-        log(host, "ELRS/CRSF: repeated malformed CRSF frames");
-        setCommCode(host, ELRS_COMM_FRM, now);
-    }
-}
-
 void ELRSCrsfCore::log(ELRSCrsfHost &host, const char *message) const
 {
     if(message && *message) {
@@ -948,7 +797,7 @@ void ELRSCrsfCore::log(ELRSCrsfHost &host, const char *message) const
 
 void ELRSCrsfCore::logf(ELRSCrsfHost &host, const char *fmt, ...) const
 {
-    char buffer[160];
+    char buffer[192];
     va_list args;
 
     va_start(args, fmt);
@@ -965,51 +814,12 @@ uint16_t ELRSCrsfCore::readBE16(const uint8_t *data)
 
 uint8_t ELRSCrsfCore::crc8D5(const uint8_t *data, size_t len)
 {
-    uint8_t crc = 0;
-
-    while(len--) {
-        crc ^= *data++;
-        for(uint8_t i = 0; i < 8; i++) {
-            crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0xD5) : (uint8_t)(crc << 1);
-        }
-    }
-
-    return crc;
+    return ELRSCrsfTransport::crc8D5(data, len);
 }
 
 size_t ELRSCrsfCore::packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize)
 {
-    uint8_t payload[22];
-    uint32_t bitbuf = 0;
-    uint8_t bits = 0;
-    uint8_t idx = 0;
-
-    if(frameSize < 26) {
-        return 0;
-    }
-
-    memset(payload, 0, sizeof(payload));
-
-    for(int i = 0; i < 16; i++) {
-        bitbuf |= ((uint32_t)(channels[i] & 0x07ff)) << bits;
-        bits += 11;
-        while(bits >= 8) {
-            payload[idx++] = bitbuf & 0xff;
-            bitbuf >>= 8;
-            bits -= 8;
-        }
-    }
-    if(idx < sizeof(payload)) {
-        payload[idx++] = bitbuf & 0xff;
-    }
-
-    frame[0] = CRSF_SYNC_BYTE;
-    frame[1] = 24;
-    frame[2] = CRSF_FRAME_RC_CHANNELS_PACKED;
-    memcpy(frame + 3, payload, sizeof(payload));
-    frame[25] = crc8D5(frame + 2, 23);
-
-    return 26;
+    return ELRSCrsfTransport::packRcChannelsFrame(channels, frame, frameSize);
 }
 
 const char *ELRSCrsfCore::speedSourceName(SpeedSource source)
@@ -1027,8 +837,6 @@ const char *ELRSCrsfCore::speedSourceName(SpeedSource source)
 const char *ELRSCrsfCore::commCodeText(uint8_t code)
 {
     switch(code) {
-    case ELRS_COMM_FAL:
-        return "FAL";
     case ELRS_COMM_NSY:
         return "NSY";
     case ELRS_COMM_LOS:

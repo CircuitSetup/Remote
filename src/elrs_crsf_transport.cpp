@@ -1,0 +1,418 @@
+#include "elrs_crsf_transport.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+namespace {
+
+constexpr uint8_t CRSF_FRAME_RC_CHANNELS_PACKED = 0x16;
+constexpr uint8_t CRSF_SYNC_BYTE = 0xC8;
+constexpr size_t CRSF_MAX_FRAME = 64;
+constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
+constexpr uint8_t CRSF_COMM_BURST_THRESHOLD = 3;
+
+}
+
+ELRSCrsfTransport::ELRSCrsfTransport()
+{
+    for(int i = 0; i < 16; i++) {
+        _channels[i] = 992;
+    }
+
+    memset(_rxFrame, 0, sizeof(_rxFrame));
+}
+
+void ELRSCrsfTransport::setSink(ELRSCrsfTransportSink *sink)
+{
+    _sink = sink;
+}
+
+void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransportConfig &config, unsigned long now)
+{
+    _config = config;
+    _status.baudRate = _config.baudRate;
+    _status.invertLine = _config.invertLine;
+    _status.debugEnabled = _config.debugEnabled;
+    _status.oeActiveLow = _config.oeActiveLow;
+    _status.telemetryActive = false;
+    _status.synced = false;
+    _status.everSynced = false;
+    _status.commCode = ELRS_COMM_NONE;
+    _status.lastTxAt = 0;
+    _status.lastRxAt = 0;
+    _status.lastReplyTimeoutAt = 0;
+    _status.lastRawFrame = ELRSCrsfRawFrameInfo();
+
+    _startedAt = now;
+    _lastValidFrameAt = 0;
+    _replyDeadlineAt = 0;
+    _crcBurstAt = 0;
+    _frameBurstAt = 0;
+    _crcBurstCount = 0;
+    _frameBurstCount = 0;
+    _waitingForReply = false;
+    _replySeenForTx = false;
+    _rxFrameLen = 0;
+    memset(_rxFrame, 0, sizeof(_rxFrame));
+
+    hal.stopSerial();
+    hal.startSerial(_config.baudRate, _config.invertLine);
+    hal.setDriverEnabled(false);
+    hal.discardSerialInput();
+
+    logf(hal, "ELRS/CRSF transport: UART %lu 8N1 invert=%u oeActiveLow=%u frame=%u reply=%u telem=%u",
+         (unsigned long)_config.baudRate,
+         _config.invertLine ? 1U : 0U,
+         _config.oeActiveLow ? 1U : 0U,
+         (unsigned)_config.frameIntervalMs,
+         (unsigned)_config.replyTimeoutMs,
+         (unsigned)_config.telemetryTimeoutMs);
+}
+
+void ELRSCrsfTransport::setChannels(const uint16_t channels[16])
+{
+    if(!channels) {
+        return;
+    }
+
+    memcpy(_channels, channels, sizeof(_channels));
+}
+
+void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    pollFrames(hal, now);
+    updateState(hal, now);
+
+    if(!_waitingForReply &&
+       ((_status.lastTxAt == 0) || (now - _status.lastTxAt >= _config.frameIntervalMs))) {
+        sendChannels(hal, now);
+    }
+}
+
+const ELRSCrsfTransportConfig &ELRSCrsfTransport::config() const
+{
+    return _config;
+}
+
+const ELRSCrsfTransportStatus &ELRSCrsfTransport::status() const
+{
+    return _status;
+}
+
+void ELRSCrsfTransport::sendChannels(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    uint8_t frame[26];
+    size_t frameLen = packRcChannelsFrame(_channels, frame, sizeof(frame));
+
+    if(!frameLen) {
+        return;
+    }
+
+    if(_status.debugEnabled) {
+        logf(hal, "ELRS/CRSF transport: OE on @%lu", now);
+        logFrame(hal, "ELRS/CRSF TX", frame, frameLen, true);
+    }
+
+    hal.setDriverEnabled(true);
+    hal.serialWrite(frame, frameLen);
+    hal.serialFlush();
+    hal.setDriverEnabled(false);
+
+    if(_status.debugEnabled) {
+        logf(hal, "ELRS/CRSF transport: OE off @%lu", now);
+    }
+
+    _status.lastTxAt = now;
+    _waitingForReply = true;
+    _replySeenForTx = false;
+    _replyDeadlineAt = now + _config.replyTimeoutMs;
+}
+
+void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    while(hal.serialAvailable()) {
+        int ch = hal.serialRead();
+        if(ch < 0) {
+            break;
+        }
+
+        if(_rxFrameLen == 0) {
+            if((uint8_t)ch != CRSF_SYNC_BYTE) {
+                continue;
+            }
+            _rxFrame[_rxFrameLen++] = (uint8_t)ch;
+            continue;
+        }
+
+        if(_rxFrameLen >= sizeof(_rxFrame)) {
+            noteFrameError(hal, now);
+            _rxFrameLen = 0;
+            if((uint8_t)ch != CRSF_SYNC_BYTE) {
+                continue;
+            }
+        }
+
+        _rxFrame[_rxFrameLen++] = (uint8_t)ch;
+
+        if(_rxFrameLen == 2) {
+            if(_rxFrame[1] < 2 || _rxFrame[1] > 62) {
+                noteFrameError(hal, now);
+                resyncRxBuffer();
+            }
+            continue;
+        }
+
+        if(_rxFrameLen >= 2) {
+            size_t expectLen = _rxFrame[1] + 2;
+            if(expectLen > sizeof(_rxFrame)) {
+                noteFrameError(hal, now);
+                resyncRxBuffer();
+                continue;
+            }
+            if(_rxFrameLen == expectLen) {
+                bool crcValid = (crc8D5(_rxFrame + 2, expectLen - 3) == _rxFrame[expectLen - 1]);
+
+                _status.lastRawFrame.type = _rxFrame[2];
+                _status.lastRawFrame.length = (uint8_t)expectLen;
+                _status.lastRawFrame.crcValid = crcValid;
+
+                if(_status.debugEnabled) {
+                    logFrame(hal, "ELRS/CRSF RX", _rxFrame, expectLen, crcValid);
+                }
+
+                if(crcValid) {
+                    _status.synced = true;
+                    _status.everSynced = true;
+                    _status.lastRxAt = now;
+                    _lastValidFrameAt = now;
+                    _replySeenForTx = true;
+                    clearCommCode();
+
+                    if(_sink) {
+                        const uint8_t *payload = _rxFrame + 3;
+                        size_t payloadLen = expectLen - 4;
+                        _sink->onCrsfFrame(_rxFrame[2], payload, payloadLen, now);
+                    }
+                    _rxFrameLen = 0;
+                } else {
+                    noteBadCrc(hal, now);
+                    resyncRxBuffer();
+                }
+            }
+        }
+    }
+}
+
+void ELRSCrsfTransport::resyncRxBuffer(size_t startIndex)
+{
+    size_t syncIndex = startIndex;
+
+    while(syncIndex < _rxFrameLen) {
+        if(_rxFrame[syncIndex] == CRSF_SYNC_BYTE) {
+            break;
+        }
+        syncIndex++;
+    }
+
+    if(syncIndex >= _rxFrameLen) {
+        _rxFrameLen = 0;
+        return;
+    }
+
+    memmove(_rxFrame, _rxFrame + syncIndex, _rxFrameLen - syncIndex);
+    _rxFrameLen -= syncIndex;
+}
+
+void ELRSCrsfTransport::noteBadCrc(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    if(!_status.everSynced) {
+        return;
+    }
+
+    if(!_crcBurstAt || (now - _crcBurstAt > CRSF_COMM_BURST_WINDOW_MS)) {
+        _crcBurstAt = now;
+        _crcBurstCount = 1;
+    } else {
+        _crcBurstCount++;
+    }
+
+    if(_crcBurstCount == CRSF_COMM_BURST_THRESHOLD) {
+        setCommCode(ELRS_COMM_CRC);
+        log(hal, "ELRS/CRSF transport: repeated bad CRC frames");
+    }
+}
+
+void ELRSCrsfTransport::noteFrameError(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    if(!_status.everSynced) {
+        return;
+    }
+
+    if(!_frameBurstAt || (now - _frameBurstAt > CRSF_COMM_BURST_WINDOW_MS)) {
+        _frameBurstAt = now;
+        _frameBurstCount = 1;
+    } else {
+        _frameBurstCount++;
+    }
+
+    if(_frameBurstCount == CRSF_COMM_BURST_THRESHOLD) {
+        setCommCode(ELRS_COMM_FRM);
+        log(hal, "ELRS/CRSF transport: repeated malformed CRSF frames");
+    }
+}
+
+void ELRSCrsfTransport::setCommCode(uint8_t code)
+{
+    if(code == ELRS_COMM_NONE) {
+        clearCommCode();
+        return;
+    }
+
+    _status.commCode = code;
+}
+
+void ELRSCrsfTransport::clearCommCode()
+{
+    _status.commCode = ELRS_COMM_NONE;
+    _crcBurstAt = 0;
+    _frameBurstAt = 0;
+    _crcBurstCount = 0;
+    _frameBurstCount = 0;
+}
+
+void ELRSCrsfTransport::updateState(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    _status.telemetryActive = (_lastValidFrameAt && (now - _lastValidFrameAt < _config.telemetryTimeoutMs));
+
+    if(_waitingForReply && !_replySeenForTx && _replyDeadlineAt && (now >= _replyDeadlineAt)) {
+        _waitingForReply = false;
+        _status.lastReplyTimeoutAt = now;
+        if(_status.debugEnabled) {
+            logf(hal, "ELRS/CRSF transport: reply timeout @%lu after TX @%lu", now, _status.lastTxAt);
+        }
+    } else if(_waitingForReply && _replySeenForTx) {
+        _waitingForReply = false;
+    }
+
+    if(!_status.everSynced) {
+        if((now - _startedAt >= _config.telemetryTimeoutMs) && (_status.commCode == ELRS_COMM_NONE)) {
+            setCommCode(ELRS_COMM_NSY);
+            log(hal, "ELRS/CRSF transport: no valid reply frames");
+        }
+        return;
+    }
+
+    if(!_status.telemetryActive && (_status.commCode == ELRS_COMM_NONE)) {
+        setCommCode(ELRS_COMM_LOS);
+        log(hal, "ELRS/CRSF transport: telemetry timeout");
+    }
+}
+
+void ELRSCrsfTransport::log(ELRSCrsfTransportHal &hal, const char *message) const
+{
+    if(message && *message) {
+        hal.logMessage(message);
+    }
+}
+
+void ELRSCrsfTransport::logf(ELRSCrsfTransportHal &hal, const char *fmt, ...) const
+{
+    char buffer[224];
+    va_list args;
+
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+
+    hal.logMessage(buffer);
+}
+
+void ELRSCrsfTransport::logFrame(ELRSCrsfTransportHal &hal, const char *prefix, const uint8_t *frame, size_t frameSize, bool crcValid) const
+{
+    char buffer[256];
+    size_t used = 0;
+
+    if(!frame || !frameSize) {
+        return;
+    }
+
+    used += (size_t)snprintf(buffer + used, sizeof(buffer) - used, "%s len=%u crc=%u bytes=",
+                             prefix,
+                             (unsigned)frameSize,
+                             crcValid ? 1U : 0U);
+    for(size_t i = 0; i < frameSize && used + 4 < sizeof(buffer); i++) {
+        used += (size_t)snprintf(buffer + used, sizeof(buffer) - used, "%02X", frame[i]);
+        if(i + 1 < frameSize && used + 2 < sizeof(buffer)) {
+            buffer[used++] = ' ';
+            buffer[used] = 0;
+        }
+    }
+
+    hal.logMessage(buffer);
+}
+
+uint8_t ELRSCrsfTransport::crc8D5(const uint8_t *data, size_t len)
+{
+    uint8_t crc = 0;
+
+    while(len--) {
+        crc ^= *data++;
+        for(uint8_t i = 0; i < 8; i++) {
+            crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0xD5) : (uint8_t)(crc << 1);
+        }
+    }
+
+    return crc;
+}
+
+size_t ELRSCrsfTransport::packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize)
+{
+    uint8_t payload[22];
+    uint32_t bitbuf = 0;
+    uint8_t bits = 0;
+    uint8_t idx = 0;
+
+    if(frameSize < 26) {
+        return 0;
+    }
+
+    memset(payload, 0, sizeof(payload));
+
+    for(int i = 0; i < 16; i++) {
+        bitbuf |= ((uint32_t)(channels[i] & 0x07ff)) << bits;
+        bits += 11;
+        while(bits >= 8) {
+            payload[idx++] = bitbuf & 0xff;
+            bitbuf >>= 8;
+            bits -= 8;
+        }
+    }
+    if(idx < sizeof(payload)) {
+        payload[idx++] = bitbuf & 0xff;
+    }
+
+    frame[0] = CRSF_SYNC_BYTE;
+    frame[1] = 24;
+    frame[2] = CRSF_FRAME_RC_CHANNELS_PACKED;
+    memcpy(frame + 3, payload, sizeof(payload));
+    frame[25] = crc8D5(frame + 2, 23);
+
+    return 26;
+}
+
+const char *ELRSCrsfTransport::commCodeName(uint8_t code)
+{
+    switch(code) {
+    case ELRS_COMM_NSY:
+        return "NSY";
+    case ELRS_COMM_LOS:
+        return "LOS";
+    case ELRS_COMM_CRC:
+        return "CRC";
+    case ELRS_COMM_FRM:
+        return "FRM";
+    default:
+        return "";
+    }
+}

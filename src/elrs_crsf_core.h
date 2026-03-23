@@ -5,26 +5,17 @@
 #include <stdint.h>
 
 #include "elrs_crsf_shared.h"
+#include "elrs_crsf_transport.h"
 
 enum ELRSCrsfFaultFlags : uint8_t {
     ELRS_FAULT_NONE = 0,
     ELRS_FAULT_ADC_MISSING = (1 << 0),
     ELRS_FAULT_ADC_STALE = (1 << 1),
-    ELRS_FAULT_BUTTONPACK_STALE = (1 << 2),
-    ELRS_FAULT_FALLBACK_BAUD = (1 << 3)
-};
-
-enum ELRSCrsfCommCode : uint8_t {
-    ELRS_COMM_NONE = 0,
-    ELRS_COMM_FAL,
-    ELRS_COMM_NSY,
-    ELRS_COMM_LOS,
-    ELRS_COMM_CRC,
-    ELRS_COMM_FRM
+    ELRS_FAULT_BUTTONPACK_STALE = (1 << 2)
 };
 
 struct ELRSCrsfStatus {
-    uint32_t baudRate = 420000;
+    uint32_t baudRate = 400000;
     bool telemetryActive = false;
     bool synced = false;
     uint8_t activeSpeedSource = 0;
@@ -34,23 +25,22 @@ struct ELRSCrsfStatus {
     uint8_t faultFlags = ELRS_FAULT_NONE;
     uint8_t commCode = ELRS_COMM_NONE;
     bool everSynced = false;
+    bool invertLine = false;
+    bool debugEnabled = false;
+    unsigned long lastTxAt = 0;
+    unsigned long lastRxAt = 0;
+    unsigned long lastReplyTimeoutAt = 0;
+    uint8_t lastRawFrameType = 0;
+    uint8_t lastRawFrameLength = 0;
+    bool lastRawFrameCrcValid = false;
     bool fakePowerOn = false;
     bool calibrating = false;
+    bool selfTestActive = false;
 };
 
-class ELRSCrsfHost {
+class ELRSCrsfHost : public ELRSCrsfTransportHal {
     public:
         virtual ~ELRSCrsfHost() {}
-
-        virtual void logMessage(const char *message) = 0;
-
-        virtual void startSerial(uint32_t baud) = 0;
-        virtual int serialAvailable() = 0;
-        virtual int serialRead() = 0;
-        virtual size_t serialWrite(const uint8_t *data, size_t len) = 0;
-        virtual void serialFlush() = 0;
-        virtual void setDriverEnabled(bool enabled) = 0;
-        virtual void discardSerialInput() = 0;
 
         virtual bool sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) = 0;
         virtual bool readFakePowerSwitch() = 0;
@@ -81,9 +71,10 @@ struct ELRSCrsfCoreConfig {
     bool useLevelMeter = false;
     bool powerLedOnFakePower = false;
     bool levelMeterOnFakePower = false;
+    ELRSCrsfTransportConfig transport;
 };
 
-class ELRSCrsfCore {
+class ELRSCrsfCore : private ELRSCrsfTransportSink {
     public:
         enum SpeedSource : uint8_t {
             SPEED_SOURCE_NONE = 0,
@@ -95,6 +86,9 @@ class ELRSCrsfCore {
 
         bool begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now);
         void loop(ELRSCrsfHost &host, unsigned long now, int battWarn);
+        void startSelfTest(unsigned long now, unsigned long durationMs = 15000);
+        void stopSelfTest();
+        bool selfTestActive() const;
 
         bool isCalibrating() const;
         bool fakePowerOn() const;
@@ -130,6 +124,7 @@ class ELRSCrsfCore {
 
         bool sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force = false);
         uint8_t samplePackStates(ELRSCrsfHost &host, unsigned long now);
+        void onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
 
         void updateCalibrationButton(ELRSCrsfHost &host, unsigned long now, int battWarn);
         void handleCalibrationShort(ELRSCrsfHost &host, unsigned long now, int battWarn);
@@ -139,12 +134,6 @@ class ELRSCrsfCore {
         void updateChannels(unsigned long now, bool fakePowerOn, bool stopOn, bool buttonAOn, bool buttonBOn, uint8_t packStates);
         uint16_t axisToTicks(uint8_t axis) const;
         uint16_t mapTicks(int16_t raw, int16_t inMin, int16_t inMax, uint16_t outMin, uint16_t outMax) const;
-
-        void beginSerial(ELRSCrsfHost &host, uint32_t baud);
-        void sendChannels(ELRSCrsfHost &host, unsigned long now);
-        void pollTelemetry(ELRSCrsfHost &host, unsigned long now);
-        void handleFrame(ELRSCrsfHost &host, const uint8_t *frame, size_t frameSize, unsigned long now);
-        void resyncRxBuffer(size_t startIndex = 1);
 
         void applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn);
         void updateBatteryWarning(ELRSCrsfHost &host, unsigned long now, int battWarn, bool fakePowerOn);
@@ -157,10 +146,6 @@ class ELRSCrsfCore {
         uint16_t getDisplaySpeed10(unsigned long now, SpeedSource *source = NULL) const;
         void showOverlay(const char *text, unsigned long now, unsigned long durationMs);
         void showCommOverlay(const char *text, unsigned long now, unsigned long durationMs);
-        void setCommCode(ELRSCrsfHost &host, uint8_t code, unsigned long now);
-        void clearCommCode();
-        void noteBadCrc(ELRSCrsfHost &host, unsigned long now);
-        void noteFrameError(ELRSCrsfHost &host, unsigned long now);
 
         void log(ELRSCrsfHost &host, const char *message) const;
         void logf(ELRSCrsfHost &host, const char *fmt, ...) const;
@@ -170,19 +155,17 @@ class ELRSCrsfCore {
         static const char *commCodeText(uint8_t code);
 
         ELRSCrsfCoreConfig _config;
+        ELRSCrsfTransport _transport;
 
         bool _haveAds = false;
         bool _fakePowerOn = false;
-        bool _synced = false;
-        bool _fallbackApplied = false;
+        bool _selfTestActive = false;
 
-        uint32_t _baudRate = 420000;
         unsigned long _startedAt = 0;
-        unsigned long _fallbackAt = 0;
+        unsigned long _selfTestUntil = 0;
         unsigned long _lastAxisAttemptAt = 0;
         unsigned long _lastGoodAxesAt = 0;
         unsigned long _lastGoodPackAt = 0;
-        unsigned long _lastTx = 0;
         unsigned long _lastDisplay = 0;
         unsigned long _lastTelemetry = 0;
         unsigned long _lastLinkStats = 0;
@@ -192,8 +175,6 @@ class ELRSCrsfCore {
         unsigned long _batteryBannerAt = 0;
         unsigned long _overlayUntil = 0;
         unsigned long _commOverlayUntil = 0;
-        unsigned long _crcBurstAt = 0;
-        unsigned long _frameBurstAt = 0;
 
         uint16_t _channels[16];
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT];
@@ -204,16 +185,13 @@ class ELRSCrsfCore {
         uint8_t _remoteBattery = 0;
         float _remoteBatteryVoltage = 0.0f;
         uint8_t _faultFlags = ELRS_FAULT_NONE;
-        uint8_t _commCode = ELRS_COMM_NONE;
         uint16_t _gpsSpeed10 = 0;
         uint16_t _airspeed10 = 0;
-        uint8_t _crcBurstCount = 0;
-        uint8_t _frameBurstCount = 0;
-        bool _telemetryActive = false;
         SpeedSource _activeSpeedSource = SPEED_SOURCE_NONE;
         bool _hasValidPackState = false;
         bool _adcFaultActive = false;
         bool _buttonPackFaultActive = false;
+        uint8_t _lastCommCode = ELRS_COMM_NONE;
 
         bool _calibRaw = false;
         bool _calibPressed = false;
@@ -222,8 +200,6 @@ class ELRSCrsfCore {
         unsigned long _calibPressedAt = 0;
         CalStage _calStage = CAL_IDLE;
 
-        uint8_t _rxFrame[64];
-        size_t _rxFrameLen = 0;
         char _overlayText[4];
         char _commOverlayText[4];
 };

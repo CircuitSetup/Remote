@@ -40,10 +40,16 @@ class FakeHost : public ELRSCrsfHost {
             logs.push_back(message ? message : "");
         }
 
-        void startSerial(uint32_t baud) override
+        void startSerial(uint32_t baud, bool invert) override
         {
             bauds.push_back(baud);
+            inversions.push_back(invert);
             driverEnabled = false;
+        }
+
+        void stopSerial() override
+        {
+            stopSerialCount++;
         }
 
         int serialAvailable() override
@@ -71,6 +77,7 @@ class FakeHost : public ELRSCrsfHost {
 
         void serialFlush() override
         {
+            flushCount++;
         }
 
         void setDriverEnabled(bool enabled) override
@@ -79,6 +86,12 @@ class FakeHost : public ELRSCrsfHost {
                 driverTransitions.push_back(enabled);
             }
             driverEnabled = enabled;
+        }
+
+        void discardSerialInput() override
+        {
+            rx.clear();
+            discardSerialCount++;
         }
 
         bool sampleAxes(int16_t axesOut[ELRS_GIMBAL_AXIS_COUNT]) override
@@ -127,12 +140,6 @@ class FakeHost : public ELRSCrsfHost {
 
             states = packStates;
             return true;
-        }
-
-        void discardSerialInput() override
-        {
-            rx.clear();
-            discardSerialCount++;
         }
 
         void displayOn() override
@@ -224,11 +231,14 @@ class FakeHost : public ELRSCrsfHost {
         int displayShows = 0;
         int savedCalibrationCount = 0;
         int discardSerialCount = 0;
+        int stopSerialCount = 0;
+        int flushCount = 0;
         DisplayMode displayMode = DISPLAY_NONE;
         std::string displayText;
         std::deque<uint8_t> rx;
         std::vector<std::string> logs;
         std::vector<uint32_t> bauds;
+        std::vector<bool> inversions;
         std::vector<bool> driverTransitions;
         std::vector<bool> driverStatesDuringWrite;
         std::vector<std::vector<uint8_t> > writes;
@@ -294,7 +304,11 @@ static void test_rc_frame_packing_and_driver_enable()
     TEST_ASSERT_TRUE(core.begin(host, config, 0));
     core.loop(host, 10, 0);
 
-    TEST_ASSERT_EQUAL_UINT32(420000, host.bauds[0]);
+    TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[0]);
+    TEST_ASSERT_FALSE(host.inversions[0]);
+    TEST_ASSERT_EQUAL_INT(1, host.stopSerialCount);
+    TEST_ASSERT_EQUAL_INT(1, host.discardSerialCount);
+    TEST_ASSERT_EQUAL_INT(1, host.flushCount);
     TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
     TEST_ASSERT_TRUE(host.driverStatesDuringWrite[0]);
     TEST_ASSERT_FALSE(host.driverEnabled);
@@ -302,6 +316,83 @@ static void test_rc_frame_packing_and_driver_enable()
     TEST_ASSERT_TRUE(host.driverTransitions[host.driverTransitions.size() - 2]);
     TEST_ASSERT_FALSE(host.driverTransitions[host.driverTransitions.size() - 1]);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedFrame, host.writes[0].data(), 26);
+}
+
+static void test_transport_inversion_setting_is_passed_to_hal()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+
+    config.transport.invertLine = true;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[0]);
+    TEST_ASSERT_TRUE(host.inversions[0]);
+    TEST_ASSERT_TRUE(statusOf(core).invertLine);
+}
+
+static void test_reply_timeout_is_reported()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+
+    config.transport.replyTimeoutMs = 20;
+    config.transport.frameIntervalMs = 10;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    core.loop(host, 10, 0);
+    TEST_ASSERT_EQUAL_UINT32(0, statusOf(core).lastReplyTimeoutAt);
+
+    core.loop(host, 35, 0);
+    TEST_ASSERT_EQUAL_UINT32(35, statusOf(core).lastReplyTimeoutAt);
+    TEST_ASSERT_EQUAL_INT(2, (int)host.writes.size());
+}
+
+static void test_unknown_frame_updates_raw_frame_status()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x28, std::vector<uint8_t>{ 0x01, 0x02 }));
+
+    core.loop(host, 100, 0);
+
+    ELRSCrsfStatus status = statusOf(core);
+    TEST_ASSERT_TRUE(status.synced);
+    TEST_ASSERT_TRUE(status.everSynced);
+    TEST_ASSERT_EQUAL_UINT8(0x28, status.lastRawFrameType);
+    TEST_ASSERT_EQUAL_UINT8(6, status.lastRawFrameLength);
+    TEST_ASSERT_TRUE(status.lastRawFrameCrcValid);
+    TEST_ASSERT_EQUAL_UINT32(100, status.lastRxAt);
+}
+
+static void test_self_test_emits_known_frame()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    uint16_t channels[16];
+    uint8_t expected[26];
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    core.startSelfTest(0);
+    core.loop(host, 10, 0);
+
+    channels[0] = 992;
+    channels[1] = 992;
+    channels[2] = 172;
+    channels[3] = 992;
+    channels[4] = 1811;
+    for(int i = 5; i < 16; i++) {
+        channels[i] = 172;
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(26, ELRSCrsfCore::packRcChannelsFrame(channels, expected, sizeof(expected)));
+    TEST_ASSERT_TRUE(statusOf(core).selfTestActive);
+    TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, host.writes[0].data(), 26);
 }
 
 static void test_adc_missing_at_boot_sets_fault_and_safe_channels()
@@ -525,53 +616,27 @@ static void test_parser_recovers_after_bad_crc_followed_by_valid_frame()
     TEST_ASSERT_EQUAL_UINT8(91, core.linkQuality());
 }
 
-static void test_baud_fallback_clears_pending_rx()
-{
-    FakeHost host;
-    ELRSCrsfCore core;
-
-    queueBytes(host, makeGarbage());
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 3001, 0);
-
-    ELRSCrsfStatus status = statusOf(core);
-    TEST_ASSERT_TRUE(status.faultFlags & ELRS_FAULT_FALLBACK_BAUD);
-    TEST_ASSERT_EQUAL_INT(1, host.discardSerialCount);
-    TEST_ASSERT_EQUAL_INT(0, (int)host.rx.size());
-    TEST_ASSERT_FALSE(core.synced());
-
-    queueBytes(host, makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 73, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 3100, 0);
-    TEST_ASSERT_EQUAL_UINT8(73, core.linkQuality());
-}
-
-static void test_comm_codes_show_fallback_then_no_sync_until_valid_frame()
+static void test_comm_codes_show_no_sync_until_valid_frame()
 {
     FakeHost host;
     ELRSCrsfCore core;
 
     TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
 
-    core.loop(host, 3001, 0);
-    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_FAL, statusOf(core).commCode);
-    TEST_ASSERT_FALSE(statusOf(core).everSynced);
-    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING("FAL", host.displayText.c_str());
-
-    core.loop(host, 5001, 0);
+    core.loop(host, 2000, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NSY, statusOf(core).commCode);
     TEST_ASSERT_FALSE(statusOf(core).everSynced);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("NSY", host.displayText.c_str());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 73, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 5100, 0);
+    core.loop(host, 2100, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
     TEST_ASSERT_TRUE(statusOf(core).everSynced);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("NSY", host.displayText.c_str());
 
-    core.loop(host, 6600, 0);
+    core.loop(host, 3800, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING(" 73", host.displayText.c_str());
 }
@@ -772,18 +837,15 @@ static void test_button_pack_overlay_beats_comm_overlay()
     TEST_ASSERT_EQUAL_STRING("BPK", host.displayText.c_str());
 }
 
-static void test_battery_overlay_calibration_overlay_and_baud_fallback()
+static void test_battery_overlay_and_calibration_prompt_still_override_normal_display()
 {
     FakeHost host;
     ELRSCrsfCore core;
 
     TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 3001, 0);
-    TEST_ASSERT_EQUAL_INT(2, (int)host.bauds.size());
-    TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[1]);
-
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 42, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 30100, 0);
+    core.loop(host, 100, 0);
+    core.loop(host, 1200, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING(" 42", host.displayText.c_str());
 
@@ -817,6 +879,10 @@ int main(int argc, char **argv)
 
     UNITY_BEGIN();
     RUN_TEST(test_rc_frame_packing_and_driver_enable);
+    RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
+    RUN_TEST(test_reply_timeout_is_reported);
+    RUN_TEST(test_unknown_frame_updates_raw_frame_status);
+    RUN_TEST(test_self_test_emits_known_frame);
     RUN_TEST(test_adc_missing_at_boot_sets_fault_and_safe_channels);
     RUN_TEST(test_adc_stale_after_valid_samples_uses_safe_fallback);
     RUN_TEST(test_button_pack_stale_holds_last_valid_states);
@@ -826,8 +892,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_telemetry_parsing_and_bad_crc_rejection);
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);
     RUN_TEST(test_parser_recovers_after_bad_crc_followed_by_valid_frame);
-    RUN_TEST(test_baud_fallback_clears_pending_rx);
-    RUN_TEST(test_comm_codes_show_fallback_then_no_sync_until_valid_frame);
+    RUN_TEST(test_comm_codes_show_no_sync_until_valid_frame);
     RUN_TEST(test_lost_telemetry_sets_los_until_valid_frame);
     RUN_TEST(test_crc_burst_sets_crc_comm_code);
     RUN_TEST(test_frame_burst_sets_frm_comm_code);
@@ -836,6 +901,6 @@ int main(int argc, char **argv)
     RUN_TEST(test_calibration_prompt_beats_comm_overlay);
     RUN_TEST(test_adc_overlay_beats_comm_overlay);
     RUN_TEST(test_button_pack_overlay_beats_comm_overlay);
-    RUN_TEST(test_battery_overlay_calibration_overlay_and_baud_fallback);
+    RUN_TEST(test_battery_overlay_and_calibration_prompt_still_override_normal_display);
     return UNITY_END();
 }
