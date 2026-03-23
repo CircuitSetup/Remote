@@ -89,6 +89,7 @@ extern uint8_t musFolderNum;
 #define DEF_CONTROL_MODE    "legacy"
 #define CONTROL_MODE_LEGACY "legacy"
 #define CONTROL_MODE_ELRS_CRSF "elrs_crsf"
+#define DEF_ELRS_PACKET_RATE ELRS_PACKET_RATE_DEFAULT
 #define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
 #define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
 
@@ -130,6 +131,7 @@ struct Settings {
     char tcdIP[32]          = DEF_TCD_IP;
     char pwrMst[4]          = MS(DEF_PWR_MST);
     char controlMode[16]    = DEF_CONTROL_MODE;
+    char elrsPacketRateHz[4]= MS(DEF_ELRS_PACKET_RATE);
 
 #ifdef REMOTE_HAVEMQTT  
     char useMQTT[4]         = "0";

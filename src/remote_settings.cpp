@@ -225,6 +225,7 @@ static bool CopyCheckValidNumParm(const char *json, char *text, uint8_t psize, i
 static bool CopyCheckValidNumParmF(const char *json, char *text, uint8_t psize, float lowerLim, float upperLim, float setDefault);
 static bool checkValidNumParm(char *text, int lowerLim, int upperLim, int setDefault);
 static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float setDefault);
+static bool normalizeELRSPacketRateText(char *text);
 static bool handleMQTTButton(const char *json, char *text, uint8_t psize);
 
 static void loadUpdAvail();
@@ -573,6 +574,13 @@ static bool read_settings(File configFile, int cfgReadCount)
             strcpy(settings.controlMode, DEF_CONTROL_MODE);
             wd = true;
         }
+        if(json["elrsPacketRateHz"]) {
+            CopyTextParm(json["elrsPacketRateHz"], settings.elrsPacketRateHz, sizeof(settings.elrsPacketRateHz));
+            wd |= normalizeELRSPacketRateText(settings.elrsPacketRateHz);
+        } else {
+            sprintf(settings.elrsPacketRateHz, "%u", (unsigned)DEF_ELRS_PACKET_RATE);
+            wd = true;
+        }
         
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
@@ -694,6 +702,7 @@ void write_settings()
     json["tcdIP"] = (const char *)settings.tcdIP;
     json["pwM"] = (const char *)settings.pwrMst;
     json["controlMode"] = (const char *)settings.controlMode;
+    json["elrsPacketRateHz"] = (const char *)settings.elrsPacketRateHz;
     
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
@@ -839,6 +848,25 @@ static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float
     sprintf(text, "%.1f", f);
 
     return ret;
+}
+
+static bool normalizeELRSPacketRateText(char *text)
+{
+    uint16_t packetRateHz = ELRS_PACKET_RATE_DEFAULT;
+    bool changed = false;
+
+    if(!text || !*text) {
+        changed = true;
+    } else {
+        packetRateHz = (uint16_t)atoi(text);
+        if(!elrsPacketRateSupported(packetRateHz)) {
+            packetRateHz = ELRS_PACKET_RATE_DEFAULT;
+            changed = true;
+        }
+    }
+
+    sprintf(text, "%u", (unsigned)packetRateHz);
+    return changed;
 }
 
 bool evalBool(char *s)

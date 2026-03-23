@@ -266,6 +266,14 @@ static std::vector<uint8_t> makeFrame(uint8_t type, const std::vector<uint8_t> &
     return frame;
 }
 
+static std::vector<uint8_t> makeFrameWithSync(uint8_t syncByte, uint8_t type, const std::vector<uint8_t> &payload)
+{
+    std::vector<uint8_t> frame = makeFrame(type, payload);
+
+    frame[0] = syncByte;
+    return frame;
+}
+
 static std::vector<uint8_t> makeGarbage()
 {
     return std::vector<uint8_t>{ 0x00, 0x7F, 0x81, 0x42, 0x18, 0xFF, 0x10 };
@@ -281,6 +289,11 @@ static void queueBytes(FakeHost &host, const std::vector<uint8_t> &bytes)
 static ELRSCrsfStatus statusOf(ELRSCrsfCore &core)
 {
     return core.getStatus();
+}
+
+static void loopAt(ELRSCrsfCore &core, FakeHost &host, unsigned long nowMs, unsigned long nowUs, int battWarn = 0)
+{
+    core.loop(host, nowMs, nowUs, battWarn);
 }
 
 static void test_rc_frame_packing_and_driver_enable()
@@ -339,7 +352,7 @@ static void test_reply_timeout_is_reported()
     ELRSCrsfCoreConfig config = defaultConfig();
 
     config.transport.replyTimeoutMs = 20;
-    config.transport.frameIntervalMs = 10;
+    config.transport.packetRateHz = 50;
 
     TEST_ASSERT_TRUE(core.begin(host, config, 0));
     core.loop(host, 10, 0);
@@ -361,12 +374,87 @@ static void test_unknown_frame_updates_raw_frame_status()
     core.loop(host, 100, 0);
 
     ELRSCrsfStatus status = statusOf(core);
+    TEST_ASSERT_TRUE(status.replyActive);
     TEST_ASSERT_TRUE(status.synced);
+    TEST_ASSERT_FALSE(status.telemetryActive);
+    TEST_ASSERT_TRUE(status.everReplied);
     TEST_ASSERT_TRUE(status.everSynced);
+    TEST_ASSERT_EQUAL_UINT8(0xC8, status.lastRawFrameSyncByte);
     TEST_ASSERT_EQUAL_UINT8(0x28, status.lastRawFrameType);
     TEST_ASSERT_EQUAL_UINT8(6, status.lastRawFrameLength);
     TEST_ASSERT_TRUE(status.lastRawFrameCrcValid);
+    TEST_ASSERT_EQUAL_UINT32(100, status.lastReplyAt);
     TEST_ASSERT_EQUAL_UINT32(100, status.lastRxAt);
+}
+
+static void test_packet_rate_scheduler_50_100_150_250hz()
+{
+    FakeHost host50;
+    FakeHost host100;
+    FakeHost host150;
+    FakeHost host250;
+    ELRSCrsfCore core50;
+    ELRSCrsfCore core100;
+    ELRSCrsfCore core150;
+    ELRSCrsfCore core250;
+    ELRSCrsfCoreConfig config50 = defaultConfig();
+    ELRSCrsfCoreConfig config100 = defaultConfig();
+    ELRSCrsfCoreConfig config150 = defaultConfig();
+    ELRSCrsfCoreConfig config250 = defaultConfig();
+
+    config50.transport.packetRateHz = 50;
+    config100.transport.packetRateHz = 100;
+    config150.transport.packetRateHz = 150;
+    config250.transport.packetRateHz = 250;
+
+    TEST_ASSERT_TRUE(core50.begin(host50, config50, 0, 0));
+    TEST_ASSERT_TRUE(core100.begin(host100, config100, 0, 0));
+    TEST_ASSERT_TRUE(core150.begin(host150, config150, 0, 0));
+    TEST_ASSERT_TRUE(core250.begin(host250, config250, 0, 0));
+
+    loopAt(core50, host50, 0, 0);
+    loopAt(core100, host100, 0, 0);
+    loopAt(core150, host150, 0, 0);
+    loopAt(core250, host250, 0, 0);
+
+    TEST_ASSERT_EQUAL_INT(1, (int)host50.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host100.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
+
+    loopAt(core50, host50, 19, 19999);
+    loopAt(core100, host100, 9, 9999);
+    loopAt(core150, host150, 6, 6665);
+    loopAt(core250, host250, 3, 3999);
+
+    TEST_ASSERT_EQUAL_INT(1, (int)host50.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host100.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
+
+    loopAt(core50, host50, 20, 20000);
+    loopAt(core100, host100, 10, 10000);
+    loopAt(core150, host150, 6, 6666);
+    loopAt(core250, host250, 4, 4000);
+
+    TEST_ASSERT_EQUAL_INT(2, (int)host50.writes.size());
+    TEST_ASSERT_EQUAL_INT(2, (int)host100.writes.size());
+    TEST_ASSERT_EQUAL_INT(2, (int)host150.writes.size());
+    TEST_ASSERT_EQUAL_INT(2, (int)host250.writes.size());
+
+    loopAt(core150, host150, 13, 13332);
+    TEST_ASSERT_EQUAL_INT(2, (int)host150.writes.size());
+    loopAt(core150, host150, 13, 13333);
+    TEST_ASSERT_EQUAL_INT(3, (int)host150.writes.size());
+    loopAt(core150, host150, 19, 19999);
+    TEST_ASSERT_EQUAL_INT(3, (int)host150.writes.size());
+    loopAt(core150, host150, 20, 20000);
+    TEST_ASSERT_EQUAL_INT(4, (int)host150.writes.size());
+
+    TEST_ASSERT_EQUAL_UINT16(50, statusOf(core50).packetRateHz);
+    TEST_ASSERT_EQUAL_UINT16(100, statusOf(core100).packetRateHz);
+    TEST_ASSERT_EQUAL_UINT16(150, statusOf(core150).packetRateHz);
+    TEST_ASSERT_EQUAL_UINT16(250, statusOf(core250).packetRateHz);
 }
 
 static void test_self_test_emits_known_frame()
@@ -583,6 +671,23 @@ static void test_telemetry_parsing_and_bad_crc_rejection()
     TEST_ASSERT_EQUAL_UINT8(88, core.linkQuality());
 }
 
+static void test_non_c8_sync_frame_is_accepted()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrameWithSync(0x00, 0x14, std::vector<uint8_t>{ 0, 0, 68, 0, 0, 0, 0, 0, 0, 0 }));
+
+    core.loop(host, 100, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).replyActive);
+    TEST_ASSERT_TRUE(core.synced());
+    TEST_ASSERT_TRUE(core.telemetryActive());
+    TEST_ASSERT_EQUAL_UINT8(0x00, statusOf(core).lastRawFrameSyncByte);
+    TEST_ASSERT_EQUAL_UINT8(68, core.linkQuality());
+}
+
 static void test_parser_recovers_after_garbage_before_valid_frame()
 {
     FakeHost host;
@@ -624,17 +729,19 @@ static void test_comm_codes_show_no_sync_until_valid_frame()
     TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
 
     core.loop(host, 2000, 0);
-    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NSY, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NRY, statusOf(core).commCode);
     TEST_ASSERT_FALSE(statusOf(core).everSynced);
+    TEST_ASSERT_FALSE(statusOf(core).replyActive);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING("NSY", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_STRING("NRY", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 73, 0, 0, 0, 0, 0, 0, 0 }));
     core.loop(host, 2100, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
     TEST_ASSERT_TRUE(statusOf(core).everSynced);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING("NSY", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_STRING("NRY", host.displayText.c_str());
 
     core.loop(host, 3800, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
@@ -653,9 +760,10 @@ static void test_lost_telemetry_sets_los_until_valid_frame()
     TEST_ASSERT_TRUE(statusOf(core).everSynced);
 
     core.loop(host, 2100, 0);
-    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_LOS, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_RLS, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING("LOS", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_STRING("RLS", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_INT(2, (int)host.writes.size());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 45, 0, 0, 0, 0, 0, 0, 0 }));
     core.loop(host, 2200, 0);
@@ -762,7 +870,7 @@ static void test_battery_overlay_beats_comm_overlay()
     core.loop(host, 100, 0);
 
     core.loop(host, 30000, 1);
-    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_LOS, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_RLS, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
 }
@@ -782,7 +890,7 @@ static void test_calibration_prompt_beats_comm_overlay()
     core.loop(host, 2301, 0);
 
     TEST_ASSERT_TRUE(core.isCalibrating());
-    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_LOS, statusOf(core).commCode);
+    TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_RLS, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
 }
@@ -882,6 +990,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
     RUN_TEST(test_reply_timeout_is_reported);
     RUN_TEST(test_unknown_frame_updates_raw_frame_status);
+    RUN_TEST(test_packet_rate_scheduler_50_100_150_250hz);
     RUN_TEST(test_self_test_emits_known_frame);
     RUN_TEST(test_adc_missing_at_boot_sets_fault_and_safe_channels);
     RUN_TEST(test_adc_stale_after_valid_samples_uses_safe_fallback);
@@ -890,6 +999,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_status_fault_transitions_clear_on_recovery);
     RUN_TEST(test_control_mapping_and_reversed_axis_calibration);
     RUN_TEST(test_telemetry_parsing_and_bad_crc_rejection);
+    RUN_TEST(test_non_c8_sync_frame_is_accepted);
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);
     RUN_TEST(test_parser_recovers_after_bad_crc_followed_by_valid_frame);
     RUN_TEST(test_comm_codes_show_no_sync_until_valid_frame);

@@ -65,18 +65,20 @@ bool ELRSCrsfMode::begin(
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
     config.transport.baudRate = 400000;
     config.transport.invertLine = false;
-    config.transport.frameIntervalMs = 10;
+    config.transport.packetRateHz = (uint16_t)atoi(settings.elrsPacketRateHz);
+    config.transport.frameIntervalMs = (uint16_t)((1000UL + elrsPacketRateOrDefault(config.transport.packetRateHz) - 1) /
+                                                  elrsPacketRateOrDefault(config.transport.packetRateHz));
     config.transport.telemetryTimeoutMs = 2000;
     config.transport.replyTimeoutMs = 20;
     config.transport.debugEnabled = false;
     config.transport.oeActiveLow = _oeActiveLow;
 
-    return _core.begin(*this, config, millis());
+    return _core.begin(*this, config, millis(), micros());
 }
 
 void ELRSCrsfMode::loop(int battWarn)
 {
-    _core.loop(*this, millis(), battWarn);
+    _core.loop(*this, millis(), micros(), battWarn);
 }
 
 bool ELRSCrsfMode::isCalibrating() const

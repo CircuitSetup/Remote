@@ -4,17 +4,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "elrs_crsf_shared.h"
+
 enum ELRSCrsfCommCode : uint8_t {
     ELRS_COMM_NONE = 0,
-    ELRS_COMM_NSY,
-    ELRS_COMM_LOS,
+    ELRS_COMM_NRY,
+    ELRS_COMM_RLS,
     ELRS_COMM_CRC,
-    ELRS_COMM_FRM
+    ELRS_COMM_FRM,
+    ELRS_COMM_NSY = ELRS_COMM_NRY,
+    ELRS_COMM_LOS = ELRS_COMM_RLS
 };
 
 struct ELRSCrsfTransportConfig {
     uint32_t baudRate = 400000;
     bool invertLine = false;
+    uint16_t packetRateHz = ELRS_PACKET_RATE_DEFAULT;
     uint16_t frameIntervalMs = 10;
     uint16_t telemetryTimeoutMs = 2000;
     uint16_t replyTimeoutMs = 20;
@@ -23,6 +28,7 @@ struct ELRSCrsfTransportConfig {
 };
 
 struct ELRSCrsfRawFrameInfo {
+    uint8_t syncByte = 0;
     uint8_t type = 0;
     uint8_t length = 0;
     bool crcValid = false;
@@ -30,14 +36,18 @@ struct ELRSCrsfRawFrameInfo {
 
 struct ELRSCrsfTransportStatus {
     uint32_t baudRate = 400000;
+    uint16_t packetRateHz = ELRS_PACKET_RATE_DEFAULT;
     bool invertLine = false;
     bool debugEnabled = false;
     bool oeActiveLow = true;
     bool telemetryActive = false;
+    bool replyActive = false;
     bool synced = false;
+    bool everReplied = false;
     bool everSynced = false;
     uint8_t commCode = ELRS_COMM_NONE;
     unsigned long lastTxAt = 0;
+    unsigned long lastReplyAt = 0;
     unsigned long lastRxAt = 0;
     unsigned long lastReplyTimeoutAt = 0;
     ELRSCrsfRawFrameInfo lastRawFrame;
@@ -62,7 +72,7 @@ class ELRSCrsfTransportSink {
     public:
         virtual ~ELRSCrsfTransportSink() {}
 
-        virtual void onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) = 0;
+        virtual bool onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) = 0;
 };
 
 class ELRSCrsfTransport {
@@ -70,8 +80,10 @@ class ELRSCrsfTransport {
         ELRSCrsfTransport();
 
         void setSink(ELRSCrsfTransportSink *sink);
+        void begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransportConfig &config, unsigned long now, unsigned long nowUs);
         void begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransportConfig &config, unsigned long now);
         void setChannels(const uint16_t channels[16]);
+        void loop(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs);
         void loop(ELRSCrsfTransportHal &hal, unsigned long now);
 
         const ELRSCrsfTransportConfig &config() const;
@@ -81,7 +93,7 @@ class ELRSCrsfTransport {
         static size_t packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize);
 
     private:
-        void sendChannels(ELRSCrsfTransportHal &hal, unsigned long now);
+        void sendChannels(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs);
         void pollFrames(ELRSCrsfTransportHal &hal, unsigned long now);
         void resyncRxBuffer(size_t startIndex = 1);
         void noteBadCrc(ELRSCrsfTransportHal &hal, unsigned long now);
@@ -89,6 +101,8 @@ class ELRSCrsfTransport {
         void setCommCode(uint8_t code);
         void clearCommCode();
         void updateState(ELRSCrsfTransportHal &hal, unsigned long now);
+        void resetTxScheduler(unsigned long nowUs);
+        void advanceNextTxDeadline();
         void log(ELRSCrsfTransportHal &hal, const char *message) const;
         void logf(ELRSCrsfTransportHal &hal, const char *fmt, ...) const;
         void logFrame(ELRSCrsfTransportHal &hal, const char *prefix, const uint8_t *frame, size_t frameSize, bool crcValid) const;
@@ -103,12 +117,18 @@ class ELRSCrsfTransport {
         uint8_t _rxFrame[64];
         size_t _rxFrameLen = 0;
         unsigned long _startedAt = 0;
-        unsigned long _lastValidFrameAt = 0;
+        unsigned long _lastReplyAt = 0;
+        unsigned long _lastTelemetryAt = 0;
         unsigned long _replyDeadlineAt = 0;
+        unsigned long _nextTxAtUs = 0;
         unsigned long _crcBurstAt = 0;
         unsigned long _frameBurstAt = 0;
+        uint32_t _txIntervalUs = 0;
+        uint32_t _txIntervalRemainder = 0;
+        uint32_t _txRemainderAccumulator = 0;
         uint8_t _crcBurstCount = 0;
         uint8_t _frameBurstCount = 0;
+        bool _haveTelemetry = false;
         bool _waitingForReply = false;
         bool _replySeenForTx = false;
 };

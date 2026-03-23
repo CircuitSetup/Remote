@@ -16,7 +16,9 @@ enum ELRSCrsfFaultFlags : uint8_t {
 
 struct ELRSCrsfStatus {
     uint32_t baudRate = 400000;
+    uint16_t packetRateHz = ELRS_PACKET_RATE_DEFAULT;
     bool telemetryActive = false;
+    bool replyActive = false;
     bool synced = false;
     uint8_t activeSpeedSource = 0;
     uint8_t linkQuality = 0;
@@ -24,12 +26,15 @@ struct ELRSCrsfStatus {
     float remoteBatteryVoltage = 0.0f;
     uint8_t faultFlags = ELRS_FAULT_NONE;
     uint8_t commCode = ELRS_COMM_NONE;
+    bool everReplied = false;
     bool everSynced = false;
     bool invertLine = false;
     bool debugEnabled = false;
     unsigned long lastTxAt = 0;
+    unsigned long lastReplyAt = 0;
     unsigned long lastRxAt = 0;
     unsigned long lastReplyTimeoutAt = 0;
+    uint8_t lastRawFrameSyncByte = 0;
     uint8_t lastRawFrameType = 0;
     uint8_t lastRawFrameLength = 0;
     bool lastRawFrameCrcValid = false;
@@ -85,7 +90,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ELRSCrsfCore();
 
         bool begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now);
+        bool begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs);
         void loop(ELRSCrsfHost &host, unsigned long now, int battWarn);
+        void loop(ELRSCrsfHost &host, unsigned long now, unsigned long nowUs, int battWarn);
         void startSelfTest(unsigned long now, unsigned long durationMs = 15000);
         void stopSelfTest();
         bool selfTestActive() const;
@@ -101,6 +108,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         uint16_t gpsSpeed10() const;
         uint16_t airspeed10() const;
         bool telemetryActive() const;
+        bool replyActive() const;
         bool synced() const;
         SpeedSource activeSpeedSource() const;
         ELRSCrsfStatus getStatus() const;
@@ -124,7 +132,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         bool sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force = false);
         uint8_t samplePackStates(ELRSCrsfHost &host, unsigned long now);
-        void onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
+        bool onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
 
         void updateCalibrationButton(ELRSCrsfHost &host, unsigned long now, int battWarn);
         void handleCalibrationShort(ELRSCrsfHost &host, unsigned long now, int battWarn);
@@ -153,6 +161,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         static uint16_t readBE16(const uint8_t *data);
         static const char *speedSourceName(SpeedSource source);
         static const char *commCodeText(uint8_t code);
+        static unsigned long axisSampleIntervalMs(uint16_t packetRateHz);
 
         ELRSCrsfCoreConfig _config;
         ELRSCrsfTransport _transport;
