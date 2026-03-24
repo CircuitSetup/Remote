@@ -45,7 +45,7 @@
 // Battery monitor support
 #define HAVE_PM
 
-#define HAVE_CRSF
+//#define HAVE_CRSF
 
 // Uncomment to allow user to disable User Buttons
 // (Was used for prototype)
