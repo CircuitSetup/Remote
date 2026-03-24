@@ -4,7 +4,7 @@
 
 #include <unity.h>
 
-#include "elrs_crsf_core.h"
+#include "src/CRSF/elrs_crsf_core.h"
 
 namespace {
 

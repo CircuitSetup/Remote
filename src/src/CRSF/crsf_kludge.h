@@ -48,8 +48,14 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+#ifndef _CRSF_KLUDGE_H
+#define _CRSF_KLUDGE_H
 
 void crsf_load_settings();
+void crsf_read_page_settings();
+void crsf_write_page_settings();
+bool crsf_settings_exist();
 bool crsf_normalizeELRSPacketRate(const char *src, char *dest);
 
+#endif
 

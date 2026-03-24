@@ -65,6 +65,10 @@
 #include "remote_settings.h"
 #include "remote_wifi.h"
 #include "remote_main.h"
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_kludge.h"
+#include "src/CRSF/crsf_wifi.h"
+#endif
 #ifdef REMOTE_HAVEMQTT
 #include "mqtt.h"
 #endif
@@ -306,6 +310,9 @@ static const int8_t wifiMenu[] = {
     #ifdef REMOTE_HAVEMQTT
     WM_MENU_PARAM2,
     #endif
+    #ifdef HAVE_CRSF
+    WM_MENU_PARAM3,
+    #endif
     WM_MENU_SEP_F,
     WM_MENU_UPDATE,
     WM_MENU_SEP,
@@ -321,7 +328,7 @@ static const int8_t wifiMenu[] = {
 #define UNI_VERSION_EXTRA REMOTE_VERSION_EXTRA
 #define WEBHOME "remote"
 #define PARM2TITLE WM_PARAM2_TITLE
-#define PARM3TITLE ""
+#define PARM3TITLE WM_PARAM3_TITLE
 #define CURRVERSION REMOTE_VERSION
 static const char r_link[] = "remoter.out-a-ti.me";
 static const char apName[]  = "REM-AP";
@@ -619,6 +626,10 @@ void wifi_setup()
         wm.addParameter(WM_PARM_SETTINGS2, parm2Array[temp]);
         temp++;
     }
+    #endif
+
+    #ifdef HAVE_CRSF
+    crsf_wifi_register_page(wm);
     #endif
 
     updateConfigPortalValues();
@@ -1005,10 +1016,15 @@ void wifi_loop()
 
             write_mqtt_settings();
             #endif
+        } else if(wifiLoopSaveAction & WLA_SET3) {
+
+            #ifdef HAVE_CRSF
+            crsf_write_page_settings();
+            #endif
         }
 
-        // Write settings if requested, or no settings file exists
-        if(write_main_settings || !checkConfigExists()) {
+        // Write settings only for the main settings pages.
+        if(write_main_settings) {
             write_settings();
         }
 
@@ -1434,6 +1450,11 @@ static void saveParamsCallback(int paramspage)
         getServerParam("mprot", settings.mqttVers, 1, 0);
         for(int i = 0; i < 8; i++) handleMQTTTopMsg(i);
         break;
+    #ifdef HAVE_CRSF
+    case 3:
+        crsf_wifi_save_params(wm);
+        break;
+    #endif
     }
 }
 
@@ -1684,6 +1705,10 @@ static void updateConfigPortalValues()
     custom_mqttUser.setValue(settings.mqttUser);
     // user topics/messages done on-the-fly
     #endif
+
+    #ifdef HAVE_CRSF
+    crsf_wifi_update_values();
+    #endif
 }
 
 void updateConfigPortalMFValues()
@@ -1773,7 +1798,6 @@ static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *s
             theHTML[i+2], (i == cnt - 3) ? osde : ooe);
     }
 }
-
 
 #ifdef HAVE_PM
 static const char *wmBuildBatType(const char *dest, int op)

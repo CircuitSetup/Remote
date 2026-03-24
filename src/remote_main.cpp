@@ -63,8 +63,8 @@
 #include "remote_settings.h"
 #include "remote_audio.h"
 #include "remote_wifi.h"
-#ifdef CRSF
-#include "elrs_crsf.h"
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_main.h"
 #endif
 
 // i2c slave addresses
@@ -139,7 +139,6 @@ ButtonPack butPack(4, butPackAddr);
 bool useRotEnc = false;
 static bool useBPack = true;
 static bool useRotEncVol = false;
-static bool useElrsCrsfMode = false;
 
 bool showUpdAvail = true;
 
@@ -691,11 +690,6 @@ void main_setup()
 
     loadMovieMode();
     loadDisplayGPSMode();
-    #ifdef CRSF
-    useElrsCrsfMode = !strcmp(settings.controlMode, CONTROL_MODE_ELRS_CRSF);
-    #else
-    useElrsCrsfMode = false;
-    #endif
     
     // Eval from main settings
     autoThrottle = evalBool(settings.autoThrottle);
@@ -764,20 +758,12 @@ void main_setup()
         // We never return here. The ESP is rebooted.
     }
 
-    #ifdef CRSF
-    if(useElrsCrsfMode) {
+    #ifdef HAVE_CRSF
+    if(crsf_main_mode_enabled()) {
         Serial.println("Control mode: ELRS/CRSF");
 
-        if((useBPack = butPack.begin())) {
-            butPack.setScanInterval(50);
-        } else {
-            #ifdef REMOTE_DBG
-            Serial.println("ButtonPack not detected");
-            #endif
-        }
-
-        elrsMode.begin(
-            useBPack ? &butPack : NULL,
+        if(!crsf_main_setup(
+            &butPack,
             useBPack,
             &remdisplay,
             &pwrled,
@@ -787,12 +773,12 @@ void main_setup()
             useLvlMtr,
             pwrLEDonFP,
             LvLMtronFP
-        );
-        {
-            ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
-            FPBUnitIsOn = elrsStatus.fakePowerOn;
-            calibMode = elrsStatus.calibrating;
+        )) {
+            Serial.println("CRSF: setup failed");
         }
+
+        FPBUnitIsOn = crsf_main_fake_power_on();
+        calibMode = crsf_main_is_calibrating();
         return;
     }
     #endif
@@ -949,20 +935,17 @@ void main_loop()
 {
     unsigned long now = millis();
 
-    #ifdef CRSF
-    if(useElrsCrsfMode) {
+    #ifdef HAVE_CRSF
+    if(crsf_main_mode_enabled()) {
         #ifdef HAVE_PM
         battWarn = pwrMon.loop();
         #else
         battWarn = 0;
         #endif
 
-        elrsMode.loop(battWarn);
-        {
-            ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
-            FPBUnitIsOn = elrsStatus.fakePowerOn;
-            calibMode = elrsStatus.calibrating;
-        }
+        crsf_main_loop(battWarn);
+        FPBUnitIsOn = crsf_main_fake_power_on();
+        calibMode = crsf_main_is_calibrating();
         return;
     }
     #endif
@@ -974,7 +957,7 @@ void main_loop()
 
     #ifdef HAVE_PM
     // Scan battery monitor
-    if(!TTrunning && !tcdIsInP0 && !calibMode) {
+    if(!tcdIsInP0 && !TTrunning && !calibMode) {
         battWarn = pwrMon.loop();
     }
     #endif
@@ -997,7 +980,7 @@ void main_loop()
             battWarnSnd = true;
         }
         oldBattWarn = battWarn;
-        if(battWarnSnd && !TTrunning && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
+        if(!tcdIsInP0 && !throttlePos && !keepCounting && !TTrunning && !calibMode && battWarnSnd) {
             append_file("/pwrlow.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL, 1.0f);
             battWarnSnd = false;
         }
@@ -1241,7 +1224,7 @@ void main_loop()
     if(isbuttonAKeyChange) {
         isbuttonAKeyChange = false;
         if(FPBUnitIsOn) {
-            if(!TTrunning && !tcdIsInP0) {
+            if(!tcdIsInP0 && !TTrunning) {
                 if(useBPack) {
                     if(isbuttonAKeyPressed) {
                         if(ooTT) {
@@ -1310,23 +1293,23 @@ void main_loop()
             if(isbuttonAKeyPressed) {
                 if(!useRotEncVol) {
                     // Do not change, just display on first press (within 10 seconds)
-                    if(volchgtimer && millis() - volchgtimer < 10*1000) {
+                    if(volchgtimer && (millis() - volchgtimer < 10*1000)) {
                         increaseVolume();
                     }
                     displayVolume();
                     offDisplayTimer = true;
-                    offDisplayNow = volchgtimer = millis();
+                    offDisplayNow = volchgtimer = millisNonZero();
                     play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0f);
                 }
             } else if(isbuttonAKeyLongPressed) {
                 if(ooresBri) {
                     // Do not change, just display on first press (within 10 seconds)
-                    if(brichgtimer && millis() - brichgtimer < 10*1000) {
+                    if(brichgtimer && (millis() - brichgtimer < 10*1000)) {
                         increaseBrightness();
                     }
                     displayBrightness();
                     offDisplayTimer = true;
-                    offDisplayNow = brichgtimer = millis();
+                    offDisplayNow = brichgtimer = millisNonZero();
                 } else {
                     powerMaster = true;
                     updateVisMode();
@@ -1341,7 +1324,7 @@ void main_loop()
     if(isbuttonBKeyChange) {
         isbuttonBKeyChange = false;
         if(FPBUnitIsOn) {
-            if(!TTrunning && !tcdIsInP0) {
+            if(!tcdIsInP0 && !TTrunning) {
                 if(useBPack) {
                     if(isbuttonBKeyPressed) {
                         if(haveMusic) {
@@ -1375,23 +1358,23 @@ void main_loop()
             if(isbuttonBKeyPressed) {
                 if(!useRotEncVol) {
                     // Do not change, just display on first press (within 10 seconds)
-                    if(volchgtimer && millis() - volchgtimer < 10*1000) {
+                    if(volchgtimer && (millis() - volchgtimer < 10*1000)) {
                         decreaseVolume();
                     }
                     displayVolume();
                     offDisplayTimer = true;
-                    offDisplayNow = volchgtimer = millis();
+                    offDisplayNow = volchgtimer = millisNonZero();
                     play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0f);
                 }
             } else if(isbuttonBKeyLongPressed) {
                 if(ooresBri) {
                     // Do not change, just display on first press (within 10 seconds)
-                    if(brichgtimer && millis() - brichgtimer < 10*1000) { 
+                    if(brichgtimer && (millis() - brichgtimer < 10*1000)) { 
                         decreaseBrightness();
                     }
                     displayBrightness();
                     offDisplayTimer = true;
-                    offDisplayNow = brichgtimer = millis();
+                    offDisplayNow = brichgtimer = millisNonZero();
                 } else {
                     powerMaster = false;
                     updateVisMode();
@@ -1499,7 +1482,7 @@ void main_loop()
                 }
             }
         } else {
-            if(!TTrunning && !tcdIsInP0) {
+            if(!tcdIsInP0 && !TTrunning) {
                 if(isCalibKeyPressed) {
                     if(!throttlePos) {
                         currSpeedF = 0;
@@ -1540,7 +1523,7 @@ void main_loop()
             if(isbutPackKeyChange[i]) {
                 isbutPackKeyChange[i] = false;
                 if(FPBUnitIsOn) {
-                    if(!TTrunning && !tcdIsInP0) {
+                    if(!tcdIsInP0 && !TTrunning) {
                         if(!buttonPackMomentary[i]) {
                             // Maintained: 
                             // If "audio on ON only" checked, play if switched ON, and stop
@@ -1573,7 +1556,7 @@ void main_loop()
     // Scan throttle position
     if(triggerTTonThrottle) {
         throttlePos = rotEnc.updateThrottlePos();
-        if(FPBUnitIsOn && !TTrunning && !tcdIsInP0) {
+        if(!tcdIsInP0 && !TTrunning && FPBUnitIsOn) {
             if(triggerTTonThrottle == 1 && throttlePos > 0) {
                 if(brakeState) {
                     if(!brakeWarning) {
@@ -1602,7 +1585,7 @@ void main_loop()
                 }
             }
         }
-    } else if(!calibMode && !tcdIsInP0) {
+    } else if(!tcdIsInP0 && !calibMode) {
         throttlePos = rotEnc.updateThrottlePos();
         if(FPBUnitIsOn && (!TTrunning || IntP0running)) {
             int tas = 0, tidx = 0;
@@ -1826,7 +1809,7 @@ void main_loop()
         #endif
     }
     
-    if(FPBUnitIsOn && doForceDispUpd && !TTrunning && !tcdIsInP0) {
+    if(!tcdIsInP0 && !TTrunning && FPBUnitIsOn && doForceDispUpd) {
         doForceDispUpd = false;
         remdisplay.setSpeed(currSpeedF);
         remdisplay.show();
@@ -1841,7 +1824,7 @@ void main_loop()
         justBootedNow = 0;
     }
 
-    if(!FPBUnitIsOn && offDisplayTimer && millis() - offDisplayNow > 1000) {
+    if(!FPBUnitIsOn && offDisplayTimer && (millis() - offDisplayNow > 1000)) {
         offDisplayTimer = false;
         remdisplay.off();
         currSpeedOldGPS = -2;   // force GPS speed display update
@@ -1850,7 +1833,7 @@ void main_loop()
     // Execute remote commands
     // No commands in calibMode, during a TT (or P0), and when acceleration is running
     // FPBUnitIsOn checked for each individually
-    if(!TTrunning && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
+    if(!tcdIsInP0 && !throttlePos && !keepCounting && !TTrunning && !calibMode) {
         execute_remote_command();
     }
 
@@ -2029,7 +2012,7 @@ void main_loop()
 
     } else {    // No TT currently
 
-        if(networkAlarm && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
+        if(!tcdIsInP0 && !throttlePos && !keepCounting && !calibMode && networkAlarm) {
 
             networkAlarm = false;
 
@@ -2057,7 +2040,7 @@ void main_loop()
 
     // Poll RotEnv for volume. Don't in calibmode, P0 or during acceleration
     #ifdef HAVE_VOL_ROTENC
-    if(useRotEncVol && !calibMode && !tcdIsInP0 && !throttlePos && !keepCounting) {
+    if(!tcdIsInP0 && !throttlePos && !keepCounting && !calibMode && useRotEncVol) {
         int oldVol = curSoftVol;
         curSoftVol = rotEncVol->updateVolume(curSoftVol, false);
         if(oldVol != curSoftVol) {
@@ -2071,7 +2054,7 @@ void main_loop()
     }
     #endif
 
-    if(!TTrunning && !tcdIsInP0 && !calibMode && !throttlePos && !keepCounting) {
+    if(!tcdIsInP0 && !throttlePos && !keepCounting && !TTrunning && !calibMode) {
         // Save on-the-fly settings 8/3 seconds after last change
         if(brichanged && (now - brichgnow > 8000)) {
             brichanged = false;
@@ -2809,7 +2792,7 @@ static void play_startup()
 
 static void playBrakeWarning()
 {
-    if(brakecnt <= 4) {
+    if(brakecnt <= 3) {
         brakeRem[7] = brakecnt + '1';
         brakecnt++;
     } else {
@@ -3144,6 +3127,13 @@ void mydelay(unsigned long mydel, bool withBTTFN)
     }
 }
 
+unsigned long millisNonZero()
+{
+    unsigned long now = millis();
+    if(!now) now--;
+    return now;
+}
+
 /*
  * Basic Telematics Transmission Framework (BTTFN)
  */
@@ -3382,7 +3372,7 @@ static bool bttfn_checkmc()
 // Check for pending packet and parse it
 static void BTTFNCheckPacket()
 {
-    unsigned long mymillis = millis();
+    unsigned long mymillis = millisNonZero();
     
     int psize = remUDP->parsePacket();
     if(!psize) {
@@ -3500,7 +3490,7 @@ static bool BTTFNSendRequest()
 {
     BTTFNPacketDue = false;
 
-    BTTFNUpdateNow = millis();
+    BTTFNUpdateNow = millisNonZero();
 
     if(WiFi.status() != WL_CONNECTED) {
         BTTFNWiFiUp = false;
@@ -3685,7 +3675,7 @@ void bttfn_loop()
 
     while(bttfn_checkmc() && t--) {}
 
-    unsigned long now = millis();
+    unsigned long now = millisNonZero();
         
     BTTFNCheckPacket();
     

@@ -23,6 +23,9 @@
 #ifdef WM_PARAM2
 #define WM_PARAM2_CAPTION "HA/MQTT Settings"
 #define WM_PARAM2_TITLE "HA/MQTT Settings"
+#define WM_PARAM3
+#define WM_PARAM3_CAPTION "ELRS/CRSF"
+#define WM_PARAM3_TITLE "ELRS/CRSF"
 #endif
 
 #define WM_UPLOAD

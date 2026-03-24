@@ -139,6 +139,7 @@ bool switchMusicFolder(uint8_t nmf, bool isSetup = false);
 void waitAudioDone(bool withBTTFN = false);
 
 void mydelay(unsigned long mydel, bool withBTTFN = false);
+unsigned long millisNonZero();
 
 void addCmdQueue(uint32_t command);
 void bttfn_loop();

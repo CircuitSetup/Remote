@@ -53,9 +53,27 @@
 
 #ifdef HAVE_CRSF
 
+#define ARDUINOJSON_USE_LONG_LONG 0
+#define ARDUINOJSON_USE_DOUBLE 0
+#define ARDUINOJSON_ENABLE_ARDUINO_STRING 0
+#define ARDUINOJSON_ENABLE_ARDUINO_STREAM 0
+#define ARDUINOJSON_ENABLE_STD_STREAM 0
+#define ARDUINOJSON_ENABLE_STD_STRING 0
+#define ARDUINOJSON_ENABLE_NAN 0
+#include <ArduinoJson.h>
 #include <Arduino.h>
+#include <FS.h>
 #include <math.h>
+#include <SD.h>
+#ifdef USE_SPIFFS
+#define MYNVS SPIFFS
+#include <SPIFFS.h>
+#else
+#define MYNVS LittleFS
+#include <LittleFS.h>
+#endif
 
+#include "../../remote_settings.h"
 #include "elrs_crsf_shared.h"
 #include "crsf_kludge.h"
 #include "crsf_settings.h"
@@ -80,8 +98,143 @@ static struct [[gnu::packed]] {
 static int      crsfSetValidBytes = 0;
 static uint32_t crsfSettingsHash  = 0;
 static bool     haveCRSFSettings  = false;
+static uint32_t crsfPageSettingsHash = 0;
 
-static const char *crsfCfgName  = "/crsfcfg";
+static const char *crsfCfgName      = "/crsfcfg";
+static const char *crsfPageCfgName  = "/remcrsfcfg.json";
+
+namespace {
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+#define CRSF_DECLARE_JSON(name, size) JsonDocument name
+#else
+#define CRSF_DECLARE_JSON(name, size) DynamicJsonDocument name(size)
+#endif
+
+static bool crsfPrimaryStorageUsesSD()
+{
+    return FlashROMode;
+}
+
+static bool crsfStorageHasPrimary()
+{
+    return crsfPrimaryStorageUsesSD() ? haveSD : haveFS;
+}
+
+static bool crsfStorageExists(const char *fn, bool useSD)
+{
+    if(useSD) {
+        return haveSD && SD.exists(fn);
+    }
+    return haveFS && MYNVS.exists(fn);
+}
+
+static bool crsfOpenForRead(File& file, const char *fn, bool useSD)
+{
+    if(useSD) {
+        if(haveSD && SD.exists(fn)) {
+            file = SD.open(fn, FILE_READ);
+        }
+    } else if(haveFS && MYNVS.exists(fn)) {
+        file = MYNVS.open(fn, FILE_READ);
+    }
+    return (bool)file;
+}
+
+static bool crsfOpenAnyForRead(File& file, const char *fn)
+{
+    if(crsfOpenForRead(file, fn, crsfPrimaryStorageUsesSD())) {
+        return true;
+    }
+    return crsfOpenForRead(file, fn, !crsfPrimaryStorageUsesSD());
+}
+
+static bool crsfWriteBuffer(const char *fn, const uint8_t *buf, size_t len)
+{
+    File file;
+
+    if(crsfPrimaryStorageUsesSD()) {
+        if(!haveSD) {
+            return false;
+        }
+        file = SD.open(fn, FILE_WRITE);
+    } else {
+        if(!haveFS) {
+            return false;
+        }
+        file = MYNVS.open(fn, FILE_WRITE);
+    }
+
+    if(!file) {
+        return false;
+    }
+
+    bool ok = (file.write(buf, len) == len);
+    file.close();
+    return ok;
+}
+
+static bool crsfReadJSON(File& file, JsonDocument& json, uint32_t *readHash = NULL)
+{
+    size_t bufSize = file.size();
+    char *buf = (char *)malloc(bufSize + 1);
+    bool ok = false;
+
+    if(!buf) {
+        file.close();
+        return false;
+    }
+
+    memset(buf, 0, bufSize + 1);
+    if(file.read((uint8_t *)buf, bufSize) == bufSize) {
+        if(readHash) {
+            *readHash = calcHash((uint8_t *)buf, (int)bufSize);
+        }
+        ok = !deserializeJson(json, buf);
+    }
+    file.close();
+    free(buf);
+    return ok;
+}
+
+static bool crsfCopyValidNumParm(const char *json, char *text, int psize, int lowerLim, int upperLim, int setDefault)
+{
+    int i = setDefault;
+    bool ret = false;
+
+    if(json && *json) {
+        int len = strlen(json);
+        ret = false;
+        for(int j = 0; j < len; j++) {
+            if(json[j] < '0' || json[j] > '9') {
+                ret = true;
+                break;
+            }
+        }
+        if(!ret) {
+            i = atoi(json);
+            if(i < lowerLim) {
+                i = lowerLim;
+                ret = true;
+            } else if(i > upperLim) {
+                i = upperLim;
+                ret = true;
+            }
+        }
+    } else {
+        ret = true;
+    }
+
+    snprintf(text, psize, "%d", i);
+    return ret;
+}
+
+static void crsfSetPageDefaults()
+{
+    snprintf(settings.opMode, sizeof(settings.opMode), "%d", DEF_OPMODE);
+    crsf_normalizeELRSPacketRate(NULL, settings.elrsPktRate);
+}
+
+}
 
 void crsf_load_settings()
 {
@@ -104,6 +257,74 @@ bool crsf_save_settings(bool useCache)
     }
 
     return saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0);
+}
+
+bool crsf_settings_exist()
+{
+    return crsfStorageExists(crsfPageCfgName, crsfPrimaryStorageUsesSD());
+}
+
+void crsf_read_page_settings()
+{
+    File configFile;
+    CRSF_DECLARE_JSON(json, 512);
+    bool writeDefaults = true;
+    bool rewrite = false;
+
+    if(!crsfStorageHasPrimary()) {
+        crsfSetPageDefaults();
+        return;
+    }
+
+    if(crsfOpenAnyForRead(configFile, crsfPageCfgName) && crsfReadJSON(configFile, json, &crsfPageSettingsHash)) {
+        writeDefaults = false;
+        rewrite |= crsfCopyValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
+        rewrite |= crsf_normalizeELRSPacketRate(json["ePRHz"], settings.elrsPktRate);
+    }
+
+    if(writeDefaults) {
+        crsfSetPageDefaults();
+        crsfPageSettingsHash = 0;
+        crsf_write_page_settings();
+    } else if(rewrite) {
+        crsf_write_page_settings();
+    }
+}
+
+void crsf_write_page_settings()
+{
+    CRSF_DECLARE_JSON(json, 256);
+    size_t bufSize = 0;
+    char *buf = NULL;
+    uint32_t newHash = 0;
+
+    if(!crsfStorageHasPrimary()) {
+        return;
+    }
+
+    json["opMode"] = (const char *)settings.opMode;
+    json["ePRHz"] = (const char *)settings.elrsPktRate;
+
+    bufSize = measureJson(json);
+    buf = (char *)malloc(bufSize + 1);
+    if(!buf) {
+        return;
+    }
+
+    memset(buf, 0, bufSize + 1);
+    serializeJson(json, buf, bufSize + 1);
+
+    newHash = calcHash((uint8_t *)buf, (int)bufSize);
+    if(crsfPageSettingsHash && crsfPageSettingsHash == newHash) {
+        free(buf);
+        return;
+    }
+
+    if(crsfWriteBuffer(crsfPageCfgName, (const uint8_t *)buf, bufSize)) {
+        crsfPageSettingsHash = newHash;
+    }
+
+    free(buf);
 }
 
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
