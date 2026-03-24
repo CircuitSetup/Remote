@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.20"              // Do NOT change format.
-#define REMOTE_VERSION_EXTRA "FEB152026"
+#define REMOTE_VERSION "V1.20.1"              // Do NOT change format.
+#define REMOTE_VERSION_EXTRA "MAR232026"
 
 /*************************************************************************
  ***             Configuration for hardware/peripherals                ***
@@ -44,6 +44,8 @@
 
 // Battery monitor support
 #define HAVE_PM
+
+#define HAVE_CRSF
 
 // Uncomment to allow user to disable User Buttons
 // (Was used for prototype)

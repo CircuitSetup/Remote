@@ -1,3 +1,7 @@
+#include "../../remote_global.h"
+
+#ifdef HAVE_CRSF
+
 #include "elrs_crsf_transport.h"
 
 #include <stdarg.h>
@@ -484,3 +488,5 @@ const char *ELRSCrsfTransport::commCodeName(uint8_t code)
         return "";
     }
 }
+
+#endif

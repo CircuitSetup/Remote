@@ -135,6 +135,21 @@
 
 /*  Changelog
  *  
+ *  2026/0x/xx (A10001986) [1.21]
+ *    **********************************************************************************
+ *    ** If updating from below 1.20, please install 1.20 first to have your          **
+ *    ** settings converted. If 1.20 is skipped, some of your settings (static IP,    **
+ *    ** volume, brightness, calibration values, movie mode, coasting, auto-throttle, **
+ *    ** display TCD speed while off) will be restored to default values. It suffices ** 
+ *    ** to install 1.20 and boot once; you can then immediately update to a later    **
+ *    ** version.                                                                     **
+ *    ** https://github.com/realA10001986/Remote/releases/tag/V1.20                   **
+ *    **********************************************************************************
+ *    - WiFi: Allow defining a BSSID (AP MAC address) to connect to a specific AP
+ *      if multiple APs with identical SSID are available.
+ *    - MQTT: Disable if server can't be resolved
+ *    - WiFi: Do not power down AP long as a client is connected
+ *    - Code optimizations and fixes.
  *  2026/02/15 (A10001986) [1.20]
  *    - New file format for secondary and IP settings. This version of the firmware
  *      converts old to new.

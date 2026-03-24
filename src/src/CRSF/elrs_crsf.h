@@ -1,15 +1,15 @@
 #ifndef _ELRS_CRSF_H
 #define _ELRS_CRSF_H
 
-#ifdef CRSF
+#ifdef HAVE_CRSF
 
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-#include "display.h"
+#include "../../display.h"
 #include "elrs_crsf_core.h"
-#include "input.h"
-#include "remote_settings.h"
+#include "../../input.h"
+//#include "remote_settings.h"
 
 class ELRSCrsfMode : private ELRSCrsfHost {
 
@@ -17,6 +17,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         ELRSCrsfMode();
 
         bool begin(
+            uint16_t packetRateHz,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *display,

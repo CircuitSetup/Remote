@@ -1,11 +1,12 @@
-#include "remote_global.h"
+#include "../../remote_global.h"
 
-#ifdef CRSF
+#ifdef HAVE_CRSF
 
 #include <Arduino.h>
 #include <Wire.h>
 
 #include "elrs_crsf.h"
+#include "crsf_settings.h"
 
 namespace {
 
@@ -25,6 +26,7 @@ ELRSCrsfMode::ELRSCrsfMode() : _serial(1)
 }
 
 bool ELRSCrsfMode::begin(
+    uint16_t packetRateHz,
     ButtonPack *buttonPack,
     bool haveButtonPack,
     remDisplay *display,
@@ -70,7 +72,7 @@ bool ELRSCrsfMode::begin(
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
     config.transport.baudRate = 400000;
     config.transport.invertLine = false;
-    config.transport.packetRateHz = (uint16_t)atoi(settings.elrsPacketRateHz);
+    config.transport.packetRateHz = packetRateHz;
     config.transport.frameIntervalMs = (uint16_t)((1000UL + elrsPacketRateOrDefault(config.transport.packetRateHz) - 1) /
                                                   elrsPacketRateOrDefault(config.transport.packetRateHz));
     config.transport.telemetryTimeoutMs = 2000;

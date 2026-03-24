@@ -1,3 +1,7 @@
+#include "../../remote_global.h"
+
+#ifdef HAVE_CRSF
+
 #include "elrs_crsf_core.h"
 
 #include <stdarg.h>
@@ -888,3 +892,6 @@ unsigned long ELRSCrsfCore::axisSampleIntervalMs(uint16_t packetRateHz)
     packetRateHz = elrsPacketRateOrDefault(packetRateHz);
     return (1000UL + packetRateHz - 1) / packetRateHz;
 }
+
+
+#endif
