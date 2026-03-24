@@ -64,7 +64,7 @@
 #include "remote_audio.h"
 #include "remote_wifi.h"
 #ifdef HAVE_CRSF
-#include "src/CRSF/crsf_main.h"
+#include "src/CRSF/crsf_kludge.h"
 #endif
 
 // i2c slave addresses
@@ -141,6 +141,10 @@ static bool useBPack = true;
 static bool useRotEncVol = false;
 
 bool showUpdAvail = true;
+
+#ifdef HAVE_CRSF
+bool        opModeCRSF = false;
+#endif
 
 bool        remoteAllowed = false;
 uint32_t    myRemID = 0x12345678;
@@ -679,6 +683,10 @@ void main_boot2()
     #ifdef HAVE_PM
     }
     #endif
+
+    #ifdef HAVE_CRSF
+    opModeCRSF = evalBool(settings.opMode);
+    #endif
 }
 
 void main_setup()
@@ -759,11 +767,20 @@ void main_setup()
     }
 
     #ifdef HAVE_CRSF
-    if(crsf_main_mode_enabled()) {
+    if(opModeCRSF) {
         Serial.println("Control mode: ELRS/CRSF");
 
-        if(!crsf_main_setup(
-            &butPack,
+        if((useBPack = butPack.begin())) {
+            butPack.setScanInterval(50);
+        } else {
+            #ifdef REMOTE_DBG
+            Serial.println("ButtonPack not detected");
+            #endif
+        }
+
+        crsf_begin(
+            (uint16_t)crsf_getPacketRate(atoi(settings.elrsPktRate)),
+            useBPack ? &butPack : NULL,
             useBPack,
             &remdisplay,
             &pwrled,
@@ -773,16 +790,15 @@ void main_setup()
             useLvlMtr,
             pwrLEDonFP,
             LvLMtronFP
-        )) {
-            Serial.println("CRSF: setup failed");
-        }
+        );
 
-        FPBUnitIsOn = crsf_main_fake_power_on();
-        calibMode = crsf_main_is_calibrating();
+        // Not used for now
+        //csrf_query_status(FPBUnitIsOn);
+        
         return;
     }
     #endif
-
+    
     // Init music player (don't check for SD here)
     switchMusicFolder(musFolderNum, true);
 
@@ -936,16 +952,17 @@ void main_loop()
     unsigned long now = millis();
 
     #ifdef HAVE_CRSF
-    if(crsf_main_mode_enabled()) {
+    if(opModeCRSF) {
         #ifdef HAVE_PM
         battWarn = pwrMon.loop();
         #else
         battWarn = 0;
         #endif
-
-        crsf_main_loop(battWarn);
-        FPBUnitIsOn = crsf_main_fake_power_on();
-        calibMode = crsf_main_is_calibrating();
+        crsf_loop(battWarn);
+        
+        // Not used for now
+        //csrf_query_status(FPBUnitIsOn);
+        
         return;
     }
     #endif

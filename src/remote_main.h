@@ -60,6 +60,10 @@
 
 extern unsigned long powerupMillis;
 
+#ifdef HAVE_CRSF
+extern bool opModeCRSF;
+#endif
+
 extern uint32_t myRemID;
 extern bool     remoteAllowed;
 

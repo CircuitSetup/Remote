@@ -5,7 +5,7 @@
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
- * CRSF settings kludge
+ * CRSF kludge
  *
  * -------------------------------------------------------------------
  * License: MIT NON-AI
@@ -48,14 +48,24 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#ifndef _CRSF_KLUDGE_H
-#define _CRSF_KLUDGE_H
 
-void crsf_load_settings();
-void crsf_read_page_settings();
-void crsf_write_page_settings();
-bool crsf_settings_exist();
-bool crsf_normalizeELRSPacketRate(const char *src, char *dest);
+uint16_t  crsf_getPacketRate(int idx);
+void      crsf_load_settings();
 
-#endif
+bool      crsf_begin(
+            uint16_t packetRateHz,
+            ButtonPack *buttonPack,
+            bool haveButtonPack,
+            remDisplay *display,
+            remLED *powerLed,
+            remLED *levelMeter,
+            remLED *stopLed,
+            bool usePowerLed,
+            bool useLevelMeter,
+            bool powerLedOnFakePower,
+            bool levelMeterOnFakePower);
+
+void      crsf_loop(int battWarn);
+
+void      csrf_query_status(bool &FPBUnitIsOn);
 

@@ -52,10 +52,6 @@
 #ifndef _REMOTE_SETTINGS_H
 #define _REMOTE_SETTINGS_H
 
-#ifdef HAVE_CRSF
-#include "src/CRSF/elrs_crsf_shared.h"
-#endif
-
 extern bool haveFS;
 extern bool haveSD;
 extern bool FlashROMode;
@@ -108,7 +104,7 @@ extern uint8_t musFolderNum;
 
 #ifdef HAVE_CRSF
 #define DEF_OPMODE          0
-#define DEF_ELRSPKTRATE     ELRS_PACKET_RATE_DEFAULT
+#define DEF_ELRSPKTRATE     3
 #endif
 
 struct Settings {
@@ -182,7 +178,7 @@ struct Settings {
 
 #ifdef HAVE_CRSF
     char opMode[2]          = MS(DEF_OPMODE);
-    char elrsPktRate[4]     = MS(DEF_ELRSPKTRATE);
+    char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
 #endif
 
     // Kludges for CP

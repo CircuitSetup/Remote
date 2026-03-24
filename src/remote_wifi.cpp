@@ -65,10 +65,6 @@
 #include "remote_settings.h"
 #include "remote_wifi.h"
 #include "remote_main.h"
-#ifdef HAVE_CRSF
-#include "src/CRSF/crsf_kludge.h"
-#include "src/CRSF/crsf_wifi.h"
-#endif
 #ifdef REMOTE_HAVEMQTT
 #include "mqtt.h"
 #endif
@@ -172,6 +168,23 @@ static const char mqttMsgBadCred[] = "Login failed";
 static const char mqttMsgGenError[] = "Error";
 #endif
 
+#ifdef HAVE_CRSF
+static const char *cOpModeCustHTMLSrc[4] = {
+    "'>Prop operation mode",
+    "copm",
+    ">Legacy%s1'",
+    ">ELRS/CRSF%s"
+};
+static const char *cPktRateCustHTMLSrc[6] = {
+    "'>ELRS Packet rate",
+    "cpktr",
+    ">50 Hz%s1'",
+    ">100 Hz%s2'",
+    ">150 Hz%s3'",
+    ">250 Hz%s"
+};
+#endif
+
 static const char *wmBuildApChnl(const char *dest, int op);
 static const char *wmBuildBestApChnl(const char *dest, int op);
 
@@ -183,6 +196,11 @@ static const char *wmBuildHaveSD(const char *dest, int op);
 static const char *wmBuildMQTTprot(const char *dest, int op);
 static const char *wmBuildMQTTstate(const char *dest, int op);
 static const char *wmBuildMQTTTM(const char *dest, int op);
+#endif
+
+#ifdef HAVE_CRSF
+static const char *wmBuildCRSFOM(const char *dest, int op);
+static const char *wmBuildCRSFPR(const char *dest, int op);
 #endif
 
 // double-% since this goes through sprintf!
@@ -300,9 +318,14 @@ WiFiManagerParameter custom_state(wmBuildMQTTstate);
 WiFiManagerParameter custom_mqttServer("ha_server", "Broker IP[:port] or domain[:port]", settings.mqttServer, 79, "pattern='[a-zA-Z0-9\\.:\\-]+' placeholder='Example: 192.168.1.5'");
 WiFiManagerParameter custom_mqttVers(wmBuildMQTTprot);
 WiFiManagerParameter custom_mqttUser("ha_usr", "User[:Password]", settings.mqttUser, 63, "placeholder='Example: ronald:mySecret' class='mb15'", WFM_LABEL_BEFORE|WFM_FOOT);
-
 WiFiManagerParameter custom_mqtttm(wmBuildMQTTTM);
 #endif // HAVEMQTT
+
+#ifdef HAVE_CRSF
+WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
+WiFiManagerParameter custom_ss_crsf("CRSF Settings", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR, WFM_FOOT);
+#endif
 
 static const int8_t wifiMenu[] = { 
     WM_MENU_WIFI,
@@ -328,7 +351,7 @@ static const int8_t wifiMenu[] = {
 #define UNI_VERSION_EXTRA REMOTE_VERSION_EXTRA
 #define WEBHOME "remote"
 #define PARM2TITLE WM_PARAM2_TITLE
-#define PARM3TITLE WM_PARAM3_TITLE
+#define PARM3TITLE ""
 #define CURRVERSION REMOTE_VERSION
 static const char r_link[] = "remoter.out-a-ti.me";
 static const char apName[]  = "REM-AP";
@@ -541,6 +564,15 @@ void wifi_setup()
     };
     #endif
 
+    #ifdef HAVE_CRSF
+    WiFiManagerParameter *parm3Array[] = {
+      &custom_crsfom,
+      &custom_ss_crsf,
+      &custom_crsfpr,
+      NULL
+    };
+    #endif
+
     // Transition from NVS-saved data to own management:
     if(!settings.ssid[0] && settings.ssid[1] == 'X') {
         
@@ -629,7 +661,12 @@ void wifi_setup()
     #endif
 
     #ifdef HAVE_CRSF
-    crsf_wifi_register_page(wm);
+    wm.allocParms(WM_PARM_SETTINGS3, (sizeof(parm3Array) / sizeof(WiFiManagerParameter *)) - 1);
+    temp = 0;
+    while(parm3Array[temp]) {
+        wm.addParameter(WM_PARM_SETTINGS3, parm3Array[temp]);
+        temp++;
+    }
     #endif
 
     updateConfigPortalValues();
@@ -694,6 +731,9 @@ void wifi_setup2()
 
 #ifdef REMOTE_HAVEMQTT
     if((!settings.mqttServer[0]) || // No server -> no MQTT
+       #ifdef HAVE_CRSF
+       (opModeCRSF)              || // CRSF mode -> no MQTT
+       #endif
        (wifiInAPMode))              // WiFi in AP mode -> no MQTT
         useMQTT = false;  
     
@@ -1016,15 +1056,21 @@ void wifi_loop()
 
             write_mqtt_settings();
             #endif
-        } else if(wifiLoopSaveAction & WLA_SET3) {
 
+        } else if(wifiLoopSaveAction & WLA_SET3) {
+          
+            // Parameters on HA/MQTT Settings page
+            // Note: Parameters that need to be grabbed from the server directly
+            // through getServerParam() must be handled in saveParamsCallback()
+            
             #ifdef HAVE_CRSF
-            crsf_write_page_settings();
+            write_main_settings = true;
             #endif
+            
         }
 
-        // Write settings only for the main settings pages.
-        if(write_main_settings) {
+        // Write settings if requested, or no settings file exists
+        if(write_main_settings || !checkConfigExists()) {
             write_settings();
         }
 
@@ -1447,14 +1493,17 @@ static void saveParamsCallback(int paramspage)
         #endif
         break;
     case 2:
+        #ifdef REMOTE_HAVEMQTT
         getServerParam("mprot", settings.mqttVers, 1, 0);
         for(int i = 0; i < 8; i++) handleMQTTTopMsg(i);
+        #endif
         break;
-    #ifdef HAVE_CRSF
     case 3:
-        crsf_wifi_save_params(wm);
+        #ifdef HAVE_CRSF
+        getServerParam("copm", settings.opMode, 1, 0);
+        getServerParam("cpktr", settings.elrsPktRate, 1, DEF_ELRSPKTRATE);
+        #endif
         break;
-    #endif
     }
 }
 
@@ -1704,10 +1753,6 @@ static void updateConfigPortalValues()
     custom_mqttServer.setValue(settings.mqttServer);
     custom_mqttUser.setValue(settings.mqttUser);
     // user topics/messages done on-the-fly
-    #endif
-
-    #ifdef HAVE_CRSF
-    crsf_wifi_update_values();
     #endif
 }
 
@@ -2099,6 +2144,50 @@ static const char *wmBuildMQTTTM(const char *dest, int op)
     }
     strcat(str, HTTP_SECT_FOOT);
 
+    return str;
+}
+#endif
+
+#ifdef HAVE_CRSF
+static const char *wmBuildCRSFOM(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+
+    unsigned int l = calcSelectMenu(cOpModeCustHTMLSrc, 4, settings.opMode);
+
+    if(op == WM_CP_LEN) {
+        wmLenBuf = l;
+        return (const char *)&wmLenBuf;
+    }
+    
+    char *str = (char *)malloc(l);
+
+    buildSelectMenu(str, cOpModeCustHTMLSrc, 4, settings.opMode);
+    
+    return str;
+}
+
+static const char *wmBuildCRSFPR(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+
+    unsigned int l = calcSelectMenu(cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
+
+    if(op == WM_CP_LEN) {
+        wmLenBuf = l;
+        return (const char *)&wmLenBuf;
+    }
+    
+    char *str = (char *)malloc(l);
+
+    buildSelectMenu(str, cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
+    
     return str;
 }
 #endif

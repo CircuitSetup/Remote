@@ -5,7 +5,7 @@
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
- * CRSF settings kludge
+ * CRSF kludge
  *
  * -------------------------------------------------------------------
  * License: MIT NON-AI
@@ -57,6 +57,7 @@
 #include <math.h>
 
 #include "elrs_crsf_shared.h"
+#include "elrs_crsf.h"
 #include "crsf_kludge.h"
 #include "crsf_settings.h"
 
@@ -82,6 +83,19 @@ static uint32_t crsfSettingsHash  = 0;
 static bool     haveCRSFSettings  = false;
 
 static const char *crsfCfgName  = "/crsfcfg";
+
+static const uint16_t packetRates[4] = {
+    ELRS_PACKET_RATE_50HZ,
+    ELRS_PACKET_RATE_100HZ,
+    ELRS_PACKET_RATE_150HZ,
+    ELRS_PACKET_RATE_250HZ
+};
+
+uint16_t crsf_getPacketRate(int idx)
+{
+    if(idx < 0 || idx > 3) idx = 3;
+    return packetRates[idx];
+}
 
 void crsf_load_settings()
 {
@@ -131,22 +145,45 @@ void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
     crsf_save_settings(true);
 }
 
-bool crsf_normalizeELRSPacketRate(const char *src, char *dest)
+bool crsf_begin(
+            uint16_t packetRateHz,
+            ButtonPack *buttonPack,
+            bool haveButtonPack,
+            remDisplay *remdisplay,
+            remLED *pwrled,
+            remLED *bLvLMeter,
+            remLED *remledStop,
+            bool usePowerLed,
+            bool useLevelMeter,
+            bool powerLedOnFakePower,
+            bool levelMeterOnFakePower)
 {
-    uint16_t packetRateHz = ELRS_PACKET_RATE_DEFAULT;
-    bool wd = false;
-
-    if(!src) {
-        wd = true;
-    } else {
-        packetRateHz = (uint16_t)atoi(src);
-        if(!elrsPacketRateSupported(packetRateHz)) {
-            packetRateHz = ELRS_PACKET_RATE_DEFAULT;
-            wd = true;
-        }
-    }
-    sprintf(dest, "%u", (unsigned)packetRateHz);
-    return wd;
+    return elrsMode.begin(
+            packetRateHz,
+            buttonPack,
+            haveButtonPack,
+            remdisplay,
+            pwrled,
+            bLvLMeter,
+            remledStop,
+            usePowerLed,
+            useLevelMeter,
+            powerLedOnFakePower,
+            levelMeterOnFakePower
+        );
 }
+
+void crsf_loop(int battWarn)
+{
+    elrsMode.loop(battWarn);
+}
+
+void csrf_query_status(bool &FPBUnitIsOn)
+{
+    ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
+    FPBUnitIsOn = elrsStatus.fakePowerOn;
+    //calibMode = elrsStatus.calibrating;
+}
+
 
 #endif

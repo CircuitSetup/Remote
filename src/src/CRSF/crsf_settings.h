@@ -49,18 +49,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef _CRSF_SETTINGS_H
-#define _CRSF_SETTINGS_H
-
-#include "elrs_crsf_shared.h"
-
-void crsf_load_settings();
-void crsf_read_page_settings();
-void crsf_write_page_settings();
-bool crsf_settings_exist();
-bool crsf_normalizeELRSPacketRate(const char *src, char *dest);
 
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 
-#endif

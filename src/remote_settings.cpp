@@ -446,7 +446,6 @@ void settings_setup()
 
     #ifdef HAVE_CRSF
     crsf_load_settings();
-    crsf_read_page_settings();
     #endif
 
     // Load tertiary config file (SD only)
@@ -609,6 +608,11 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, sizeof(settings.batCap), 1000, 6000, DEF_BAT_CAP);
         #endif
 
+        #ifdef HAVE_CRSF
+        wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
+        wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
+        #endif
+  
         // HA/MQTT Settings in separate file
 
     } else {
@@ -698,6 +702,11 @@ void write_settings()
     json["bCa"] = (const char *)settings.batCap;
     #endif
 
+    #ifdef HAVE_CRSF
+    json["opMode"] = (const char *)settings.opMode;
+    json["ePRHz"] = (const char *)settings.elrsPktRate;
+    #endif
+  
     writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);
 }
 
