@@ -64,6 +64,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 {
     _config = config;
     _config.transport.packetRateHz = elrsPacketRateOrDefault(_config.transport.packetRateHz);
+    _config.speedDisplayUnits = elrsSpeedUnitsOrDefault(_config.speedDisplayUnits);
     _transport = ELRSCrsfTransport();
     _transport.setSink(this);
 
@@ -739,7 +740,7 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
     host.displayOn();
     speed10 = getDisplaySpeed10(now, &speedSource);
     if(speedSource != SPEED_SOURCE_NONE) {
-        host.displaySetSpeed((int)speed10);
+        host.displaySetSpeed((int)getDisplaySpeed10ForUnits(speed10));
     } else {
         snprintf(buf, sizeof(buf), "%3d", (_lastLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) ? _linkQuality : 0);
         host.displaySetText(buf);
@@ -798,6 +799,15 @@ uint16_t ELRSCrsfCore::getDisplaySpeed10(unsigned long now, SpeedSource *source)
 
     if(source) {
         *source = activeSource;
+    }
+
+    return speed10;
+}
+
+uint16_t ELRSCrsfCore::getDisplaySpeed10ForUnits(uint16_t speed10) const
+{
+    if(_config.speedDisplayUnits == ELRS_SPEED_UNITS_MPH) {
+        return (uint16_t)(((uint32_t)speed10 * 62137UL + 50000UL) / 100000UL);
     }
 
     return speed10;

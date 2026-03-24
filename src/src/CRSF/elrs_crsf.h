@@ -18,6 +18,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
         bool begin(
             uint16_t packetRateHz,
+            uint8_t speedDisplayUnits,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *display,

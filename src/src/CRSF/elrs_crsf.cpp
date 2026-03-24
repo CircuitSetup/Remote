@@ -27,6 +27,7 @@ ELRSCrsfMode::ELRSCrsfMode() : _serial(1)
 
 bool ELRSCrsfMode::begin(
     uint16_t packetRateHz,
+    uint8_t speedDisplayUnits,
     ButtonPack *buttonPack,
     bool haveButtonPack,
     remDisplay *display,
@@ -70,6 +71,7 @@ bool ELRSCrsfMode::begin(
     config.useLevelMeter = _useLevelMeter;
     config.powerLedOnFakePower = _powerLedOnFakePower;
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
+    config.speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
     config.transport.baudRate = 400000;
     config.transport.invertLine = false;
     config.transport.packetRateHz = packetRateHz;

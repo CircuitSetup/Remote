@@ -16,6 +16,10 @@
 #define ELRS_PACKET_RATE_250HZ 250
 #define ELRS_PACKET_RATE_DEFAULT ELRS_PACKET_RATE_250HZ
 
+#define ELRS_SPEED_UNITS_KMH 0
+#define ELRS_SPEED_UNITS_MPH 1
+#define ELRS_SPEED_UNITS_DEFAULT ELRS_SPEED_UNITS_KMH
+
 struct ELRSAxisCalibrationData {
     int16_t minimum;
     int16_t center;
@@ -33,6 +37,17 @@ static inline bool elrsPacketRateSupported(uint16_t packetRateHz)
 static inline uint16_t elrsPacketRateOrDefault(uint16_t packetRateHz)
 {
     return elrsPacketRateSupported(packetRateHz) ? packetRateHz : (uint16_t)ELRS_PACKET_RATE_DEFAULT;
+}
+
+static inline bool elrsSpeedUnitsSupported(uint8_t speedUnits)
+{
+    return (speedUnits == ELRS_SPEED_UNITS_KMH ||
+            speedUnits == ELRS_SPEED_UNITS_MPH);
+}
+
+static inline uint8_t elrsSpeedUnitsOrDefault(uint8_t speedUnits)
+{
+    return elrsSpeedUnitsSupported(speedUnits) ? speedUnits : (uint8_t)ELRS_SPEED_UNITS_DEFAULT;
 }
 
 #endif

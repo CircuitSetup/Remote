@@ -105,6 +105,7 @@ extern uint8_t musFolderNum;
 #ifdef HAVE_CRSF
 #define DEF_OPMODE          0
 #define DEF_ELRSPKTRATE     3
+#define DEF_ELRSSPDUNIT     0
 #endif
 
 struct Settings {
@@ -179,6 +180,7 @@ struct Settings {
 #ifdef HAVE_CRSF
     char opMode[2]          = MS(DEF_OPMODE);
     char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
+    char elrsSpdUnit[2]     = MS(DEF_ELRSSPDUNIT);
 #endif
 
     // Kludges for CP

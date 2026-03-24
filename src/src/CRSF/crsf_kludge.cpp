@@ -54,35 +54,10 @@
 #ifdef HAVE_CRSF
 
 #include <Arduino.h>
-#include <math.h>
 
 #include "elrs_crsf_shared.h"
 #include "elrs_crsf.h"
 #include "crsf_kludge.h"
-#include "crsf_settings.h"
-
-// External
-extern bool     loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs = 0);
-extern bool     saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
-extern uint32_t calcHash(uint8_t *buf, int len);
-
-// CRSF settings
-// Do not change or insert new values, this
-// struct is saved as such. Append new stuff.
-static struct [[gnu::packed]] {
-    ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT] = {
-        { 0, 1024, 2047 },
-        { 0, 1024, 2047 },
-        { 0, 1024, 2047 },
-        { 0, 1024, 2047 }
-    };
-} crsfSettings;
-
-static int      crsfSetValidBytes = 0;
-static uint32_t crsfSettingsHash  = 0;
-static bool     haveCRSFSettings  = false;
-
-static const char *crsfCfgName  = "/crsfcfg";
 
 static const uint16_t packetRates[4] = {
     ELRS_PACKET_RATE_50HZ,
@@ -91,62 +66,26 @@ static const uint16_t packetRates[4] = {
     ELRS_PACKET_RATE_250HZ
 };
 
+static const uint8_t speedUnits[2] = {
+    ELRS_SPEED_UNITS_KMH,
+    ELRS_SPEED_UNITS_MPH
+};
+
 uint16_t crsf_getPacketRate(int idx)
 {
     if(idx < 0 || idx > 3) idx = 3;
     return packetRates[idx];
 }
 
-void crsf_load_settings()
+uint8_t crsf_getSpeedUnits(int idx)
 {
-    if(loadConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), crsfSetValidBytes, 0)) {
-        crsfSettingsHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
-        haveCRSFSettings = true;
-    }
-}
-
-bool crsf_save_settings(bool useCache)
-{
-    uint32_t oldHash = crsfSettingsHash;
-
-    crsfSettingsHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
-
-    if(useCache) {
-        if(oldHash == crsfSettingsHash) {
-            return true;
-        }
-    }
-
-    return saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0);
-}
-
-void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
-{
-    if(!cal) {
-        return;
-    }
-
-    count = min(count, ELRS_GIMBAL_AXIS_COUNT);
-    for(int i = 0; i < count; i++) {
-        cal[i] = crsfSettings.elrsAxis[i];
-    }
-}
-
-void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
-{
-    if(!cal) {
-        return;
-    }
-
-    count = min(count, ELRS_GIMBAL_AXIS_COUNT);
-    for(int i = 0; i < count; i++) {
-        crsfSettings.elrsAxis[i] = cal[i];
-    }
-    crsf_save_settings(true);
+    if(idx < 0 || idx > 1) idx = 0;
+    return speedUnits[idx];
 }
 
 bool crsf_begin(
             uint16_t packetRateHz,
+            uint8_t speedDisplayUnits,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *remdisplay,
@@ -160,6 +99,7 @@ bool crsf_begin(
 {
     return elrsMode.begin(
             packetRateHz,
+            speedDisplayUnits,
             buttonPack,
             haveButtonPack,
             remdisplay,

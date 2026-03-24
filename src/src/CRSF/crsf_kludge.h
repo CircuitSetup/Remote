@@ -49,11 +49,17 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+class ButtonPack;
+class remDisplay;
+class remLED;
+
 uint16_t  crsf_getPacketRate(int idx);
+uint8_t   crsf_getSpeedUnits(int idx);
 void      crsf_load_settings();
 
 bool      crsf_begin(
             uint16_t packetRateHz,
+            uint8_t speedDisplayUnits,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *display,
@@ -68,4 +74,3 @@ bool      crsf_begin(
 void      crsf_loop(int battWarn);
 
 void      csrf_query_status(bool &FPBUnitIsOn);
-

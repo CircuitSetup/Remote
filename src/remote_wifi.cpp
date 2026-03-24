@@ -183,6 +183,12 @@ static const char *cPktRateCustHTMLSrc[6] = {
     ">150 Hz%s3'",
     ">250 Hz%s"
 };
+static const char *cSpdUnitCustHTMLSrc[4] = {
+    "'>Speed units",
+    "cspdu",
+    ">km/h%s1'",
+    ">mph%s"
+};
 #endif
 
 static const char *wmBuildApChnl(const char *dest, int op);
@@ -201,6 +207,7 @@ static const char *wmBuildMQTTTM(const char *dest, int op);
 #ifdef HAVE_CRSF
 static const char *wmBuildCRSFOM(const char *dest, int op);
 static const char *wmBuildCRSFPR(const char *dest, int op);
+static const char *wmBuildCRSFSU(const char *dest, int op);
 #endif
 
 // double-% since this goes through sprintf!
@@ -324,7 +331,8 @@ WiFiManagerParameter custom_mqtttm(wmBuildMQTTTM);
 #ifdef HAVE_CRSF
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
 WiFiManagerParameter custom_ss_crsf("CRSF Settings", WFM_SECTS|WFM_HL);
-WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR, WFM_FOOT);
+WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
+WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU, WFM_FOOT);
 #endif
 
 static const int8_t wifiMenu[] = { 
@@ -569,6 +577,7 @@ void wifi_setup()
       &custom_crsfom,
       &custom_ss_crsf,
       &custom_crsfpr,
+      &custom_crsfsu,
       NULL
     };
     #endif
@@ -1502,6 +1511,7 @@ static void saveParamsCallback(int paramspage)
         #ifdef HAVE_CRSF
         getServerParam("copm", settings.opMode, 1, 0);
         getServerParam("cpktr", settings.elrsPktRate, 1, DEF_ELRSPKTRATE);
+        getServerParam("cspdu", settings.elrsSpdUnit, 1, DEF_ELRSSPDUNIT);
         #endif
         break;
     }
@@ -2188,6 +2198,27 @@ static const char *wmBuildCRSFPR(const char *dest, int op)
 
     buildSelectMenu(str, cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
     
+    return str;
+}
+
+static const char *wmBuildCRSFSU(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+
+    unsigned int l = calcSelectMenu(cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit);
+
+    if(op == WM_CP_LEN) {
+        wmLenBuf = l;
+        return (const char *)&wmLenBuf;
+    }
+
+    char *str = (char *)malloc(l);
+
+    buildSelectMenu(str, cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit);
+
     return str;
 }
 #endif

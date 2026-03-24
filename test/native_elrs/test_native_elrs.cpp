@@ -860,6 +860,45 @@ static void test_display_policy_prefers_gps_then_airspeed_then_link_quality()
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
 }
 
+static void test_speed_units_default_to_kmh()
+{
+    TEST_ASSERT_EQUAL_UINT8(ELRS_SPEED_UNITS_KMH, elrsSpeedUnitsOrDefault(ELRS_SPEED_UNITS_KMH));
+    TEST_ASSERT_EQUAL_UINT8(ELRS_SPEED_UNITS_MPH, elrsSpeedUnitsOrDefault(ELRS_SPEED_UNITS_MPH));
+    TEST_ASSERT_EQUAL_UINT8(ELRS_SPEED_UNITS_KMH, elrsSpeedUnitsOrDefault(99));
+}
+
+static void test_speed_display_can_convert_kmh_to_mph()
+{
+    FakeHost hostKmh;
+    FakeHost hostMph;
+    ELRSCrsfCore coreKmh;
+    ELRSCrsfCore coreMph;
+    ELRSCrsfCoreConfig configKmh = defaultConfig();
+    ELRSCrsfCoreConfig configMph = defaultConfig();
+
+    configMph.speedDisplayUnits = ELRS_SPEED_UNITS_MPH;
+
+    TEST_ASSERT_TRUE(coreKmh.begin(hostKmh, configKmh, 0));
+    TEST_ASSERT_TRUE(coreMph.begin(hostMph, configMph, 0));
+
+    hostKmh.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
+    hostKmh.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0xCE, 0, 0, 0, 0, 0 }));
+    hostMph.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
+    hostMph.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0xCE, 0, 0, 0, 0, 0 }));
+
+    coreKmh.loop(hostKmh, 100, 0);
+    coreMph.loop(hostMph, 100, 0);
+    hostKmh.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
+    hostMph.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
+    coreKmh.loop(hostKmh, 1500, 0);
+    coreMph.loop(hostMph, 1500, 0);
+
+    TEST_ASSERT_EQUAL(DISPLAY_SPEED, hostKmh.displayMode);
+    TEST_ASSERT_EQUAL_INT(123, hostKmh.displaySpeed);
+    TEST_ASSERT_EQUAL(DISPLAY_SPEED, hostMph.displayMode);
+    TEST_ASSERT_EQUAL_INT(76, hostMph.displaySpeed);
+}
+
 static void test_battery_overlay_beats_comm_overlay()
 {
     FakeHost host;
@@ -1007,6 +1046,8 @@ int main(int argc, char **argv)
     RUN_TEST(test_crc_burst_sets_crc_comm_code);
     RUN_TEST(test_frame_burst_sets_frm_comm_code);
     RUN_TEST(test_display_policy_prefers_gps_then_airspeed_then_link_quality);
+    RUN_TEST(test_speed_units_default_to_kmh);
+    RUN_TEST(test_speed_display_can_convert_kmh_to_mph);
     RUN_TEST(test_battery_overlay_beats_comm_overlay);
     RUN_TEST(test_calibration_prompt_beats_comm_overlay);
     RUN_TEST(test_adc_overlay_beats_comm_overlay);

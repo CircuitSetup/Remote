@@ -76,6 +76,7 @@ struct ELRSCrsfCoreConfig {
     bool useLevelMeter = false;
     bool powerLedOnFakePower = false;
     bool levelMeterOnFakePower = false;
+    uint8_t speedDisplayUnits = ELRS_SPEED_UNITS_DEFAULT;
     ELRSCrsfTransportConfig transport;
 };
 
@@ -152,6 +153,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool adcFaultActive(unsigned long now) const;
         bool buttonPackFaultActive(unsigned long now) const;
         uint16_t getDisplaySpeed10(unsigned long now, SpeedSource *source = NULL) const;
+        uint16_t getDisplaySpeed10ForUnits(uint16_t speed10) const;
         void showOverlay(const char *text, unsigned long now, unsigned long durationMs);
         void showCommOverlay(const char *text, unsigned long now, unsigned long durationMs);
 
