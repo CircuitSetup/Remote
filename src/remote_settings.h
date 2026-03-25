@@ -106,6 +106,9 @@ extern uint8_t musFolderNum;
 #define DEF_OPMODE          0
 #define DEF_ELRSPKTRATE     3
 #define DEF_ELRSSPDUNIT     0
+#define DEF_ELRSTLMRATIO    0
+#define DEF_ELRSMAXPOWER    3
+#define DEF_ELRSDYNPWR      0
 #endif
 
 struct Settings {
@@ -181,6 +184,9 @@ struct Settings {
     char opMode[2]          = MS(DEF_OPMODE);
     char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
     char elrsSpdUnit[2]     = MS(DEF_ELRSSPDUNIT);
+    char elrsTlmRatio[2]    = MS(DEF_ELRSTLMRATIO);
+    char elrsMaxPower[2]    = MS(DEF_ELRSMAXPOWER);
+    char elrsDynPower[2]    = MS(DEF_ELRSDYNPWR);
 #endif
 
     // Kludges for CP

@@ -28,6 +28,9 @@ ELRSCrsfMode::ELRSCrsfMode() : _serial(1)
 bool ELRSCrsfMode::begin(
     uint16_t packetRateHz,
     uint8_t speedDisplayUnits,
+    uint8_t telemetryRatio,
+    uint8_t maxPower,
+    uint8_t dynamicPower,
     ButtonPack *buttonPack,
     bool haveButtonPack,
     remDisplay *display,
@@ -72,6 +75,9 @@ bool ELRSCrsfMode::begin(
     config.powerLedOnFakePower = _powerLedOnFakePower;
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
     config.speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
+    config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
+    config.maxPower = elrsMaxPowerOrDefault(maxPower);
+    config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
     config.transport.baudRate = 400000;
     config.transport.invertLine = false;
     config.transport.packetRateHz = packetRateHz;

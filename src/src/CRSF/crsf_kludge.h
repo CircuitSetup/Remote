@@ -55,11 +55,17 @@ class remLED;
 
 uint16_t  crsf_getPacketRate(int idx);
 uint8_t   crsf_getSpeedUnits(int idx);
+uint8_t   crsf_getTelemetryRatio(int idx);
+uint8_t   crsf_getMaxPower(int idx);
+uint8_t   crsf_getDynamicPower(int idx);
 void      crsf_load_settings();
 
 bool      crsf_begin(
             uint16_t packetRateHz,
             uint8_t speedDisplayUnits,
+            uint8_t telemetryRatio,
+            uint8_t maxPower,
+            uint8_t dynamicPower,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *display,

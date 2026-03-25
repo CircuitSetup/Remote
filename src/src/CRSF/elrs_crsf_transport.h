@@ -72,7 +72,7 @@ class ELRSCrsfTransportSink {
     public:
         virtual ~ELRSCrsfTransportSink() {}
 
-        virtual bool onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) = 0;
+        virtual bool onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) = 0;
 };
 
 class ELRSCrsfTransport {
@@ -85,6 +85,8 @@ class ELRSCrsfTransport {
         void setChannels(const uint16_t channels[16]);
         void loop(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs);
         void loop(ELRSCrsfTransportHal &hal, unsigned long now);
+        bool queueServiceFrame(const uint8_t *frame, size_t frameLen);
+        bool hasPendingServiceFrame() const;
 
         const ELRSCrsfTransportConfig &config() const;
         const ELRSCrsfTransportStatus &status() const;
@@ -93,6 +95,7 @@ class ELRSCrsfTransport {
         static size_t packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize);
 
     private:
+        void sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen, unsigned long now, unsigned long nowUs, const char *prefix);
         void sendChannels(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs);
         void pollFrames(ELRSCrsfTransportHal &hal, unsigned long now);
         void resyncRxBuffer(size_t startIndex = 1);
@@ -115,12 +118,15 @@ class ELRSCrsfTransport {
 
         uint16_t _channels[16];
         uint8_t _rxFrame[64];
+        uint8_t _serviceFrame[64];
         size_t _rxFrameLen = 0;
+        size_t _serviceFrameLen = 0;
         unsigned long _startedAt = 0;
         unsigned long _lastReplyAt = 0;
         unsigned long _lastTelemetryAt = 0;
         unsigned long _replyDeadlineAt = 0;
         unsigned long _nextTxAtUs = 0;
+        unsigned long _lastServiceTxAt = 0;
         unsigned long _crcBurstAt = 0;
         unsigned long _frameBurstAt = 0;
         uint32_t _txIntervalUs = 0;
@@ -131,6 +137,7 @@ class ELRSCrsfTransport {
         bool _haveTelemetry = false;
         bool _waitingForReply = false;
         bool _replySeenForTx = false;
+        bool _haveServiceFrame = false;
 };
 
 #endif

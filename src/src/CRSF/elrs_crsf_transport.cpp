@@ -18,6 +18,7 @@ constexpr uint8_t CRSF_ADDR_CRSF_TRANSMITTER = 0xEE;
 constexpr uint8_t CRSF_ADDR_CRSF_RECEIVER = 0xEC;
 constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
 constexpr uint8_t CRSF_COMM_BURST_THRESHOLD = 3;
+constexpr unsigned long CRSF_SERVICE_FRAME_GAP_MS = 100;
 
 static bool isLikelySyncByte(uint8_t value)
 {
@@ -42,6 +43,7 @@ ELRSCrsfTransport::ELRSCrsfTransport()
     }
 
     memset(_rxFrame, 0, sizeof(_rxFrame));
+    memset(_serviceFrame, 0, sizeof(_serviceFrame));
 }
 
 void ELRSCrsfTransport::setSink(ELRSCrsfTransportSink *sink)
@@ -80,6 +82,7 @@ void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransport
     _lastTelemetryAt = 0;
     _replyDeadlineAt = 0;
     _nextTxAtUs = nowUs;
+    _lastServiceTxAt = 0;
     _crcBurstAt = 0;
     _frameBurstAt = 0;
     _txIntervalUs = 1000000UL / _config.packetRateHz;
@@ -90,8 +93,11 @@ void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransport
     _haveTelemetry = false;
     _waitingForReply = false;
     _replySeenForTx = false;
+    _haveServiceFrame = false;
     _rxFrameLen = 0;
+    _serviceFrameLen = 0;
     memset(_rxFrame, 0, sizeof(_rxFrame));
+    memset(_serviceFrame, 0, sizeof(_serviceFrame));
 
     hal.stopSerial();
     hal.startSerial(_config.baudRate, _config.invertLine);
@@ -128,32 +134,43 @@ void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsig
     updateState(hal, now);
 
     if(nowUs >= _nextTxAtUs) {
-        sendChannels(hal, now, nowUs);
+        if(_haveServiceFrame && (!_lastServiceTxAt || (now - _lastServiceTxAt >= CRSF_SERVICE_FRAME_GAP_MS))) {
+            sendFrame(hal, _serviceFrame, _serviceFrameLen, now, nowUs, "ELRS/CRSF CFG");
+            _haveServiceFrame = false;
+            _serviceFrameLen = 0;
+            _lastServiceTxAt = now;
+        } else {
+            sendChannels(hal, now, nowUs);
+        }
     }
 }
 
-const ELRSCrsfTransportConfig &ELRSCrsfTransport::config() const
+bool ELRSCrsfTransport::queueServiceFrame(const uint8_t *frame, size_t frameLen)
 {
-    return _config;
+    if(!frame || frameLen < 4 || frameLen > sizeof(_serviceFrame)) {
+        return false;
+    }
+
+    memcpy(_serviceFrame, frame, frameLen);
+    _serviceFrameLen = frameLen;
+    _haveServiceFrame = true;
+    return true;
 }
 
-const ELRSCrsfTransportStatus &ELRSCrsfTransport::status() const
+bool ELRSCrsfTransport::hasPendingServiceFrame() const
 {
-    return _status;
+    return _haveServiceFrame;
 }
 
-void ELRSCrsfTransport::sendChannels(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs)
+void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen, unsigned long now, unsigned long nowUs, const char *prefix)
 {
-    uint8_t frame[26];
-    size_t frameLen = packRcChannelsFrame(_channels, frame, sizeof(frame));
-
-    if(!frameLen) {
+    if(!frame || !frameLen) {
         return;
     }
 
     if(_status.debugEnabled) {
         logf(hal, "ELRS/CRSF transport: OE on @%luus", nowUs);
-        logFrame(hal, "ELRS/CRSF TX", frame, frameLen, true);
+        logFrame(hal, prefix, frame, frameLen, true);
     }
 
     hal.setDriverEnabled(true);
@@ -174,6 +191,27 @@ void ELRSCrsfTransport::sendChannels(ELRSCrsfTransportHal &hal, unsigned long no
     do {
         advanceNextTxDeadline();
     } while(_nextTxAtUs <= nowUs);
+}
+
+const ELRSCrsfTransportConfig &ELRSCrsfTransport::config() const
+{
+    return _config;
+}
+
+const ELRSCrsfTransportStatus &ELRSCrsfTransport::status() const
+{
+    return _status;
+}
+
+void ELRSCrsfTransport::sendChannels(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs)
+{
+    uint8_t frame[26];
+    size_t frameLen = packRcChannelsFrame(_channels, frame, sizeof(frame));
+
+    if(!frameLen) {
+        return;
+    }
+    sendFrame(hal, frame, frameLen, now, nowUs, "ELRS/CRSF TX");
 }
 
 void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
@@ -244,7 +282,7 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
                     if(_sink) {
                         const uint8_t *payload = _rxFrame + 3;
                         size_t payloadLen = expectLen - 4;
-                        supportedTelemetry = _sink->onCrsfFrame(_rxFrame[2], payload, payloadLen, now);
+                        supportedTelemetry = _sink->onCrsfFrame(_rxFrame[0], _rxFrame[2], payload, payloadLen, now);
                     }
 
                     if(supportedTelemetry) {

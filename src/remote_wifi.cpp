@@ -189,6 +189,33 @@ static const char *cSpdUnitCustHTMLSrc[4] = {
     ">km/h%s1'",
     ">mph%s"
 };
+static const char *cTlmRatioCustHTMLSrc[9] = {
+    "'>Telemetry Ratio",
+    "ctlmr",
+    ">Std%s1'",
+    ">1:2%s2'",
+    ">1:4%s3'",
+    ">1:8%s4'",
+    ">1:16%s5'",
+    ">1:32%s6'",
+    ">Off%s"
+};
+static const char *cMaxPowerCustHTMLSrc[8] = {
+    "'>Max Power",
+    "cmpwr",
+    ">10 mW%s1'",
+    ">25 mW%s2'",
+    ">100 mW%s3'",
+    ">250 mW%s4'",
+    ">500 mW%s5'",
+    ">1000 mW%s"
+};
+static const char *cDynPowerCustHTMLSrc[4] = {
+    "'>Dynamic Power",
+    "cdynp",
+    ">Off%s1'",
+    ">Dyn%s"
+};
 #endif
 
 static const char *wmBuildApChnl(const char *dest, int op);
@@ -208,6 +235,9 @@ static const char *wmBuildMQTTTM(const char *dest, int op);
 static const char *wmBuildCRSFOM(const char *dest, int op);
 static const char *wmBuildCRSFPR(const char *dest, int op);
 static const char *wmBuildCRSFSU(const char *dest, int op);
+static const char *wmBuildCRSFTR(const char *dest, int op);
+static const char *wmBuildCRSFMP(const char *dest, int op);
+static const char *wmBuildCRSFDP(const char *dest, int op);
 #endif
 
 // double-% since this goes through sprintf!
@@ -332,7 +362,10 @@ WiFiManagerParameter custom_mqtttm(wmBuildMQTTTM);
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
 WiFiManagerParameter custom_ss_crsf("CRSF Settings", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
-WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU, WFM_FOOT);
+WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
+WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
+WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
+WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP, WFM_FOOT);
 #endif
 
 static const int8_t wifiMenu[] = { 
@@ -578,6 +611,9 @@ void wifi_setup()
       &custom_ss_crsf,
       &custom_crsfpr,
       &custom_crsfsu,
+      &custom_crsftr,
+      &custom_crsfmp,
+      &custom_crsfdp,
       NULL
     };
     #endif
@@ -1512,6 +1548,9 @@ static void saveParamsCallback(int paramspage)
         getServerParam("copm", settings.opMode, 1, 0);
         getServerParam("cpktr", settings.elrsPktRate, 1, DEF_ELRSPKTRATE);
         getServerParam("cspdu", settings.elrsSpdUnit, 1, DEF_ELRSSPDUNIT);
+        getServerParam("ctlmr", settings.elrsTlmRatio, 1, DEF_ELRSTLMRATIO);
+        getServerParam("cmpwr", settings.elrsMaxPower, 1, DEF_ELRSMAXPOWER);
+        getServerParam("cdynp", settings.elrsDynPower, 1, DEF_ELRSDYNPWR);
         #endif
         break;
     }
@@ -2159,67 +2198,55 @@ static const char *wmBuildMQTTTM(const char *dest, int op)
 #endif
 
 #ifdef HAVE_CRSF
-static const char *wmBuildCRSFOM(const char *dest, int op)
+static const char *wmBuildCRSFSelect(const char *dest, int op, const char **htmlSrc, int count, char *setting)
 {
     if(op == WM_CP_DESTROY) {
         if(dest) free((void *)dest);
         return NULL;
     }
 
-    unsigned int l = calcSelectMenu(cOpModeCustHTMLSrc, 4, settings.opMode);
+    unsigned int l = calcSelectMenu(htmlSrc, count, setting);
 
     if(op == WM_CP_LEN) {
         wmLenBuf = l;
         return (const char *)&wmLenBuf;
     }
-    
+
     char *str = (char *)malloc(l);
 
-    buildSelectMenu(str, cOpModeCustHTMLSrc, 4, settings.opMode);
-    
+    buildSelectMenu(str, htmlSrc, count, setting);
+
     return str;
+}
+
+static const char *wmBuildCRSFOM(const char *dest, int op)
+{
+    return wmBuildCRSFSelect(dest, op, cOpModeCustHTMLSrc, 4, settings.opMode);
 }
 
 static const char *wmBuildCRSFPR(const char *dest, int op)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-
-    unsigned int l = calcSelectMenu(cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
-
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
-    
-    char *str = (char *)malloc(l);
-
-    buildSelectMenu(str, cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
-    
-    return str;
+    return wmBuildCRSFSelect(dest, op, cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
 }
 
 static const char *wmBuildCRSFSU(const char *dest, int op)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
+    return wmBuildCRSFSelect(dest, op, cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit);
+}
 
-    unsigned int l = calcSelectMenu(cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit);
+static const char *wmBuildCRSFTR(const char *dest, int op)
+{
+    return wmBuildCRSFSelect(dest, op, cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio);
+}
 
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
+static const char *wmBuildCRSFMP(const char *dest, int op)
+{
+    return wmBuildCRSFSelect(dest, op, cMaxPowerCustHTMLSrc, 8, settings.elrsMaxPower);
+}
 
-    char *str = (char *)malloc(l);
-
-    buildSelectMenu(str, cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit);
-
-    return str;
+static const char *wmBuildCRSFDP(const char *dest, int op)
+{
+    return wmBuildCRSFSelect(dest, op, cDynPowerCustHTMLSrc, 4, settings.elrsDynPower);
 }
 #endif
 

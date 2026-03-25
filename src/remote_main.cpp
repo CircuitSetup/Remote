@@ -781,6 +781,9 @@ void main_setup()
         crsf_begin(
             (uint16_t)crsf_getPacketRate(atoi(settings.elrsPktRate)),
             crsf_getSpeedUnits(atoi(settings.elrsSpdUnit)),
+            crsf_getTelemetryRatio(atoi(settings.elrsTlmRatio)),
+            crsf_getMaxPower(atoi(settings.elrsMaxPower)),
+            crsf_getDynamicPower(atoi(settings.elrsDynPower)),
             useBPack ? &butPack : NULL,
             useBPack,
             &remdisplay,

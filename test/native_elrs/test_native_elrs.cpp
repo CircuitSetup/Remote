@@ -1,4 +1,5 @@
 #include <deque>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -272,6 +273,114 @@ static std::vector<uint8_t> makeFrameWithSync(uint8_t syncByte, uint8_t type, co
 
     frame[0] = syncByte;
     return frame;
+}
+
+static std::vector<uint8_t> makeExtendedFrame(uint8_t syncByte, uint8_t type, uint8_t dest, uint8_t orig, const std::vector<uint8_t> &payload)
+{
+    std::vector<uint8_t> frame;
+
+    frame.push_back(syncByte);
+    frame.push_back((uint8_t)(payload.size() + 4));
+    frame.push_back(type);
+    frame.push_back(dest);
+    frame.push_back(orig);
+    frame.insert(frame.end(), payload.begin(), payload.end());
+    frame.push_back(ELRSCrsfCore::crc8D5(&frame[2], payload.size() + 3));
+
+    return frame;
+}
+
+static std::vector<uint8_t> makeDeviceInfoFrame(const char *name, uint8_t fieldCount)
+{
+    std::vector<uint8_t> payload;
+    const char *deviceName = name ? name : "ExpressLRS TX";
+
+    payload.insert(payload.end(), deviceName, deviceName + strlen(deviceName) + 1);
+    payload.push_back(0x45);
+    payload.push_back(0x4C);
+    payload.push_back(0x52);
+    payload.push_back(0x53);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(fieldCount);
+    payload.push_back(0x00);
+
+    return makeExtendedFrame(0xEE, 0x29, 0xEA, 0xEE, payload);
+}
+
+static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const char *name, const char *options, uint8_t value, uint8_t maxValue)
+{
+    std::vector<uint8_t> payload;
+
+    payload.push_back(fieldId);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x09);
+    payload.insert(payload.end(), name, name + strlen(name) + 1);
+    payload.insert(payload.end(), options, options + strlen(options) + 1);
+    payload.push_back(value);
+    payload.push_back(0x00);
+    payload.push_back(maxValue);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+
+    return makeExtendedFrame(0xEE, 0x2B, 0xEA, 0xEE, payload);
+}
+
+static int countWrittenFrameType(const FakeHost &host, uint8_t type)
+{
+    int count = 0;
+
+    for(size_t i = 0; i < host.writes.size(); i++) {
+        if(host.writes[i].size() >= 3 && host.writes[i][2] == type) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+static const std::vector<uint8_t> *findWrittenFrameType(const FakeHost &host, uint8_t type, int occurrence)
+{
+    int seen = 0;
+
+    for(size_t i = 0; i < host.writes.size(); i++) {
+        if(host.writes[i].size() >= 3 && host.writes[i][2] == type) {
+            if(seen == occurrence) {
+                return &host.writes[i];
+            }
+            seen++;
+        }
+    }
+
+    return NULL;
+}
+
+static std::string writtenFrameTypes(const FakeHost &host)
+{
+    std::string result;
+
+    for(size_t i = 0; i < host.writes.size(); i++) {
+        char buf[8];
+
+        if(i) {
+            result += ' ';
+        }
+        if(host.writes[i].size() >= 3) {
+            snprintf(buf, sizeof(buf), "%02X", host.writes[i][2]);
+        } else {
+            snprintf(buf, sizeof(buf), "--");
+        }
+        result += buf;
+    }
+
+    return result;
 }
 
 static std::vector<uint8_t> makeGarbage()
@@ -1009,6 +1118,101 @@ static void test_battery_overlay_and_calibration_prompt_still_override_normal_di
     TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
 }
 
+static void test_module_settings_are_discovered_and_written()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    const std::vector<uint8_t> *frame = NULL;
+
+    config.transport.packetRateHz = 50;
+    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    config.maxPower = ELRS_MAX_POWER_500MW;
+    config.dynamicPower = ELRS_DYNAMIC_POWER_DYNAMIC;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+    frame = findWrittenFrameType(host, 0x28, 0);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(0xEE, (*frame)[0]);
+    TEST_ASSERT_EQUAL_UINT8(0xEE, (*frame)[3]);
+    TEST_ASSERT_EQUAL_UINT8(0xEA, (*frame)[4]);
+
+    host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 3));
+    loopAt(core, host, 1030, 1030000);
+
+    loopAt(core, host, 1120, 1120000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
+    host.queueFrame(makeTextSelectionEntryFrame(1, "Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4));
+    loopAt(core, host, 1130, 1130000);
+
+    loopAt(core, host, 1230, 1230000);
+    loopAt(core, host, 1240, 1240000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x2C), writtenFrameTypes(host).c_str());
+    host.queueFrame(makeTextSelectionEntryFrame(2, "Max Power", "10;25;100;250;500;1000", 3, 5));
+    loopAt(core, host, 1250, 1250000);
+
+    loopAt(core, host, 1350, 1350000);
+    loopAt(core, host, 1360, 1360000);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
+    host.queueFrame(makeTextSelectionEntryFrame(3, "Dynamic", "Off;Dyn;AUX9", 0, 2));
+    loopAt(core, host, 1370, 1370000);
+
+    loopAt(core, host, 1470, 1470000);
+    loopAt(core, host, 1480, 1480000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
+    frame = findWrittenFrameType(host, 0x2D, 0);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(2, (*frame)[6]);
+
+    loopAt(core, host, 1770, 1770000);
+    loopAt(core, host, 1780, 1780000);
+    loopAt(core, host, 1880, 1880000);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2D));
+    frame = findWrittenFrameType(host, 0x2D, 1);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(2, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(4, (*frame)[6]);
+
+    loopAt(core, host, 2170, 2170000);
+    loopAt(core, host, 2180, 2180000);
+    loopAt(core, host, 2280, 2280000);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2D));
+    frame = findWrittenFrameType(host, 0x2D, 2);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(3, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[6]);
+}
+
+static void test_module_settings_retry_without_blocking_rc_output()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+
+    config.transport.packetRateHz = 50;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+
+    loopAt(core, host, 1600, 1600000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+
+    loopAt(core, host, 11600, 11600000);
+    loopAt(core, host, 11620, 11620000);
+    loopAt(core, host, 11640, 11640000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x28), writtenFrameTypes(host).c_str());
+    TEST_ASSERT_GREATER_THAN_INT(2, countWrittenFrameType(host, 0x16));
+}
+
 }
 
 void setUp(void)
@@ -1053,5 +1257,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_overlay_beats_comm_overlay);
     RUN_TEST(test_button_pack_overlay_beats_comm_overlay);
     RUN_TEST(test_battery_overlay_and_calibration_prompt_still_override_normal_display);
+    RUN_TEST(test_module_settings_are_discovered_and_written);
+    RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
     return UNITY_END();
 }

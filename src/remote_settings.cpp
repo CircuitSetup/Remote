@@ -612,6 +612,9 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
         wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
         wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, sizeof(settings.elrsSpdUnit), 0, 1, DEF_ELRSSPDUNIT);
+        wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, sizeof(settings.elrsTlmRatio), 0, 6, DEF_ELRSTLMRATIO);
+        wd |= CopyCheckValidNumParm(json["eMxPwr"], settings.elrsMaxPower, sizeof(settings.elrsMaxPower), 0, 5, DEF_ELRSMAXPOWER);
+        wd |= CopyCheckValidNumParm(json["eDynP"], settings.elrsDynPower, sizeof(settings.elrsDynPower), 0, 1, DEF_ELRSDYNPWR);
 #endif
   
         // HA/MQTT Settings in separate file
@@ -707,6 +710,9 @@ void write_settings()
     json["opMode"] = (const char *)settings.opMode;
     json["ePRHz"] = (const char *)settings.elrsPktRate;
     json["eSUnit"] = (const char *)settings.elrsSpdUnit;
+    json["eTlmR"] = (const char *)settings.elrsTlmRatio;
+    json["eMxPwr"] = (const char *)settings.elrsMaxPower;
+    json["eDynP"] = (const char *)settings.elrsDynPower;
 #endif
   
     writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);

@@ -19,6 +19,9 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool begin(
             uint16_t packetRateHz,
             uint8_t speedDisplayUnits,
+            uint8_t telemetryRatio,
+            uint8_t maxPower,
+            uint8_t dynamicPower,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *display,

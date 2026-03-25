@@ -96,6 +96,30 @@ static const uint8_t speedUnits[2] = {
     ELRS_SPEED_UNITS_MPH
 };
 
+static const uint8_t telemetryRatios[7] = {
+    ELRS_TLM_RATIO_STD,
+    ELRS_TLM_RATIO_1_2,
+    ELRS_TLM_RATIO_1_4,
+    ELRS_TLM_RATIO_1_8,
+    ELRS_TLM_RATIO_1_16,
+    ELRS_TLM_RATIO_1_32,
+    ELRS_TLM_RATIO_OFF
+};
+
+static const uint8_t maxPowers[6] = {
+    ELRS_MAX_POWER_10MW,
+    ELRS_MAX_POWER_25MW,
+    ELRS_MAX_POWER_100MW,
+    ELRS_MAX_POWER_250MW,
+    ELRS_MAX_POWER_500MW,
+    ELRS_MAX_POWER_1000MW
+};
+
+static const uint8_t dynamicPowers[2] = {
+    ELRS_DYNAMIC_POWER_OFF,
+    ELRS_DYNAMIC_POWER_DYNAMIC
+};
+
 uint16_t crsf_getPacketRate(int idx)
 {
     if(idx < 0 || idx > 3) idx = 3;
@@ -106,6 +130,24 @@ uint8_t crsf_getSpeedUnits(int idx)
 {
     if(idx < 0 || idx > 1) idx = 0;
     return speedUnits[idx];
+}
+
+uint8_t crsf_getTelemetryRatio(int idx)
+{
+    if(idx < 0 || idx > 6) idx = 0;
+    return telemetryRatios[idx];
+}
+
+uint8_t crsf_getMaxPower(int idx)
+{
+    if(idx < 0 || idx > 5) idx = 3;
+    return maxPowers[idx];
+}
+
+uint8_t crsf_getDynamicPower(int idx)
+{
+    if(idx < 0 || idx > 1) idx = 0;
+    return dynamicPowers[idx];
 }
 
 void crsf_load_settings()
@@ -159,6 +201,9 @@ void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
 bool crsf_begin(
             uint16_t packetRateHz,
             uint8_t speedDisplayUnits,
+            uint8_t telemetryRatio,
+            uint8_t maxPower,
+            uint8_t dynamicPower,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *remdisplay,
@@ -173,6 +218,9 @@ bool crsf_begin(
     return elrsMode.begin(
             packetRateHz,
             speedDisplayUnits,
+            telemetryRatio,
+            maxPower,
+            dynamicPower,
             buttonPack,
             haveButtonPack,
             remdisplay,

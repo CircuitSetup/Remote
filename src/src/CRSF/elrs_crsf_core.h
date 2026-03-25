@@ -77,6 +77,9 @@ struct ELRSCrsfCoreConfig {
     bool powerLedOnFakePower = false;
     bool levelMeterOnFakePower = false;
     uint8_t speedDisplayUnits = ELRS_SPEED_UNITS_DEFAULT;
+    uint8_t telemetryRatio = ELRS_TLM_RATIO_DEFAULT;
+    uint8_t maxPower = ELRS_MAX_POWER_DEFAULT;
+    uint8_t dynamicPower = ELRS_DYNAMIC_POWER_DEFAULT;
     ELRSCrsfTransportConfig transport;
 };
 
@@ -133,7 +136,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         bool sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force = false);
         uint8_t samplePackStates(ELRSCrsfHost &host, unsigned long now);
-        bool onCrsfFrame(uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
+        bool onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
 
         void updateCalibrationButton(ELRSCrsfHost &host, unsigned long now, int battWarn);
         void handleCalibrationShort(ELRSCrsfHost &host, unsigned long now, int battWarn);
@@ -148,12 +151,27 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void updateBatteryWarning(ELRSCrsfHost &host, unsigned long now, int battWarn, bool fakePowerOn);
         void updateInputFaults(ELRSCrsfHost &host, unsigned long now);
         void updateBenchState(ELRSCrsfHost &host, unsigned long now);
+        void updateModuleConfig(ELRSCrsfHost &host, unsigned long now);
         void updateDisplay(ELRSCrsfHost &host, unsigned long now, int battWarn);
         bool hasRecentTelemetry(unsigned long now) const;
         bool adcFaultActive(unsigned long now) const;
         bool buttonPackFaultActive(unsigned long now) const;
         uint16_t getDisplaySpeed10(unsigned long now, SpeedSource *source = NULL) const;
         uint16_t getDisplaySpeed10ForUnits(uint16_t speed10) const;
+        void resetModuleConfigSession();
+        void resetModuleParameters();
+        bool buildExtendedFrame(uint8_t type, uint8_t destAddr, uint8_t origAddr, const uint8_t *payload, size_t payloadLen, uint8_t *frame, size_t frameSize) const;
+        bool queueModulePing();
+        bool queueParameterRead(uint8_t fieldId, uint8_t chunkIndex = 0);
+        bool queueParameterWrite(uint8_t fieldId, uint8_t value);
+        void startModuleConfigSession(unsigned long now);
+        void setModuleConfigBackoff(unsigned long now, unsigned long delayMs);
+        void noteModuleConfigResponse();
+        void handleDeviceInfo(const uint8_t *payload, size_t payloadLen, unsigned long now);
+        void handleParameterSettingsEntry(const uint8_t *payload, size_t payloadLen, unsigned long now);
+        void finishParameterChunk(uint8_t fieldId, const uint8_t *data, size_t len, unsigned long now);
+        void applyDiscoveredParameter(uint8_t fieldId, const char *name, uint8_t type, const char *options, uint8_t currentValue);
+        bool moduleSettingValueForTarget(uint8_t targetIndex, const char *options, uint8_t *value) const;
         void showOverlay(const char *text, unsigned long now, unsigned long durationMs);
         void showCommOverlay(const char *text, unsigned long now, unsigned long durationMs);
 
@@ -161,9 +179,33 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void logf(ELRSCrsfHost &host, const char *fmt, ...) const;
 
         static uint16_t readBE16(const uint8_t *data);
+        static size_t copyToken(char *out, size_t outSize, const char *start, size_t len);
+        static bool optionEquals(const char *start, size_t len, const char *text);
+        static bool parseOptionTerminalMilliwatts(const char *start, size_t len, uint16_t &value);
+        static bool readOptionAt(const char *options, uint8_t index, const char **start, size_t *len);
         static const char *speedSourceName(SpeedSource source);
         static const char *commCodeText(uint8_t code);
+        static const char *moduleConfigTargetName(uint8_t targetIndex);
         static unsigned long axisSampleIntervalMs(uint16_t packetRateHz);
+
+        enum ModuleConfigState : uint8_t {
+            MODULECFG_IDLE = 0,
+            MODULECFG_WAIT_START,
+            MODULECFG_WAIT_DEVICE_INFO,
+            MODULECFG_READ_PARAMETER,
+            MODULECFG_WAIT_PARAMETER,
+            MODULECFG_APPLY_SETTING,
+            MODULECFG_WAIT_WRITE,
+            MODULECFG_DONE,
+            MODULECFG_BACKOFF
+        };
+
+        struct ModuleParameterInfo {
+            bool found = false;
+            uint8_t fieldId = 0;
+            uint8_t currentValue = 0;
+            char options[96];
+        };
 
         ELRSCrsfCoreConfig _config;
         ELRSCrsfTransport _transport;
@@ -186,6 +228,8 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         unsigned long _batteryBannerAt = 0;
         unsigned long _overlayUntil = 0;
         unsigned long _commOverlayUntil = 0;
+        unsigned long _moduleConfigNextAt = 0;
+        unsigned long _moduleConfigDeadlineAt = 0;
 
         uint16_t _channels[16];
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT];
@@ -203,6 +247,21 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool _adcFaultActive = false;
         bool _buttonPackFaultActive = false;
         uint8_t _lastCommCode = ELRS_COMM_NONE;
+        bool _lastReplyActive = false;
+
+        ModuleConfigState _moduleConfigState = MODULECFG_IDLE;
+        bool _moduleConfigPending = false;
+        uint8_t _moduleFieldCount = 0;
+        uint8_t _moduleFieldIndex = 0;
+        uint8_t _moduleTargetIndex = 0;
+        uint8_t _moduleWriteFieldId = 0;
+        bool _moduleChunkActive = false;
+        uint8_t _moduleChunkFieldId = 0;
+        size_t _moduleChunkLen = 0;
+        uint8_t _moduleChunkData[192];
+        ModuleParameterInfo _moduleTelemetryRatio;
+        ModuleParameterInfo _moduleMaxPower;
+        ModuleParameterInfo _moduleDynamicPower;
 
         bool _calibRaw = false;
         bool _calibPressed = false;
