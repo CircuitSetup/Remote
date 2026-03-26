@@ -80,7 +80,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 <details>
 <summary>More...</summary>
 
-  >If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it, or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
+>If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it, or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
   
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
@@ -183,7 +183,7 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
   <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
 </table>
 
-(* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
+(* Board version 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor input)
 
 The throttle of the Remote needs calibration:
 
@@ -268,7 +268,7 @@ Those files are not provided here. You can use any mp3, with a bitrate of 128kpb
 
 Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
 
-Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
+Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "Update & Upload". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
 In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
 
@@ -599,7 +599,7 @@ In order to reduce the number of write operations and thereby prolong the life o
 
 ## Firmware Installation / Firmware Update
 
-If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on "Update", select the pre-compiled binary file ("**remote-A10001986.ino.nodemcu-32s.bin**" or "**Remote_vX.YY.bin**") provided in the [Release package](https://github.com/realA10001986/Remote/releases), and click on *Update*.
+If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on "Update & Upload", select the pre-compiled binary file ("**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**") provided in the [Release package](https://github.com/realA10001986/Remote/releases), and click on *Update*.
 
 <details>
 <summary>Installing on a fresh ESP32...</summary>
@@ -616,7 +616,7 @@ _Note that installing the sound-pack requires an [SD card](#sd-card)._
 
 The first step is to extract "sound-pack-rmXX.zip" (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)). It contains one file, named "REMA.bin".
 
-Next, head to the [Config Portal](#the-config-portal), click on "Update", select the "REMA.bin" file in the _bottom_ file selector and click on *Upload*.
+Next, head to the [Config Portal](#the-config-portal), click on "Update & Upload", select the "REMA.bin" file in the _bottom_ file selector and click on *Upload*.
 
 <details>
 <summary>Alternative way</summary>
@@ -649,7 +649,7 @@ This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
 This leads to the firmware update and audio upload page.
 
-In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986.ino.nodemcu-32s.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
+In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
 
 You can also install the Remote's sound-pack on this page; download the sound-pack (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)), extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click *Upload*. Note that an SD card is required for this operation.
 
