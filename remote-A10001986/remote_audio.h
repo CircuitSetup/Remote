@@ -80,6 +80,7 @@ void play_bad();
 
 bool check_file_SD(const char *audio_file);
 bool checkAudioDone();
+bool checkAudioReallyDone();
 bool checkMP3Running();
 void stopAudio();
 void stopAudioAtLoopEnd();

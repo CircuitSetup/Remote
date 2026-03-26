@@ -68,7 +68,6 @@ extern uint8_t musFolderNum;
 
 #define DEF_HOSTNAME        "dtmremote"
 #define DEF_WIFI_RETRY      3     // 1-10; Default: 3 retries
-#define DEF_WIFI_TIMEOUT    7     // 7-25; Default: 7 seconds
 #define DEF_RECON_ON_FP     1     // 1: Reconnection attempt on Fake Power, 0: no
 #define DEF_AP_CHANNEL      1     // 1-13; 0 = random(1-13)
 #define DEF_WIFI_APOFFDELAY 0
@@ -103,81 +102,98 @@ extern uint8_t musFolderNum;
 #define DEF_BAT_TYPE        0     // 0=3.7/4.2V
 #define DEF_BAT_CAP         2000  // battery capacity per cell
 
+#ifdef HAVE_CRSF
+#define DEF_OPMODE          0
+#define DEF_ELRSPKTRATE     3
+#define DEF_ELRSSPDUNIT     0
+#define DEF_ELRSTLMRATIO    0
+#define DEF_ELRSMAXPOWER    3
+#define DEF_ELRSDYNPWR      0
+#endif
 
 struct Settings {
     char ssid[34]           = "";
     char pass[66]           = "";
+    char bssid[18]          = "";
 
     char hostName[32]       = DEF_HOSTNAME;
     char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
-    char wifiConTimeout[4]  = MS(DEF_WIFI_TIMEOUT);
-    char reconOnFP[4]       = MS(DEF_RECON_ON_FP);
+    char reconOnFP[2]       = MS(DEF_RECON_ON_FP);
     char systemID[8]        = "";
     char appw[10]           = "";
     char apChnl[4]          = MS(DEF_AP_CHANNEL);
     char wifiAPOffDelay[4]  = MS(DEF_WIFI_APOFFDELAY);
-    char reactAPOnFP[4]     = MS(DEF_REACT_AP_ON_FP);
+    char reactAPOnFP[2]     = MS(DEF_REACT_AP_ON_FP);
 
-    char autoThrottle[4]    = MS(DEF_AT);
-    char coast[4]           = MS(DEF_COAST);
-    char playClick[4]       = MS(DEF_PLAY_CLK);
-    char playALsnd[4]       = MS(DEF_PLAY_ALM_SND);
+    char autoThrottle[2]    = MS(DEF_AT);
+    char coast[2]           = MS(DEF_COAST);
+    char playClick[2]       = MS(DEF_PLAY_CLK);
+    char playALsnd[2]       = MS(DEF_PLAY_ALM_SND);
 
     char tcdIP[32]          = DEF_TCD_IP;
-    char pwrMst[4]          = MS(DEF_PWR_MST);
+    char pwrMst[2]          = MS(DEF_PWR_MST);
 
-#ifdef REMOTE_HAVEMQTT  
-    char useMQTT[4]         = "0";
-    char mqttVers[4]        = "0"; // 0 = 3.1.1, 1 = 5.0
-    char mqttServer[80]     = "";  // ip or domain [:port]  
-    char mqttUser[128]      = "";  // user[:pass] (UTF8)
-    char mqttbt[8][256]     = { 0 };  // buttons topics (UTF8)
-    char mqttbo[8][128]     = { 0 };  // buttons on message (UTF8)
-    char mqttbf[8][128]     = { 0 };  // buttons off message (UTF8)
-#endif
+    char CfgOnSD[2]         = MS(DEF_CFG_ON_SD);
+    char sdFreq[2]          = MS(DEF_SD_FREQ);
 
-    char CfgOnSD[4]         = MS(DEF_CFG_ON_SD);
-    char sdFreq[4]          = MS(DEF_SD_FREQ);
-
-    char oorst[4]           = MS(DEF_OORST);
-    char ooTT[4]            = MS(DEF_OO_TT);
+    char oorst[2]           = MS(DEF_OORST);
+    char ooTT[2]            = MS(DEF_OO_TT);
 
 #ifdef ALLOW_DIS_UB
-    char disBPack[4]        = MS(DEF_DIS_BPACK);
+    char disBPack[2]        = MS(DEF_DIS_BPACK);
 #endif    
-    char bPb0Maint[4]       = MS(DEF_BPMAINT);
-    char bPb1Maint[4]       = MS(DEF_BPMAINT);
-    char bPb2Maint[4]       = MS(DEF_BPMAINT);
-    char bPb3Maint[4]       = MS(DEF_BPMAINT);
-    char bPb4Maint[4]       = MS(DEF_BPMAINT);
-    char bPb5Maint[4]       = MS(DEF_BPMAINT);
-    char bPb6Maint[4]       = MS(DEF_BPMAINT);
-    char bPb7Maint[4]       = MS(DEF_BPMAINT);
+    char bPb0Maint[2]       = MS(DEF_BPMAINT);
+    char bPb1Maint[2]       = MS(DEF_BPMAINT);
+    char bPb2Maint[2]       = MS(DEF_BPMAINT);
+    char bPb3Maint[2]       = MS(DEF_BPMAINT);
+    char bPb4Maint[2]       = MS(DEF_BPMAINT);
+    char bPb5Maint[2]       = MS(DEF_BPMAINT);
+    char bPb6Maint[2]       = MS(DEF_BPMAINT);
+    char bPb7Maint[2]       = MS(DEF_BPMAINT);
 
-    char bPb0MtO[4]         = MS(DEF_BPMTOO);
-    char bPb1MtO[4]         = MS(DEF_BPMTOO);
-    char bPb2MtO[4]         = MS(DEF_BPMTOO);
-    char bPb3MtO[4]         = MS(DEF_BPMTOO);
-    char bPb4MtO[4]         = MS(DEF_BPMTOO);
-    char bPb5MtO[4]         = MS(DEF_BPMTOO);
-    char bPb6MtO[4]         = MS(DEF_BPMTOO);
-    char bPb7MtO[4]         = MS(DEF_BPMTOO);
+    char bPb0MtO[2]         = MS(DEF_BPMTOO);
+    char bPb1MtO[2]         = MS(DEF_BPMTOO);
+    char bPb2MtO[2]         = MS(DEF_BPMTOO);
+    char bPb3MtO[2]         = MS(DEF_BPMTOO);
+    char bPb4MtO[2]         = MS(DEF_BPMTOO);
+    char bPb5MtO[2]         = MS(DEF_BPMTOO);
+    char bPb6MtO[2]         = MS(DEF_BPMTOO);
+    char bPb7MtO[2]         = MS(DEF_BPMTOO);
 
-    char usePwrLED[4]       = MS(DEF_USE_PLED);
-    char pwrLEDonFP[4]      = MS(DEF_PLEDFP);
-    char useLvlMtr[4]       = MS(DEF_USE_LVLMTR);
-    char LvLMtronFP[4]      = MS(DEF_LVLFP);
+    char usePwrLED[2]       = MS(DEF_USE_PLED);
+    char pwrLEDonFP[2]      = MS(DEF_PLEDFP);
+    char useLvlMtr[2]       = MS(DEF_USE_LVLMTR);
+    char LvLMtronFP[2]      = MS(DEF_LVLFP);
 #ifdef HAVE_PM
-    char usePwrMon[4]       = MS(DEF_USE_PWRMON);
+    char usePwrMon[2]       = MS(DEF_USE_PWRMON);
     char batType[4]         = MS(DEF_BAT_TYPE);
-    char batCap[8]          = MS(DEF_BAT_CAP);
-#endif    
+    char batCap[6]          = MS(DEF_BAT_CAP);
+#endif
+
+#ifdef REMOTE_HAVEMQTT
+    char useMQTT[2]         = "0";
+    char mqttVers[2]        = "0"; // 0 = 3.1.1, 1 = 5.0
+    char mqttServer[80]     = "";  // ip or domain [:port]  
+    char mqttUser[128]      = "";  // user[:pass] (UTF8)
+    char mqttbt[8][128]     = { 0 };  // buttons topics (UTF8)
+    char mqttbo[8][64]      = { 0 };  // buttons on message (UTF8)
+    char mqttbf[8][64]      = { 0 };  // buttons off message (UTF8)
+#endif
+
+#ifdef HAVE_CRSF
+    char opMode[2]          = MS(DEF_OPMODE);
+    char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
+    char elrsSpdUnit[2]     = MS(DEF_ELRSSPDUNIT);
+    char elrsTlmRatio[2]    = MS(DEF_ELRSTLMRATIO);
+    char elrsMaxPower[2]    = MS(DEF_ELRSMAXPOWER);
+    char elrsDynPower[2]    = MS(DEF_ELRSDYNPWR);
+#endif
 
     // Kludges for CP
-    char movieMode[4]       = MS(DEF_MOV_MD);
-    char dgps[4]            = MS(DEF_DISP_GPS);
-    char upd[4]             = "1";
-    char musicFolder[6];
+    char movieMode[2]       = MS(DEF_MOV_MD);
+    char dgps[2]            = MS(DEF_DISP_GPS);
+    char upd[2]             = "1";
+    char musicFolder[2];
 };
 
 struct IPSettings {
@@ -220,6 +236,9 @@ void loadDisplayGPSMode();
 void saveDisplayGPSMode();
 
 void saveUpdAvail();
+
+void loadUpdVers(int &v, int& r);
+void saveUpdVers(int v, int r);
 
 void saveAllSecCP();
 

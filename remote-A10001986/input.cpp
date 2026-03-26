@@ -159,8 +159,11 @@ enum DUV2_CONF2_PARAM {
 // ADS measuring range
 #define ADS_GAIN_6    0b0000  // -6.144V - 6.144V 
 #define ADS_GAIN_4    0b0010  // -4.096V - 4.096V
-#define ADS_GAIN_2    0b0100  // -2.048V - 2.048V   <-- our setting
+#define ADS_GAIN_2    0b0100  // -2.048V - 2.048V   <-- our setting for CB <= 1.6
 #define ADS_GAIN_1    0b0110  // -1.024V - 1.024V
+
+#define GAIN_OLD_BOARD ADS_GAIN_2
+#define GAIN_NEW_BOARD ADS_GAIN_4
 
 #define SCALE_TO_0_U  15
 #define SCALE_MULT_U  10000 / (100-SCALE_TO_0_U)
@@ -174,7 +177,7 @@ REMRotEnc::REMRotEnc(int numTypes, const uint8_t *addrArr)
     _addrArr = addrArr;
 }
 
-bool REMRotEnc::begin(bool forSpeed)
+bool REMRotEnc::begin(bool forSpeed, bool newBoard)
 {
     bool foundSt = false;
     union {
@@ -301,8 +304,10 @@ bool REMRotEnc::begin(bool forSpeed)
         return false;
 
     case REM_RE_TYPE_ADS1X15:
-        buf[0] = 0b01000000 | ADS_GAIN_2;  // mmm = Mode (Single End, AIN0)
+        buf[0] = 0b01000000;    // mmm = Mode (Single End, AIN0)
         //         ommmgggc
+        buf[0] |= (newBoard ? GAIN_NEW_BOARD : GAIN_OLD_BOARD);
+        
         buf[1] = 0b00000011;   // Comparator stuff (disabled)
         //         dddccccc
         write(ADS_BASE, ADS_CONFIG, &buf[0], 2);
@@ -899,6 +904,46 @@ void ButtonPack::scan()
         }
     }
 }
+
+#ifdef HAVE_CRSF
+uint8_t ButtonPack::readStates()
+{
+    uint8_t port = 0xff;
+
+    switch(_st) {
+    case REM_BP_TYPE_PCA8574:
+    case REM_BP_TYPE_PCA9554:
+        if(port_read(&port) != 1) {
+            return 0;
+        }
+        return (uint8_t)(~port);
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+bool ButtonPack::sampleStates(uint8_t &states)
+{
+    uint8_t port = 0xff;
+
+    switch(_st) {
+    case REM_BP_TYPE_PCA8574:
+    case REM_BP_TYPE_PCA9554:
+        if(port_read(&port) != 1) {
+            return false;
+        }
+        states = (uint8_t)(~port);
+        return true;
+    default:
+        break;
+    }
+
+    states = 0;
+    return false;
+}
+#endif
 
 /*
  * Private
