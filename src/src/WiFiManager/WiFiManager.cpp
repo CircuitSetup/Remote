@@ -2626,8 +2626,7 @@ void WiFiManager::handleWifiSave()
     }
     #endif
 
-    // opportunity to steal the static ip data from the server
-    // for saving
+    // callback before saving
     if(_presavewificallback) {
         _presavewificallback();
     }
@@ -2635,7 +2634,7 @@ void WiFiManager::handleWifiSave()
     // Copy server parms to wifi params array
     doParamSave(_params[0], _paramsCount[0]);
 
-    // callback for saving
+    // callback for saving or grabbing other parameters from server
     if(_savewificallback) {
         _savewificallback(_ssid, _pass, _bssid);
     }
@@ -3213,7 +3212,7 @@ void WiFiManager::setDownloadLink(const char *theLink, bool haveCVer, const char
 // setMenu(): Set main menu items and order
 // eg.:  const int8_t menu[size] = {WM_MENU_WIFI, WM_MENU_PARAM, WM_MENU_END};
 //       WiFiManager.setMenu(menu, size);
-void WiFiManager::setMenu(const int8_t *menu, uint8_t size, bool doCopy)
+void WiFiManager::setMenu(const int8_t *menu, unsigned int size, bool doCopy)
 {
     if(_menuIdArr && !_menuArrConst)
         free((void *)_menuIdArr);

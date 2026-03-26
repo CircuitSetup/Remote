@@ -31,7 +31,7 @@ Firmware features:
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://tcd.out-a-ti.me) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local, hostname configurable)
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
-- Smart battery monitoring for certain LiPo batteries (requires M-version Control Board, or non-M-board with BatMon add-on)
+- Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
 - Built-in OTA installer for firmware updates and audio files
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
@@ -79,6 +79,8 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 
 <details>
 <summary>More...</summary>
+
+>If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it, or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
   
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
@@ -181,7 +183,7 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
   <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
 </table>
 
-(* M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor)
+(* Board version 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor input)
 
 The throttle of the Remote needs calibration:
 
@@ -266,7 +268,7 @@ Those files are not provided here. You can use any mp3, with a bitrate of 128kpb
 
 Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
 
-Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "UPDATE". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
+Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "Update & Upload". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
 In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
 
@@ -572,7 +574,7 @@ Enter the Config Portal on the Remote, click on *Setup* and
 
 After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
   - click on *WiFi Configuration*,
-  - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "WiFi Scan") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
+  - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "Scan for Networks") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
   - click on *Save*.
 
 In order to access the Remote's Config Portal in this setup, connect your handheld or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
@@ -597,7 +599,7 @@ In order to reduce the number of write operations and thereby prolong the life o
 
 ## Firmware Installation / Firmware Update
 
-If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on "Update", select the pre-compiled binary file ("**remote-A10001986.ino.nodemcu-32s.bin**" or "**Remote_vX.YY.bin**") provided in the [Release package](https://github.com/realA10001986/Remote/releases), and click on *Update*.
+If a previous version of the Remote firmware is installed on your device, you can update easily using the pre-compiled binary. Enter the [Config Portal](#the-config-portal), click on "Update & Upload", select the pre-compiled binary file ("**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**") provided in the [Release package](https://github.com/realA10001986/Remote/releases), and click on *Update*.
 
 <details>
 <summary>Installing on a fresh ESP32...</summary>
@@ -614,7 +616,7 @@ _Note that installing the sound-pack requires an [SD card](#sd-card)._
 
 The first step is to extract "sound-pack-rmXX.zip" (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)). It contains one file, named "REMA.bin".
 
-Next, head to the [Config Portal](#the-config-portal), click on "Update", select the "REMA.bin" file in the _bottom_ file selector and click on *Upload*.
+Next, head to the [Config Portal](#the-config-portal), click on "Update & Upload", select the "REMA.bin" file in the _bottom_ file selector and click on *Upload*.
 
 <details>
 <summary>Alternative way</summary>
@@ -643,11 +645,11 @@ This leads to the [Settings page](#settings).
 
 This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
-##### &#9193; Update
+##### &#9193; Update & Upload
 
 This leads to the firmware update and audio upload page.
 
-In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986.ino.nodemcu-32s.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
+In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
 
 You can also install the Remote's sound-pack on this page; download the sound-pack (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)), extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click *Upload*. Note that an SD card is required for this operation.
 
@@ -663,9 +665,11 @@ Through this page you can either connect your Remote to your local WiFi network,
 
 #### <ins>Connecting to an existing WiFi network</ins>
 
-In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "WiFi Scan".
+In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "Scan for Networks".
 
 >By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
+
+If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it, or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
 
 If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
 
@@ -684,10 +688,6 @@ _This setting applies to both AP-mode and when your Remote is connected to a WiF
 ##### &#9193; WiFi connection attempts
 
 Number of times the firmware tries to reconnect to a WiFi network, before falling back to AP-mode. See [here](#connecting-to-a-wifi-network)
-
-##### &#9193; WiFi connection timeout
-
-Number of seconds before a timeout occurs when connecting to a WiFi network. When a timeout happens, another attempt is made (see immediately above), and if all attempts fail, the device falls back to AP-mode. See [here](#connecting-to-a-wifi-network)
 
 ##### &#9193; Attempt re-connection on Fake Power
 
@@ -720,7 +720,7 @@ Here you can select one out of 11 channels, or have the Remote choose a random c
 
 WiFi channel selection is key for a trouble-free operation. Disturbed WiFi communication can lead to disrupted sequences, packet loss, hanging or freezing props, and other problems. A good article on WiFi channel selection is [here](https://community.ui.com/questions/Choosing-the-right-Wifi-Channel-on-2-4Ghz-Why-Conventional-Wisdom-is-Wrong/ea2ffae0-8028-45fb-8fbf-60569c6d026d).
 
-If a WiFi Scan was done (which can be triggered by clicking "WiFI Scan"), 
+If a WiFi Scan was done (which can be triggered by clicking "Scan for Networks"), 
 
 - a list of networks is displayed at the top of the page; click "Show All" to list all networks including their channel;
 - a "proposed channel" is displayed near the "WiFi channel" drop-down, based on a rather simple heuristic. The banner is green when a channel is excellent, grey when it is impeded by overlapping channels, and when that banner is red operation in AP mode is not recommended due to channels all being used.

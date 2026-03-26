@@ -336,7 +336,7 @@ class WiFiManager
     // set custom menu items and order
     // docopy can be false if the menu array is a global const (that does not
     // get destructed) that also has WM_MENU_END at the end.
-    void          setMenu(const int8_t *menu, uint8_t size, bool doCopy = true);
+    void          setMenu(const int8_t *menu, unsigned int size, bool doCopy = true);
 
     // set the webapp title, default WiFiManager
     // Given title is not copied but referenced by pointer

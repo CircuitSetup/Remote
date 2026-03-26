@@ -69,7 +69,7 @@ class REMRotEnc {
   
     public:
         REMRotEnc(int numTypes, const uint8_t *addrArr);
-        bool    begin(bool forSpeed = true);
+        bool    begin(bool forSpeed = true, bool newBoard = false);
         
         void    zeroPos(bool calibMode = false);
         

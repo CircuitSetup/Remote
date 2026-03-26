@@ -274,7 +274,31 @@ void settings_setup()
     bool SDres = false;
     int alienVER = -1;
     int cfgReadCount = 0;
-  
+
+    // Detect Board Version >= 1.7
+    haveNewBoard = false;
+
+    #if defined(DETECT_OUT_PIN) && defined(DETECT_MIRROR)
+    pinMode(DETECT_OUT_PIN, OUTPUT);
+    digitalWrite(DETECT_OUT_PIN, LOW);
+    pinMode(DETECT_MIRROR, INPUT);
+    delay(20);
+    if(!digitalRead(DETECT_MIRROR)) {
+        digitalWrite(DETECT_OUT_PIN, HIGH);
+        delay(20);
+        if(digitalRead(DETECT_MIRROR)) {
+            digitalWrite(DETECT_OUT_PIN, LOW);
+            delay(20);
+            if(!digitalRead(DETECT_MIRROR)) {
+                haveNewBoard = true;
+                #ifdef REMOTE_DBG
+                Serial.println("Board >= 1.7 detected");
+                #endif
+            }
+        }
+    }
+    #endif
+    
     #ifdef REMOTE_DBG
     Serial.printf("%s: Mounting flash FS... ", funcName);
     #endif
@@ -445,7 +469,9 @@ void settings_setup()
     }
 
     #ifdef HAVE_CRSF
-    crsf_load_settings();
+    if(haveNewBoard) {
+        crsf_load_settings();
+    }
     #endif
 
     // Load tertiary config file (SD only)
@@ -608,14 +634,16 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, sizeof(settings.batCap), 1000, 6000, DEF_BAT_CAP);
         #endif
 
-#ifdef HAVE_CRSF
-        wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
-        wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
-        wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, sizeof(settings.elrsSpdUnit), 0, 1, DEF_ELRSSPDUNIT);
-        wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, sizeof(settings.elrsTlmRatio), 0, 6, DEF_ELRSTLMRATIO);
-        wd |= CopyCheckValidNumParm(json["eMxPwr"], settings.elrsMaxPower, sizeof(settings.elrsMaxPower), 0, 5, DEF_ELRSMAXPOWER);
-        wd |= CopyCheckValidNumParm(json["eDynP"], settings.elrsDynPower, sizeof(settings.elrsDynPower), 0, 1, DEF_ELRSDYNPWR);
-#endif
+        #ifdef HAVE_CRSF
+        if(haveNewBoard) {
+            wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
+            wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
+            wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, sizeof(settings.elrsSpdUnit), 0, 1, DEF_ELRSSPDUNIT);
+            wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, sizeof(settings.elrsTlmRatio), 0, 6, DEF_ELRSTLMRATIO);
+            wd |= CopyCheckValidNumParm(json["eMxPwr"], settings.elrsMaxPower, sizeof(settings.elrsMaxPower), 0, 5, DEF_ELRSMAXPOWER);
+            wd |= CopyCheckValidNumParm(json["eDynP"], settings.elrsDynPower, sizeof(settings.elrsDynPower), 0, 1, DEF_ELRSDYNPWR);
+        }
+        #endif
   
         // HA/MQTT Settings in separate file
 
@@ -706,14 +734,16 @@ void write_settings()
     json["bCa"] = (const char *)settings.batCap;
     #endif
 
-#ifdef HAVE_CRSF
-    json["opMode"] = (const char *)settings.opMode;
-    json["ePRHz"] = (const char *)settings.elrsPktRate;
-    json["eSUnit"] = (const char *)settings.elrsSpdUnit;
-    json["eTlmR"] = (const char *)settings.elrsTlmRatio;
-    json["eMxPwr"] = (const char *)settings.elrsMaxPower;
-    json["eDynP"] = (const char *)settings.elrsDynPower;
-#endif
+    #ifdef HAVE_CRSF
+    if(haveNewBoard) {
+        json["opMode"] = (const char *)settings.opMode;
+        json["ePRHz"] = (const char *)settings.elrsPktRate;
+        json["eSUnit"] = (const char *)settings.elrsSpdUnit;
+        json["eTlmR"] = (const char *)settings.elrsTlmRatio;
+        json["eMxPwr"] = (const char *)settings.elrsMaxPower;
+        json["eDynP"] = (const char *)settings.elrsDynPower;
+    }
+    #endif
   
     writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);
 }

@@ -60,6 +60,8 @@
 
 extern unsigned long powerupMillis;
 
+extern bool haveNewBoard;
+
 #ifdef HAVE_CRSF
 extern bool opModeCRSF;
 #endif

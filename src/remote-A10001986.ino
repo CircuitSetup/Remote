@@ -135,11 +135,11 @@
 
 /*  Changelog
  *  
- *  2026/0x/xx (A10001986) [1.21]
+ *  2026/03/26 (A10001986) [1.21]
  *    **********************************************************************************
  *    ** If updating from below 1.20, please install 1.20 first to have your          **
  *    ** settings converted. If 1.20 is skipped, some of your settings (static IP,    **
- *    ** volume, brightness, calibration values, movie mode, coasting, auto-throttle, **
+ *    ** volume, brightness, calibration data, movie mode, coasting, auto-throttle,   **
  *    ** display TCD speed while off) will be restored to default values. It suffices ** 
  *    ** to install 1.20 and boot once; you can then immediately update to a later    **
  *    ** version.                                                                     **
@@ -149,6 +149,7 @@
  *      if multiple APs with identical SSID are available.
  *    - MQTT: Disable if server can't be resolved
  *    - WiFi: Do not power down AP long as a client is connected
+ *    - Brush up Config Portal a bit
  *    - Code optimizations and fixes.
  *  2026/02/15 (A10001986) [1.20]
  *    - New file format for secondary and IP settings. This version of the firmware

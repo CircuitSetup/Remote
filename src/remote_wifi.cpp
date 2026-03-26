@@ -170,7 +170,7 @@ static const char mqttMsgGenError[] = "Error";
 
 #ifdef HAVE_CRSF
 static const char *cOpModeCustHTMLSrc[4] = {
-    "'>Prop operation mode",
+    "'>Operation mode",
     "copm",
     ">Legacy%s1'",
     ">ELRS/CRSF%s"
@@ -360,7 +360,7 @@ WiFiManagerParameter custom_mqtttm(wmBuildMQTTTM);
 
 #ifdef HAVE_CRSF
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
-WiFiManagerParameter custom_ss_crsf("CRSF Settings", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_ss_crsf("ELRS/CRSF Settings", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
 WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
 WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
@@ -368,7 +368,7 @@ WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
 WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP, WFM_FOOT);
 #endif
 
-static const int8_t wifiMenu[] = { 
+static const int8_t wifiMenu[] = {
     WM_MENU_WIFI,
     WM_MENU_PARAM,
     #ifdef REMOTE_HAVEMQTT
@@ -384,6 +384,21 @@ static const int8_t wifiMenu[] = {
     WM_MENU_END
 };
 #define TC_MENUSIZE (sizeof(wifiMenu) / sizeof(wifiMenu[0]))
+#ifdef HAVE_CRSF
+static const int8_t wifiMenuNoCRSF[] = {
+    WM_MENU_WIFI,
+    WM_MENU_PARAM,
+    #ifdef REMOTE_HAVEMQTT
+    WM_MENU_PARAM2,
+    #endif
+    WM_MENU_SEP_F,
+    WM_MENU_UPDATE,
+    WM_MENU_SEP,
+    WM_MENU_CUSTOM,
+    WM_MENU_END
+};
+#define TC_MENUSIZE_NOCRSF (sizeof(wifiMenuNoCRSF) / sizeof(wifiMenuNoCRSF[0]))
+#endif
 
 #define AA_TITLE "DTM Remote"
 #define AA_ICON "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAFVBMVEVJSkrMy8e2v70AAADa5ePyJT320zT0Sr0YAAAAQElEQVQI12MQhAIGAQYwYAQzHFAZTEoKUEYalMFsDAIghhIQKDMyiAaDGSARZSMlYxAjGMZASIEZCO1wS+HOAADWkAscxWroAQAAAABJRU5ErkJggg=="
@@ -403,6 +418,7 @@ static const char* myCustMenu = "<img style='display:block;margin:10px auto 5px 
 
 static char newversion[8];
 static unsigned long lastUpdateCheck = 0;
+static unsigned long lastUpdateLiveCheck = 0;
 
 #define WLA_IP      1
 #define WLA_DEL_IP  2
@@ -474,7 +490,6 @@ static void wifiOff(bool force);
 static void checkForUpdate();
 
 static void saveParamsCallback(int);
-static void preSaveWiFiCallback();
 static void saveWiFiCallback(const char *ssid, const char *pass, const char *bssid);
 static void preUpdateCallback();
 static void postUpdateCallback(bool);
@@ -484,7 +499,6 @@ static bool preWiFiScanCallback();
 
 static void updateConfigPortalValues();
 
-static void setupStaticIP();
 static IPAddress stringToIp(char *str);
 
 static void getServerParam(String name, char *destBuf, size_t length, int defaultVal);
@@ -634,8 +648,7 @@ void wifi_setup()
     wm.setHostname(settings.hostName);
 
     wm.showUploadContainer(haveSD, AA_CONTAINER, rspv, haveAudioFiles);
-    
-    wm.setPreSaveWiFiCallback(preSaveWiFiCallback);
+
     wm.setSaveWiFiCallback(saveWiFiCallback);
     wm.setSaveParamsCallback(saveParamsCallback);
     wm.setPreOtaUpdateCallback(preUpdateCallback);
@@ -666,7 +679,15 @@ void wifi_setup()
     wifiReconOnFP = evalBool(settings.reconOnFP);
     wifiReactAPOnFP = evalBool(settings.reactAPOnFP);
 
+    #ifdef HAVE_CRSF
+    if(haveNewBoard) {
+        wm.setMenu(wifiMenu, TC_MENUSIZE, false);
+    } else {
+        wm.setMenu(wifiMenuNoCRSF, TC_MENUSIZE_NOCRSF, false);
+    }
+    #else
     wm.setMenu(wifiMenu, TC_MENUSIZE, false);
+    #endif
 
     // WiFi Settings
     wm.allocParms(WM_PARM_WIFI, (sizeof(wifiParmArray) / sizeof(WiFiManagerParameter *)) - 1);
@@ -706,11 +727,13 @@ void wifi_setup()
     #endif
 
     #ifdef HAVE_CRSF
-    wm.allocParms(WM_PARM_SETTINGS3, (sizeof(parm3Array) / sizeof(WiFiManagerParameter *)) - 1);
-    temp = 0;
-    while(parm3Array[temp]) {
-        wm.addParameter(WM_PARM_SETTINGS3, parm3Array[temp]);
-        temp++;
+    if(haveNewBoard) {
+        wm.allocParms(WM_PARM_SETTINGS3, (sizeof(parm3Array) / sizeof(WiFiManagerParameter *)) - 1);
+        temp = 0;
+        while(parm3Array[temp]) {
+            wm.addParameter(WM_PARM_SETTINGS3, parm3Array[temp]);
+            temp++;
+        }
     }
     #endif
 
@@ -755,7 +778,13 @@ void wifi_setup()
     
     // Configure static IP
     if(loadIpSettings()) {
-        setupStaticIP();
+        if(checkIPConfig()) {
+            IPAddress ip = stringToIp(ipsettings.ip);
+            IPAddress gw = stringToIp(ipsettings.gateway);
+            IPAddress sn = stringToIp(ipsettings.netmask);
+            IPAddress dns = stringToIp(ipsettings.dns);
+            wm.setSTAStaticIPConfig(ip, gw, sn, dns);
+        }
     }
     
     wifi_setup2();
@@ -931,37 +960,13 @@ void wifi_loop()
         }
     }
 
-    if(wifiLoopSaveAction) {
-        mp_stop();
-        stopAudio();
-    }
-    
-    if(wifiLoopSaveAction & WLA_IP) {
-
-        #ifdef REMOTE_DBG
-        Serial.println("WiFi: Saving IP config");
-        #endif
-
-        writeIpSettings();
-
-        wifiLoopSaveAction &= ~WLA_IP;
-
-    } else if(wifiLoopSaveAction & WLA_DEL_IP) {
-
-        #ifdef REMOTE_DBG
-        Serial.println("WiFi: Deleting IP config");
-        #endif
-
-        deleteIpSettings();
-
-        wifiLoopSaveAction &= ~WLA_DEL_IP;
-
-    }
-
     if(wifiLoopSaveAction & WLA_SET) {
 
         int temp;
         bool write_main_settings = false;
+
+        mp_stop();
+        stopAudio();
 
         // Save settings and restart esp32
 
@@ -973,7 +978,19 @@ void wifi_loop()
 
             // Parameters on WiFi Config page
             // Note: Parameters that need to be grabbed from the server directly
-            // through getServerParam() must be handled in preSaveWiFiCallback().
+            // through getServerParam() must be handled in saveWiFiCallback().
+
+            if(wifiLoopSaveAction & WLA_IP) {
+                #ifdef REMOTE_DBG
+                Serial.println("WiFi: Saving IP config");
+                #endif
+                writeIpSettings();
+            } else if(wifiLoopSaveAction & WLA_DEL_IP) {
+                #ifdef REMOTE_DBG
+                Serial.println("WiFi: Deleting IP config");
+                #endif
+                deleteIpSettings();
+            }
 
             // ssid, pass copied to settings in saveWiFiCallback()
 
@@ -1398,6 +1415,10 @@ void wifiOn(unsigned long newDelay)
             }
         }
 
+        if(millis() - lastUpdateLiveCheck > 6*60*60*1000) {
+            checkForUpdate();
+        }
+
     }
 }
 
@@ -1464,8 +1485,10 @@ static void checkForUpdate()
 
     lastUpdateCheck = millis();
 
-    if(sscanf(CURRVERSION, "V%d.%d", &cver, &crev) != 2)
+    if(sscanf(CURRVERSION, "V%d.%d", &cver, &crev) != 2) {
+        lastUpdateLiveCheck = millis();
         return;
+    }
     
     if(WiFi.status() == WL_CONNECTED) {
         IPAddress remote_addr;
@@ -1473,6 +1496,7 @@ static void checkForUpdate()
             uver = remote_addr[0]; urev = remote_addr[1];
             if(uver) saveUpdVers(uver, urev);
         }
+        lastUpdateLiveCheck = millis();
     } else {
         loadUpdVers(uver, urev);
     }
@@ -1492,11 +1516,85 @@ bool updateAvailable()
     return (*newversion != 0);
 }
 
-// This is called when the WiFi config is to be saved. We set
-// a flag for the loop to read out and save the new WiFi config.
-// SSID and password are copied to settings here.
+bool checkIPConfig()
+{
+    return (*ipsettings.ip            &&
+            isIp(ipsettings.ip)       &&
+            isIp(ipsettings.gateway)  &&
+            isIp(ipsettings.netmask)  &&
+            isIp(ipsettings.dns));
+}
+
+// This is called when the WiFi config is to be saved. 
+// SSID, password and BSSID are copied to settings here.
+// Static IP and other parameters are taken from WiFiManager's server.
 static void saveWiFiCallback(const char *ssid, const char *pass, const char *bssid)
 {
+    char ipBuf[20] = "";
+    char gwBuf[20] = "";
+    char snBuf[20] = "";
+    char dnsBuf[20] = "";
+    bool invalConf = false;
+
+    #ifdef REMOTE_DBG
+    Serial.println("saveConfigCallback");
+    #endif
+
+    // clear as strncpy might leave us unterminated
+    memset(ipBuf, 0, 20);
+    memset(gwBuf, 0, 20);
+    memset(snBuf, 0, 20);
+    memset(dnsBuf, 0, 20);
+
+    String temp;
+    temp.reserve(16);
+    if((temp = wm.server->arg(FPSTR(WMS_ip))) != "") {
+        strncpy(ipBuf, temp.c_str(), 19);
+    } else invalConf |= true;
+    if((temp = wm.server->arg(FPSTR(WMS_sn))) != "") {
+        strncpy(snBuf, temp.c_str(), 19);
+    } else invalConf |= true;
+    if((temp = wm.server->arg(FPSTR(WMS_gw))) != "") {
+        strncpy(gwBuf, temp.c_str(), 19);
+    } else invalConf |= true;
+    if((temp = wm.server->arg(FPSTR(WMS_dns))) != "") {
+        strncpy(dnsBuf, temp.c_str(), 19);
+    } else invalConf |= true;
+
+    #ifdef REMOTE_DBG
+    if(strlen(ipBuf) > 0) {
+        Serial.printf("IP:%s / SN:%s / GW:%s / DNS:%s\n", ipBuf, snBuf, gwBuf, dnsBuf);
+    } else {
+        Serial.println("Static IP unset, using DHCP");
+    }
+    #endif
+
+    if(!invalConf && isIp(ipBuf) && isIp(gwBuf) && isIp(snBuf) && isIp(dnsBuf)) {
+
+        #ifdef REMOTE_DBG
+        Serial.println("All IPs valid");
+        #endif
+
+        wifiLoopSaveAction |= WLA_IP;
+          
+        memset((void *)&ipsettings, 0, sizeof(ipsettings));
+        strcpy(ipsettings.ip, ipBuf);
+        strcpy(ipsettings.gateway, gwBuf);
+        strcpy(ipsettings.netmask, snBuf);
+        strcpy(ipsettings.dns, dnsBuf);
+
+    } else {
+
+        #ifdef REMOTE_DBG
+        if(*ipBuf) {
+            Serial.println("Invalid IP");
+        }
+        #endif
+
+        wifiLoopSaveAction |= WLA_DEL_IP;
+
+    }
+
     // ssid is the (new?) ssid to connect to, pass the password.
     // (We don't need to compare to the old ones, the settings
     // hash will decide on save/not save.)
@@ -1516,6 +1614,11 @@ static void saveWiFiCallback(const char *ssid, const char *pass, const char *bss
     Serial.printf("saveWiFiCallback: New pass '%s'\n", settings.pass);
     Serial.printf("saveWiFiCallback: New bssid '%s'\n", settings.bssid);
     #endif
+
+    // Other parameters on WiFi Config page that
+    // need grabbing directly from the server
+
+    getServerParam("apchnl", settings.apChnl, 2, DEF_AP_CHANNEL);
     
     wifiLoopSaveAction |= WLA_WIFI;
 }
@@ -1594,104 +1697,6 @@ static void postUpdateCallback(bool res)
     if(!res) {
         delay(1000);
         esp_restart();
-    }
-}
-
-// Grab static IP and other parameters from WiFiManager's server.
-// Since there is no public method for this, we steal the HTML
-// form parameters in this callback.
-static void preSaveWiFiCallback()
-{
-    char ipBuf[20] = "";
-    char gwBuf[20] = "";
-    char snBuf[20] = "";
-    char dnsBuf[20] = "";
-    bool invalConf = false;
-
-    #ifdef REMOTE_DBG
-    Serial.println("preSaveConfigCallback");
-    #endif
-
-    // clear as strncpy might leave us unterminated
-    memset(ipBuf, 0, 20);
-    memset(gwBuf, 0, 20);
-    memset(snBuf, 0, 20);
-    memset(dnsBuf, 0, 20);
-
-    String temp;
-    temp.reserve(16);
-    if((temp = wm.server->arg(FPSTR(WMS_ip))) != "") {
-        strncpy(ipBuf, temp.c_str(), 19);
-    } else invalConf |= true;
-    if((temp = wm.server->arg(FPSTR(WMS_sn))) != "") {
-        strncpy(snBuf, temp.c_str(), 19);
-    } else invalConf |= true;
-    if((temp = wm.server->arg(FPSTR(WMS_gw))) != "") {
-        strncpy(gwBuf, temp.c_str(), 19);
-    } else invalConf |= true;
-    if((temp = wm.server->arg(FPSTR(WMS_dns))) != "") {
-        strncpy(dnsBuf, temp.c_str(), 19);
-    } else invalConf |= true;
-
-    #ifdef REMOTE_DBG
-    if(strlen(ipBuf) > 0) {
-        Serial.printf("IP:%s / SN:%s / GW:%s / DNS:%s\n", ipBuf, snBuf, gwBuf, dnsBuf);
-    } else {
-        Serial.println("Static IP unset, using DHCP");
-    }
-    #endif
-
-    if(!invalConf && isIp(ipBuf) && isIp(gwBuf) && isIp(snBuf) && isIp(dnsBuf)) {
-
-        #ifdef REMOTE_DBG
-        Serial.println("All IPs valid");
-        #endif
-
-        wifiLoopSaveAction |= WLA_IP;
-          
-        memset((void *)&ipsettings, 0, sizeof(ipsettings));
-        strcpy(ipsettings.ip, ipBuf);
-        strcpy(ipsettings.gateway, gwBuf);
-        strcpy(ipsettings.netmask, snBuf);
-        strcpy(ipsettings.dns, dnsBuf);
-
-    } else {
-
-        #ifdef REMOTE_DBG
-        if(*ipBuf) {
-            Serial.println("Invalid IP");
-        }
-        #endif
-
-        wifiLoopSaveAction |= WLA_DEL_IP;
-
-    }
-
-    // Other parameters on WiFi Config page that
-    // need grabbing directly from the server
-
-    getServerParam("apchnl", settings.apChnl, 2, DEF_AP_CHANNEL);
-}
-
-bool checkIPConfig()
-{
-    return (*ipsettings.ip            &&
-            isIp(ipsettings.ip)       &&
-            isIp(ipsettings.gateway)  &&
-            isIp(ipsettings.netmask)  &&
-            isIp(ipsettings.dns));
-}
-
-static void setupStaticIP()
-{
-    if(checkIPConfig()) {
-
-        IPAddress ip = stringToIp(ipsettings.ip);
-        IPAddress gw = stringToIp(ipsettings.gateway);
-        IPAddress sn = stringToIp(ipsettings.netmask);
-        IPAddress dns = stringToIp(ipsettings.dns);
-
-        wm.setSTAStaticIPConfig(ip, gw, sn, dns);
     }
 }
 
@@ -1893,48 +1898,84 @@ static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *s
     }
 }
 
-#ifdef HAVE_PM
-static const char *wmBuildBatType(const char *dest, int op)
+static const char *wmBuildSelect(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)
 {
     if(op == WM_CP_DESTROY) {
         if(dest) free((void *)dest);
         return NULL;
     }
 
-    unsigned int l = calcSelectMenu(batTypeHTMLSrc, 7, settings.batType);
+    unsigned int l = calcSelectMenu(src, count, setting, indent);
 
     if(op == WM_CP_LEN) {
         wmLenBuf = l;
         return (const char *)&wmLenBuf;
     }
-
+    
     char *str = (char *)malloc(l);
 
-    buildSelectMenu(str, batTypeHTMLSrc, 7, settings.batType);
+    buildSelectMenu(str, src, count, setting, indent);
     
     return str;
+}
+
+static unsigned int lengthRadioButtons(const char **theHTML, int cnt, char *setting)
+{
+    unsigned int mysize = STRLEN(rad0) + strlen(theHTML[0]) + strlen(theHTML[1]);
+    int i, j = strlen(theHTML[2]), sr = atoi(setting);
+    
+    for(i = 0; i < cnt; i++) {
+        mysize += STRLEN(rad1) + (3*j) + (3*2) + ((i==sr) ? STRLEN(radchk) : 0) + strlen(theHTML[3+i]);
+    }
+    mysize += STRLEN(rad99);
+
+    return mysize;
+}
+
+static void buildRadioButtons(char *target, const char **theHTML, int cnt, char *setting)
+{
+    int i, sr = atoi(setting);
+    
+    sprintf(target, rad0, theHTML[0]);
+    strcat(target, theHTML[1]);
+    
+    for(i = 0; i < cnt; i++) {
+        sprintf(target+strlen(target), rad1, theHTML[2], i, theHTML[2], i, (i==sr) ? radchk : "", theHTML[2], i, theHTML[3+i]);
+    }
+    strcat(target, rad99);
+}
+
+static const char *wmBuildRadioButtons(const char *dest, int op, const char **theHTML, int cnt, char *setting)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+
+    unsigned int l = lengthRadioButtons(theHTML, cnt, setting);
+
+    if(op == WM_CP_LEN) {
+        wmLenBuf = l;
+        return (const char *)&wmLenBuf;
+    }
+    
+    char *str = (char *)malloc(l);
+
+    buildRadioButtons(str, theHTML, cnt, setting);
+    
+    return str;
+}
+
+#ifdef HAVE_PM
+static const char *wmBuildBatType(const char *dest, int op)
+{
+    return wmBuildSelect(dest, op, batTypeHTMLSrc, 7, settings.batType, false);
 }
 #endif
 
 static const char *wmBuildApChnl(const char *dest, int op)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-
-    unsigned int l = calcSelectMenu(apChannelCustHTMLSrc, 14, settings.apChnl);
-
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
-    
-    char *str = (char *)malloc(l);
-
-    buildSelectMenu(str, apChannelCustHTMLSrc, 14, settings.apChnl);
-    
-    return str;
+    return wmBuildSelect(dest, op, apChannelCustHTMLSrc, 14, settings.apChnl, false);
 }
 
 static const char *wmBuildBestApChnl(const char *dest, int op)
@@ -1974,92 +2015,20 @@ static const char *wmBuildHaveSD(const char *dest, int op)
     return buildBanner(haveNoSD, col_r, op);
 }
 
-static unsigned int lengthRadioButtons(const char **theHTML, int cnt, char *setting)
-{
-    unsigned int mysize = STRLEN(rad0) + strlen(theHTML[0]) + strlen(theHTML[1]);
-    int i, j = strlen(theHTML[2]), sr = atoi(setting);
-    
-    for(i = 0; i < cnt; i++) {
-        mysize += STRLEN(rad1) + (3*j) + (3*2) + ((i==sr) ? STRLEN(radchk) : 0) + strlen(theHTML[3+i]);
-    }
-    mysize += STRLEN(rad99);
-
-    return mysize;
-}
-
-static void buildRadioButtons(char *target, const char **theHTML, int cnt, char *setting)
-{
-    int i, sr = atoi(setting);
-    
-    sprintf(target, rad0, theHTML[0]);
-    strcat(target, theHTML[1]);
-    
-    for(i = 0; i < cnt; i++) {
-        sprintf(target+strlen(target), rad1, theHTML[2], i, theHTML[2], i, (i==sr) ? radchk : "", theHTML[2], i, theHTML[3+i]);
-    }
-    strcat(target, rad99);
-}
-
 static const char *wmBuildOORST(const char *dest, int op)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-
-    unsigned int l = lengthRadioButtons(oorstCustHTMLSrc, 2, settings.oorst);
-
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
-
-    char *str = (char *)malloc(l);
-    buildRadioButtons(str, oorstCustHTMLSrc, 2, settings.oorst);
-        
-    return str;
+    return wmBuildRadioButtons(dest, op, oorstCustHTMLSrc, 2, settings.oorst);
 }
 
 static const char *wmBuildOOTT(const char *dest, int op)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-
-    unsigned int l = lengthRadioButtons(oottCustHTMLSrc, 2,  settings.ooTT);
-
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
-    
-    char *str = (char *)malloc(l);
-    buildRadioButtons(str, oottCustHTMLSrc, 2, settings.ooTT);
-        
-    return str;
+    return wmBuildRadioButtons(dest, op, oottCustHTMLSrc, 2, settings.ooTT);
 }
 
 #ifdef REMOTE_HAVEMQTT
 static const char *wmBuildMQTTprot(const char *dest, int op)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-
-    unsigned int l = calcSelectMenu(mqttpCustHTMLSrc, 4, settings.mqttVers);
-
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
-    
-    char *str = (char *)malloc(l);
-
-    buildSelectMenu(str, mqttpCustHTMLSrc, 4, settings.mqttVers);
-    
-    return str;
+    return wmBuildSelect(dest, op, mqttpCustHTMLSrc, 4, settings.mqttVers, false);
 }
 
 static const char *wmBuildMQTTstate(const char *dest, int op)
@@ -2198,55 +2167,29 @@ static const char *wmBuildMQTTTM(const char *dest, int op)
 #endif
 
 #ifdef HAVE_CRSF
-static const char *wmBuildCRSFSelect(const char *dest, int op, const char **htmlSrc, int count, char *setting)
-{
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-
-    unsigned int l = calcSelectMenu(htmlSrc, count, setting);
-
-    if(op == WM_CP_LEN) {
-        wmLenBuf = l;
-        return (const char *)&wmLenBuf;
-    }
-
-    char *str = (char *)malloc(l);
-
-    buildSelectMenu(str, htmlSrc, count, setting);
-
-    return str;
-}
-
 static const char *wmBuildCRSFOM(const char *dest, int op)
 {
-    return wmBuildCRSFSelect(dest, op, cOpModeCustHTMLSrc, 4, settings.opMode);
+    return wmBuildSelect(dest, op, cOpModeCustHTMLSrc, 4, settings.opMode, false);
 }
-
 static const char *wmBuildCRSFPR(const char *dest, int op)
 {
-    return wmBuildCRSFSelect(dest, op, cPktRateCustHTMLSrc, 6, settings.elrsPktRate);
+    return wmBuildSelect(dest, op, cPktRateCustHTMLSrc, 6, settings.elrsPktRate, false);
 }
-
 static const char *wmBuildCRSFSU(const char *dest, int op)
 {
-    return wmBuildCRSFSelect(dest, op, cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit);
+    return wmBuildSelect(dest, op, cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit, false);
 }
-
 static const char *wmBuildCRSFTR(const char *dest, int op)
 {
-    return wmBuildCRSFSelect(dest, op, cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio);
+    return wmBuildSelect(dest, op, cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio, false);
 }
-
 static const char *wmBuildCRSFMP(const char *dest, int op)
 {
-    return wmBuildCRSFSelect(dest, op, cMaxPowerCustHTMLSrc, 8, settings.elrsMaxPower);
+    return wmBuildSelect(dest, op, cMaxPowerCustHTMLSrc, 8, settings.elrsMaxPower, false);
 }
-
 static const char *wmBuildCRSFDP(const char *dest, int op)
 {
-    return wmBuildCRSFSelect(dest, op, cDynPowerCustHTMLSrc, 4, settings.elrsDynPower);
+    return wmBuildSelect(dest, op, cDynPowerCustHTMLSrc, 4, settings.elrsDynPower, false);
 }
 #endif
 

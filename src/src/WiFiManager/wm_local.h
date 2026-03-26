@@ -13,6 +13,8 @@
 #ifndef wm_local_h
 #define wm_local_h
 
+#include "../../remote_global.h"
+
 //#define _A10001986_DBG
 //#define _A10001986_V_DBG
 
@@ -23,9 +25,12 @@
 #ifdef WM_PARAM2
 #define WM_PARAM2_CAPTION "HA/MQTT Settings"
 #define WM_PARAM2_TITLE "HA/MQTT Settings"
+#endif
+
+#ifdef HAVE_CRSF
 #define WM_PARAM3
-#define WM_PARAM3_CAPTION "ELRS/CRSF"
-#define WM_PARAM3_TITLE "ELRS/CRSF"
+#define WM_PARAM3_CAPTION "CRSF Settings"
+#define WM_PARAM3_TITLE "CRSF Settings"
 #endif
 
 #define WM_UPLOAD

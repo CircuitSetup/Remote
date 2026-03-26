@@ -91,6 +91,8 @@
 
 unsigned long powerupMillis = 0;
 
+bool haveNewBoard = false;
+
 // The segment display object
 remDisplay remdisplay(DISPLAY_ADDR);
 
@@ -492,6 +494,8 @@ static void condPLEDaBLvl(bool sLED, bool sLvl);
 static void timeTravel(bool networkTriggered, uint16_t P0Dur = P0_DUR, uint16_t P1Dur = P1_DUR);
 static void showDot();
 
+static void showUpd();
+
 static void execute_remote_command();
 
 static void display_ip();
@@ -685,7 +689,9 @@ void main_boot2()
     #endif
 
     #ifdef HAVE_CRSF
-    opModeCRSF = evalBool(settings.opMode);
+    if(haveNewBoard) {
+        opModeCRSF = evalBool(settings.opMode);
+    }
     #endif
 }
 
@@ -770,6 +776,8 @@ void main_setup()
     if(opModeCRSF) {
         Serial.println("Control mode: ELRS/CRSF");
 
+        showUpd();
+
         if((useBPack = butPack.begin())) {
             butPack.setScanInterval(50);
         } else {
@@ -813,7 +821,7 @@ void main_setup()
     haveThUp = check_file_SD(throttleUpSnd);
 
     // Initialize throttle
-    if(rotEnc.begin()) {
+    if(rotEnc.begin(true, haveNewBoard)) {
         useRotEnc = true;
         loadCalib();
     } else {
@@ -914,13 +922,8 @@ void main_setup()
         delay(1000);
         remdisplay.clearBuf();
         remdisplay.show();
-    } else if(showUpdAvail && updateAvailable()) {
-        remdisplay.on();
-        remdisplay.setText("UPD");
-        remdisplay.show();
-        delay(500);
-        remdisplay.clearBuf();
-        remdisplay.show();
+    } else {
+        showUpd();
     }
 
     // Initialize BTTF network
@@ -2386,6 +2389,18 @@ void showNumber(int num)
     remdisplay.setText(buf);
     remdisplay.show();
     doForceDispUpd = true;
+}
+
+static void showUpd()
+{
+    if(showUpdAvail && updateAvailable()) {
+        remdisplay.on();
+        remdisplay.setText("UPD");
+        remdisplay.show();
+        delay(500);
+        remdisplay.clearBuf();
+        remdisplay.show();
+    }
 }
 
 void prepareTT()
