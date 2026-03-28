@@ -20,7 +20,7 @@ See it controlling the lights and blinds through Home Assistant:
 A video of an early proof-of-concept is [here](https://www.facebook.com/61553801874212/videos/1047035620236271/) (note that the hardware shown isn't even in prototype stage).
 
 Firmware features:
-- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display]([https://tcd.out-a-ti.me]; when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD-connected speedo. 
+- [Wireless communication](#connecting-a-time-circuits-display) with [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/); when (fake) powered up by "ON/OFF" switch, the Remote will take over speed control on the TCD-connected speedo. 
 - Elevator stick on actual Futaba remote control used for throttle control, like in the movie. The throttle can increase or decrease speed, in five steps towards each direction. When the speed on the TCD's speedo reaches 88mph, a time travel is triggered.
 - Optional [coasting](#-coasting-when-throttle-in-neutral), optional [auto-throttle](#-auto-throttle)
 - controlling the Futaba's power LED and battery level meter (static display only, no actual battery level display)
