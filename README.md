@@ -7,7 +7,7 @@ See [here](FUTABA.md) for information on the hardware (parts, disassembly & buil
 ![My Futaba1](img/myfutaba1.jpg)
 ![My Futaba2](img/myfutaba2.jpg)
 
-| [![Watch the video](https://img.youtube.com/vi/6dNKL5sDWPA/0.jpg)](https://youtu.be/6dNKL5sDWPA) |
+| [![Watch the video](https://img.youtube.com/vi/ADWcsmJ4gok/0.jpg)](https://youtu.be/ADWcsmJ4gok) |
 |:--:|
 | Click to watch the video |
 
