@@ -7,9 +7,13 @@ See [here](FUTABA.md) for information on the hardware (parts, disassembly & buil
 ![My Futaba1](img/myfutaba1.jpg)
 ![My Futaba2](img/myfutaba2.jpg)
 
+| [![Watch the video](https://img.youtube.com/vi/ADWcsmJ4gok/0.jpg)](https://youtu.be/ADWcsmJ4gok) |
+|:--:|
+| Click to watch the video |
+
 | [![Watch the video](https://img.youtube.com/vi/vgmrB-Drxjg/0.jpg)](https://youtu.be/vgmrB-Drxjg) |
 |:--:|
-| See it in action. Click to watch the video |
+| Click to watch the video |
 
 See it controlling the lights and blinds through Home Assistant:
 
@@ -888,7 +892,7 @@ If checked, the Remote will connect to the broker (if configured) and send and r
 
 ##### &#9193; Broker IP[:port] or domain[:port]
 
-The broker server address. Can be a domain (eg. "myhome.me") or an IP address (eg "192.168.1.5"). The default port is 1883. If different port is to be used, it can be specified after the domain/IP and a colon ":", for example: "192.168.1.5:1884". Specifying the IP address is preferred over a domain since the DNS call adds to the network overhead. Note that ".local" (MDNS) domains are not supported.
+The broker server address. Can be a domain (eg. "myhome.me") or an IP address (eg "192.168.1.5"). The default port is 1883. If a different port is to be used, it can be specified after the domain/IP and a colon ":", for example: "192.168.1.5:1884". Specifying the IP address is preferred over a domain since the DNS call adds to the network overhead. Note that ".local" (MDNS) domains are not supported.
 
 ##### &#9193; Protocol version
 
