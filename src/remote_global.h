@@ -15,8 +15,8 @@
  ***                          Version Strings                          ***
  *************************************************************************/
 
-#define REMOTE_VERSION "V1.20"              // Do NOT change format.
-#define REMOTE_VERSION_EXTRA "FEB152026"
+#define REMOTE_VERSION "V1.21"              // Do NOT change format.
+#define REMOTE_VERSION_EXTRA "MAR262026"
 
 /*************************************************************************
  ***             Configuration for hardware/peripherals                ***
@@ -51,6 +51,8 @@
 
 // Use SPIFFS (if defined) or LittleFS (if undefined; esp32-arduino >= 2.x)
 //#define USE_SPIFFS
+
+//#define HAVE_CRSF
 
 /*************************************************************************
  ***                               Debug                               ***
@@ -104,5 +106,8 @@
 #define LVLMETER_PIN      12      // Battery level meter on Futaba (CB 1.5)
 
 #define BALM_PIN          4       // Battery monitor alarm (CB 1.6; act. low)     (PU on CB 1.6)
+
+//#define DETECT_OUT_PIN    17      // Board version detection output
+//#define DETECT_MIRROR     35      // Board version detection input
 
 #endif

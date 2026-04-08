@@ -69,7 +69,7 @@ class REMRotEnc {
   
     public:
         REMRotEnc(int numTypes, const uint8_t *addrArr);
-        bool    begin(bool forSpeed = true);
+        bool    begin(bool forSpeed = true, bool newBoard = false);
         
         void    zeroPos(bool calibMode = false);
         
@@ -206,6 +206,10 @@ class ButtonPack {
 
         int  getPackSize();
         void scan();
+        #ifdef HAVE_CRSF
+        bool    sampleStates(uint8_t &states);
+        uint8_t readStates();
+        #endif
 
     private:
 

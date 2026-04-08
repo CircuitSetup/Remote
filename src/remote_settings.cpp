@@ -75,6 +75,9 @@
 #include "remote_settings.h"
 #include "remote_audio.h"
 #include "remote_wifi.h"
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_kludge.h"
+#endif
 
 // If defined, old settings files will be used
 // and converted if no new settings file is found.
@@ -128,6 +131,8 @@ static struct [[gnu::packed]] {
     uint8_t movieMode      = DEF_MOV_MD;
     uint8_t displayGPSMode = DEF_DISP_GPS;
     uint8_t showUpdAvail   = 1;
+    uint8_t updateV        = 0;
+    uint8_t updateR        = 0;
 } secSettings;
 
 // Tertiary settings (SD only)
@@ -215,11 +220,10 @@ static void read_mqtt_settings();
 #endif
 
 static bool CopyTextParm(const char *json, char *setting, int setSize);
-static bool CopyCheckValidNumParm(const char *json, char *text, uint8_t psize, int lowerLim, int upperLim, int setDefault);
-static bool CopyCheckValidNumParmF(const char *json, char *text, uint8_t psize, float lowerLim, float upperLim, float setDefault);
+static bool CopyCheckValidNumParm(const char *json, char *text, int psize, int lowerLim, int upperLim, int setDefault);
+static bool CopyCheckValidNumParmF(const char *json, char *text, int psize, float lowerLim, float upperLim, float setDefault);
 static bool checkValidNumParm(char *text, int lowerLim, int upperLim, int setDefault);
 static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float setDefault);
-static bool handleMQTTButton(const char *json, char *text, uint8_t psize);
 
 static void loadUpdAvail();
 
@@ -241,9 +245,9 @@ static bool writeJSONCfgFile(const JsonDocument& json, const char *fn, bool useS
 static bool writeFileToSD(const char *fn, uint8_t *buf, int len);
 static bool writeFileToFS(const char *fn, uint8_t *buf, int len);
 
-static bool loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs = 0);
-static bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
-static uint32_t calcHash(uint8_t *buf, int len);
+bool        loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs = 0);
+bool        saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
+uint32_t    calcHash(uint8_t *buf, int len);
 static bool saveSecSettings(bool useCache);
 static bool saveTerSettings(bool useCache);
 #ifdef SETTINGS_TRANSITION
@@ -270,7 +274,31 @@ void settings_setup()
     bool SDres = false;
     int alienVER = -1;
     int cfgReadCount = 0;
-  
+
+    // Detect Board Version >= 1.7
+    haveNewBoard = false;
+
+    #if defined(DETECT_OUT_PIN) && defined(DETECT_MIRROR)
+    pinMode(DETECT_OUT_PIN, OUTPUT);
+    digitalWrite(DETECT_OUT_PIN, LOW);
+    pinMode(DETECT_MIRROR, INPUT);
+    delay(20);
+    if(!digitalRead(DETECT_MIRROR)) {
+        digitalWrite(DETECT_OUT_PIN, HIGH);
+        delay(20);
+        if(digitalRead(DETECT_MIRROR)) {
+            digitalWrite(DETECT_OUT_PIN, LOW);
+            delay(20);
+            if(!digitalRead(DETECT_MIRROR)) {
+                haveNewBoard = true;
+                #ifdef REMOTE_DBG
+                Serial.println("Board >= 1.7 detected");
+                #endif
+            }
+        }
+    }
+    #endif
+    
     #ifdef REMOTE_DBG
     Serial.printf("%s: Mounting flash FS... ", funcName);
     #endif
@@ -440,6 +468,12 @@ void settings_setup()
         haveSecSettings = true;
     }
 
+    #ifdef HAVE_CRSF
+    if(haveNewBoard) {
+        crsf_load_settings();
+    }
+    #endif
+
     // Load tertiary config file (SD only)
     if(haveSD) {
         if(loadConfigFile(terCfgName, (uint8_t *)&terSettings, sizeof(terSettings), terSetValidBytes, 1)) {
@@ -514,14 +548,19 @@ static bool read_settings(File configFile, int cfgReadCount)
         if(!cfgReadCount) {
             memset(settings.ssid, 0, sizeof(settings.ssid));
             memset(settings.pass, 0, sizeof(settings.pass));
+            memset(settings.bssid, 0, sizeof(settings.bssid));
         }
 
         if(json["ssid"]) {
             memset(settings.ssid, 0, sizeof(settings.ssid));
             memset(settings.pass, 0, sizeof(settings.pass));
+            memset(settings.bssid, 0, sizeof(settings.bssid));
             strncpy(settings.ssid, json["ssid"], sizeof(settings.ssid) - 1);
             if(json["pass"]) {
                 strncpy(settings.pass, json["pass"], sizeof(settings.pass) - 1);
+            }
+            if(json["bssid"]) {
+                strncpy(settings.bssid, json["bssid"], sizeof(settings.bssid) - 1);
             }
         } else {
             if(!cfgReadCount) {
@@ -536,7 +575,6 @@ static bool read_settings(File configFile, int cfgReadCount)
 
         wd |= CopyTextParm(json["hostName"], settings.hostName, sizeof(settings.hostName));
         wd |= CopyCheckValidNumParm(json["wifiConRetries"], settings.wifiConRetries, sizeof(settings.wifiConRetries), 1, 10, DEF_WIFI_RETRY);
-        wd |= CopyCheckValidNumParm(json["wifiConTimeout"], settings.wifiConTimeout, sizeof(settings.wifiConTimeout), 7, 25, DEF_WIFI_TIMEOUT);
         wd |= CopyCheckValidNumParm(json["rcOFP"], settings.reconOnFP, sizeof(settings.reconOnFP), 0, 1, DEF_RECON_ON_FP);
     
         wd |= CopyTextParm(json["systemID"], settings.systemID, sizeof(settings.systemID));
@@ -595,39 +633,19 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyCheckValidNumParm(json["bTy"], settings.batType, sizeof(settings.batType), 0, 4, DEF_BAT_TYPE);
         wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, sizeof(settings.batCap), 1000, 6000, DEF_BAT_CAP);
         #endif
-  
-        // HA/MQTT Settings (transitional; now in separate file)
 
-        #ifdef REMOTE_HAVEMQTT
-        CopyCheckValidNumParm(json["useMQTT"], settings.useMQTT, sizeof(settings.useMQTT), 0, 1, 0);
-        CopyTextParm(json["mqttServer"], settings.mqttServer, sizeof(settings.mqttServer));
-        // mqttV never saved in main settings
-        CopyTextParm(json["mqttUser"], settings.mqttUser, sizeof(settings.mqttUser));
-        handleMQTTButton(json["mqttb1t"], settings.mqttbt[0], sizeof(settings.mqttbt[0]) - 1);
-        handleMQTTButton(json["mqttb1o"], settings.mqttbo[0], sizeof(settings.mqttbo[0]) - 1);
-        handleMQTTButton(json["mqttb1f"], settings.mqttbf[0], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb2t"], settings.mqttbt[1], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb2o"], settings.mqttbo[1], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb2f"], settings.mqttbf[1], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb3t"], settings.mqttbt[2], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb3o"], settings.mqttbo[2], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb3f"], settings.mqttbf[2], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb4t"], settings.mqttbt[3], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb4o"], settings.mqttbo[3], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb4f"], settings.mqttbf[3], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb5t"], settings.mqttbt[4], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb5o"], settings.mqttbo[4], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb5f"], settings.mqttbf[4], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb6t"], settings.mqttbt[5], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb6o"], settings.mqttbo[5], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb6f"], settings.mqttbf[5], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb7t"], settings.mqttbt[6], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb7o"], settings.mqttbo[6], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb7f"], settings.mqttbf[6], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb8t"], settings.mqttbt[7], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb8o"], settings.mqttbo[7], sizeof(settings.mqttbf[0]) - 1);
-        handleMQTTButton(json["mqttb8f"], settings.mqttbf[7], sizeof(settings.mqttbf[0]) - 1);
+        #ifdef HAVE_CRSF
+        if(haveNewBoard) {
+            wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
+            wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
+            wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, sizeof(settings.elrsSpdUnit), 0, 1, DEF_ELRSSPDUNIT);
+            wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, sizeof(settings.elrsTlmRatio), 0, 6, DEF_ELRSTLMRATIO);
+            wd |= CopyCheckValidNumParm(json["eMxPwr"], settings.elrsMaxPower, sizeof(settings.elrsMaxPower), 0, 5, DEF_ELRSMAXPOWER);
+            wd |= CopyCheckValidNumParm(json["eDynP"], settings.elrsDynPower, sizeof(settings.elrsDynPower), 0, 1, DEF_ELRSDYNPWR);
+        }
         #endif
+  
+        // HA/MQTT Settings in separate file
 
     } else {
 
@@ -656,11 +674,11 @@ void write_settings()
     if(settings.ssid[0] || settings.ssid[1] != 'X') {
         json["ssid"] = (const char *)settings.ssid;
         json["pass"] = (const char *)settings.pass;
+        json["bssid"] = (const char *)settings.bssid;
     }
 
     json["hostName"] = (const char *)settings.hostName;
     json["wifiConRetries"] = (const char *)settings.wifiConRetries;
-    json["wifiConTimeout"] = (const char *)settings.wifiConTimeout;
     json["rcOFP"] = (const char *)settings.reconOnFP;
     
     json["systemID"] = (const char *)settings.systemID;
@@ -715,6 +733,17 @@ void write_settings()
     json["bTy"] = (const char *)settings.batType;
     json["bCa"] = (const char *)settings.batCap;
     #endif
+
+    #ifdef HAVE_CRSF
+    if(haveNewBoard) {
+        json["opMode"] = (const char *)settings.opMode;
+        json["ePRHz"] = (const char *)settings.elrsPktRate;
+        json["eSUnit"] = (const char *)settings.elrsSpdUnit;
+        json["eTlmR"] = (const char *)settings.elrsTlmRatio;
+        json["eMxPwr"] = (const char *)settings.elrsMaxPower;
+        json["eDynP"] = (const char *)settings.elrsDynPower;
+    }
+    #endif
   
     writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);
 }
@@ -737,7 +766,7 @@ static bool CopyTextParm(const char *json, char *setting, int setSize)
     return false;
 }
 
-static bool CopyCheckValidNumParm(const char *json, char *text, uint8_t psize, int lowerLim, int upperLim, int setDefault)
+static bool CopyCheckValidNumParm(const char *json, char *text, int psize, int lowerLim, int upperLim, int setDefault)
 {
     if(!json) return true;
 
@@ -746,7 +775,7 @@ static bool CopyCheckValidNumParm(const char *json, char *text, uint8_t psize, i
     return checkValidNumParm(text, lowerLim, upperLim, setDefault);
 }
 
-static bool CopyCheckValidNumParmF(const char *json, char *text, uint8_t psize, float lowerLim, float upperLim, float setDefault)
+static bool CopyCheckValidNumParmF(const char *json, char *text, int psize, float lowerLim, float upperLim, float setDefault)
 {
     if(!json) return true;
 
@@ -829,7 +858,7 @@ bool evalBool(char *s)
     return true;
 }
 
-static bool handleMQTTButton(const char *json, char *text, uint8_t psize)
+static bool handleMQTTButton(const char *json, char *text, int psize)
 {
     if(!json) return true;
 
@@ -886,30 +915,30 @@ static void read_mqtt_settings()
             wd |= CopyTextParm(json["mqttServer"], settings.mqttServer, sizeof(settings.mqttServer));
             wd |= CopyCheckValidNumParm(json["mqttV"], settings.mqttVers, sizeof(settings.mqttVers), 0, 1, 0);
             wd |= CopyTextParm(json["mqttUser"], settings.mqttUser, sizeof(settings.mqttUser));
-            wd |= handleMQTTButton(json["mqttb1t"], settings.mqttbt[0], sizeof(settings.mqttbt[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb1o"], settings.mqttbo[0], sizeof(settings.mqttbo[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb1f"], settings.mqttbf[0], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb2t"], settings.mqttbt[1], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb2o"], settings.mqttbo[1], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb2f"], settings.mqttbf[1], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb3t"], settings.mqttbt[2], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb3o"], settings.mqttbo[2], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb3f"], settings.mqttbf[2], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb4t"], settings.mqttbt[3], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb4o"], settings.mqttbo[3], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb4f"], settings.mqttbf[3], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb5t"], settings.mqttbt[4], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb5o"], settings.mqttbo[4], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb5f"], settings.mqttbf[4], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb6t"], settings.mqttbt[5], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb6o"], settings.mqttbo[5], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb6f"], settings.mqttbf[5], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb7t"], settings.mqttbt[6], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb7o"], settings.mqttbo[6], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb7f"], settings.mqttbf[6], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb8t"], settings.mqttbt[7], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb8o"], settings.mqttbo[7], sizeof(settings.mqttbf[0]) - 1);
-            wd |= handleMQTTButton(json["mqttb8f"], settings.mqttbf[7], sizeof(settings.mqttbf[0]) - 1);
+            wd |= handleMQTTButton(json["mqttb1t"], settings.mqttbt[0], sizeof(settings.mqttbt[0]));
+            wd |= handleMQTTButton(json["mqttb1o"], settings.mqttbo[0], sizeof(settings.mqttbo[0]));
+            wd |= handleMQTTButton(json["mqttb1f"], settings.mqttbf[0], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb2t"], settings.mqttbt[1], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb2o"], settings.mqttbo[1], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb2f"], settings.mqttbf[1], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb3t"], settings.mqttbt[2], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb3o"], settings.mqttbo[2], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb3f"], settings.mqttbf[2], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb4t"], settings.mqttbt[3], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb4o"], settings.mqttbo[3], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb4f"], settings.mqttbf[3], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb5t"], settings.mqttbt[4], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb5o"], settings.mqttbo[4], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb5f"], settings.mqttbf[4], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb6t"], settings.mqttbt[5], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb6o"], settings.mqttbo[5], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb6f"], settings.mqttbf[5], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb7t"], settings.mqttbt[6], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb7o"], settings.mqttbo[6], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb7f"], settings.mqttbf[6], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb8t"], settings.mqttbt[7], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb8o"], settings.mqttbo[7], sizeof(settings.mqttbf[0]));
+            wd |= handleMQTTButton(json["mqttb8f"], settings.mqttbf[7], sizeof(settings.mqttbf[0]));
         }   
     }
 
@@ -1173,6 +1202,27 @@ void saveUpdAvail()
     saveSecSettings(true);
 }
 
+/*
+ *  Load/save curr version
+ */
+
+void loadUpdVers(int &v, int& r)
+{
+    if(haveSecSettings) {
+        v = secSettings.updateV;
+        r = secSettings.updateR;
+    } else {
+        v = r = 0;
+    }
+}
+
+void saveUpdVers(int v, int r)
+{
+    secSettings.updateV = v;
+    secSettings.updateR = r;
+    saveSecSettings(true);
+}
+
 // Special for CP where several settings are possibly
 // changed at the same time. We don't want to write the
 // file more than once.
@@ -1332,7 +1382,7 @@ bool loadIpSettings()
         #ifdef REMOTE_DBG
         Serial.println("loadIpSettings: Loaded bin settings");
         #endif
-        if(strlen(ipsettings.ip)) {
+        if(*ipsettings.ip) {
             if(checkIPConfig()) {
                 ipHash = calcHash((uint8_t *)&ipsettings, sizeof(ipsettings));
                 return true;
@@ -1385,7 +1435,7 @@ void writeIpSettings()
     if(!haveFS && !FlashROMode)
         return;
 
-    if(!strlen(ipsettings.ip))
+    if(!*ipsettings.ip)
         return;
 
     uint32_t nh = calcHash((uint8_t *)&ipsettings, sizeof(ipsettings));
@@ -2007,7 +2057,7 @@ static uint8_t cfChkSum(const uint8_t *buf, int len)
     return (uint8_t)(~s);
 }
 
-static bool loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs)
+bool loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs)
 {
     bool haveConfigFile = false;
     int fl;
@@ -2044,7 +2094,7 @@ static bool loadConfigFile(const char *fn, uint8_t *buf, int len, int& validByte
     return haveConfigFile;
 }
 
-static bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs)
+bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs)
 {
     uint8_t *bbuf;
     bool ret = false;
@@ -2074,7 +2124,7 @@ static bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs)
     return ret;
 }
 
-static uint32_t calcHash(uint8_t *buf, int len)
+uint32_t calcHash(uint8_t *buf, int len)
 {
     uint32_t hash = 2166136261UL;
     for(int i = 0; i < len; i++) {
