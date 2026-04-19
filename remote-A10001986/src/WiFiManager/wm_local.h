@@ -29,8 +29,9 @@
 
 #ifdef HAVE_CRSF
 #define WM_PARAM3
-#define WM_PARAM3_CAPTION "CRSF Settings"
-#define WM_PARAM3_TITLE "CRSF Settings"
+#define WM_PARAM3_CAPTION "ELSR/CRSF Settings"
+#define WM_PARAM3_TITLE "ELSR/CRSF Settings"
+#define WM_DYNPARM3
 #endif
 
 #define WM_UPLOAD
