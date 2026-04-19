@@ -206,7 +206,7 @@ When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td>Prepare TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous Song<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
-  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Toggle Auto-Throttle<br>or<br>Music Player</a>: Toggle Shuffle<br>(depending on <a href="#-holding-reset-when-fake-power-on">configuration</a>)</td></tr>
+  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td>Toggle Auto-Throttle<br>or<br><a href="#the-music-player">Music Player</a>: Toggle Shuffle<br>(depending on <a href="#-holding-reset-when-fake-power-on">configuration</a>)</td></tr>
 </table>
 
 When fake power is off, the buttons are used to set up audio volume and display brightness:
