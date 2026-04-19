@@ -749,7 +749,7 @@ If a power save timer is configured and has expired, and this option is checked,
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
-This setting can quickly be toggled by holding the RESET button, if [so configured](#).
+This setting can quickly be toggled by holding the RESET button, if [so configured](#-holding-reset-when-fake-power-on).
 
 ##### &#9193; Coasting when throttle in neutral
 
@@ -798,6 +798,10 @@ This selects the power-up behavior of Fake-Power control over the TCD.
 If this option is checked, the Remote takes over Fake-Power control from the TCD when booting. If the TCD is powered-up after the Remote, it will recognize the Remote's state and stay silent and dark until the Remote is fake-powered up.
 
 If this option is unchecked, you need to hold O.O to gain Fake-Power control on the TCD, as described [here](#controlling-tcd-fake-power).
+
+##### &#9193; Button to refill Plutonium
+
+Here you can select a user button/switch which, when activated, sends a "REFILL" command to the [Dash Gauges](https://dg.out-a-ti.me) through the TCD. This is useful for quickly silencing the Dash Gauges after a Time Travel.
 
 #### <ins>Other settings</ins>
 
