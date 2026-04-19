@@ -206,7 +206,7 @@ When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td>Prepare TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous Song<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
-  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
+  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Toggle Auto-Throttle<br>or<br>Music Player</a>: Toggle Shuffle<br>(depending on <a href="#-holding-reset-when-fake-power-on">configuration</a>)</td></tr>
 </table>
 
 When fake power is off, the buttons are used to set up audio volume and display brightness:
@@ -749,6 +749,8 @@ If a power save timer is configured and has expired, and this option is checked,
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
+This setting can quickly be toggled by holding the RESET button, if [so configured](#).
+
 ##### &#9193; Coasting when throttle in neutral
 
 Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
@@ -816,6 +818,13 @@ This procedure ensures that all your settings are copied from the old to the new
 
 #### <ins>Button assignment settings</ins>
 
+##### &#9193; Holding O.O/RESET when Fake-Power off
+
+This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
+
+- _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
+- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](#controlling-tcd-fake-power), RESET releases it.
+
 ##### &#9193; Pressing O.O when Fake-Power on
 
 This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
@@ -823,12 +832,12 @@ This selects what happens when you (briefly) press the O.O button when Fake-Powe
 - _Plays previous song in Music Player_: As it says, as part of Music Player control, O.O jumps to the previous song.
 - _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a Time Travel, which is then triggered when pushing the throttle stick upward.
 
-##### &#9193; Holding O.O/RESET when Fake-Power off
+##### &#9193; Holding RESET when Fake-Power on
 
-This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
+This selects what happens when you hold the RESET button when Fake-Power is on:
 
-- _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
-- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](#controlling-tcd-fake-power), RESET releases it.
+- _toggles shuffle in Music Player_: As it says, as part of Music Player control, it toggles the shuffle setting.
+- _toggles auto-throttle_: Holding RESET toggles the [auto-throttle](#-auto-throttle) setting.
 
 #### <ins>Hardware configuration settings</ins>
 
@@ -912,7 +921,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 
 ## Appendix B: Display messages
 
-- "ISP": Please install/update the [sound pack](#sound-pack-installation)
+- "INS" -> "SND" -> "PCK": Please install/update the [sound pack](#sound-pack-installation)
 - "BAT": Battery is low
 - "CAL", "UP", "DN": Shown during [calibration](#calibration)
 - "ERR": Error while installing the sound-pack, or during calibration. Please try again.
