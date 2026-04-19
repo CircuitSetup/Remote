@@ -6,7 +6,7 @@
  * https://remote.out-a-ti.me
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -18,6 +18,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -105,8 +108,8 @@
  * - Go to "Sketch" -> "Upload" to compile and upload the firmware to your ESP32 board.
  *
  * - Install the sound-pack:
- *   - Go to Config Portal, click "Update" and upload the sound-pack (REMA.bin, extracted
- *     from install/sound-pack-xxxxxxxx.zip) through the bottom file selector.
+ *   - Go to Config Portal, click "Update & Upload" and upload the sound-pack (REMA.bin,
+ *     extracted from install/sound-pack-rmXX.zip) through the bottom file selector.
  *     A FAT32 (not ExFAT!) formatted SD card must be present in the slot during this 
  *     operation.
  *   Alternatively:
@@ -135,12 +138,29 @@
 
 /*  Changelog
  *  
+ *  2026/04/19 (A10001986) [1.22]
+ *    **********************************************************************************
+ *    ** If updating from below 1.20, please install 1.20 first to have your          **
+ *    ** settings converted. If 1.20 is skipped, some of your settings (static IP,    **
+ *    ** volume, brightness, calibration data, movie mode, coasting, auto-throttle,   **
+ *    ** display TCD speed while off) will be restored to default values. It suffices **
+ *    ** to install 1.20 and boot once; you can then immediately update to a later    **
+ *    ** version.                                                                     **
+ *    ** https://github.com/realA10001986/Remote/releases/tag/V1.20                   **
+ *    **********************************************************************************
+ *    - Allow assigning a button/switch to "refill Plutonium". This switch/button, when
+ *      switched to ON, sends a "Refill" command to the Dash Gauges through the TCD 
+ *      (TCD 3.22).
+ *    - Allow configuring RESET button to toggle auto-throttle -or- shuffle setting
+ *      when held while fake power is on.
+ *    - New sound-pack (RM11)
+ *    - Code optimizations and fixes
  *  2026/03/26 (A10001986) [1.21]
  *    **********************************************************************************
  *    ** If updating from below 1.20, please install 1.20 first to have your          **
  *    ** settings converted. If 1.20 is skipped, some of your settings (static IP,    **
  *    ** volume, brightness, calibration data, movie mode, coasting, auto-throttle,   **
- *    ** display TCD speed while off) will be restored to default values. It suffices ** 
+ *    ** display TCD speed while off) will be restored to default values. It suffices **
  *    ** to install 1.20 and boot once; you can then immediately update to a later    **
  *    ** version.                                                                     **
  *    ** https://github.com/realA10001986/Remote/releases/tag/V1.20                   **

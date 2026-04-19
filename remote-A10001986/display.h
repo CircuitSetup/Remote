@@ -9,7 +9,7 @@
  * remDisplay Class: 3-digit 7-segment Display (HT16K33; addr 0x70)
  * 
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -21,6 +21,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -132,6 +135,8 @@ class remDisplay {
         uint8_t _brightness = 15;
         uint8_t _origBrightness = 15;
 
+        bool _haveDisp = false;
+
         int8_t   _dispType = -1;
         unsigned int _buf_max = 0;  //      number of buffer positions used
         unsigned int _num_digs;     //      total number of digits/letters (max 4)
@@ -146,6 +151,8 @@ class remDisplay {
         int  _dig_1_shift;          //      Shift .1s to align in buffer
         int  _dot_pos01;            //      1s dot position in 16bit buffer
         int  _dot01_shift;          //      1s dot shift to align in buffer
+
+        uint16_t _dotPattern;
 
         const uint16_t *_fontXSeg;
 };

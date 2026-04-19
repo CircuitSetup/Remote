@@ -8,7 +8,7 @@
  * Settings handling
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -82,10 +85,10 @@
 // If defined, old settings files will be used
 // and converted if no new settings file is found.
 // Keep this defined for a few versions/months.
-#define SETTINGS_TRANSITION
+//#define SETTINGS_TRANSITION
 // Stage 2: Assume new settings are present, but
 // still delete obsolete files.
-//#define SETTINGS_TRANSITION_2
+#define SETTINGS_TRANSITION_2
 
 #ifdef SETTINGS_TRANSITION
 #undef SETTINGS_TRANSITION_2
@@ -103,10 +106,10 @@
 #define DECLARE_D_JSON(x,n) DynamicJsonDocument n(x);
 #endif
 
-#define NUM_AUDIOFILES 22
-#define SND_REQ_VERSION "RM10"
+#define NUM_AUDIOFILES 24
+#define SND_REQ_VERSION "RM11"
 #define AC_FMTV 2
-#define AC_TS   815107
+#define AC_TS   820955
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 
 static const char *CONFN  = "/REMA.bin";
@@ -594,12 +597,14 @@ static bool read_settings(File configFile, int cfgReadCount)
         
         wd |= CopyTextParm(json["tcdIP"], settings.tcdIP, sizeof(settings.tcdIP));
         wd |= CopyCheckValidNumParm(json["pwM"], settings.pwrMst, sizeof(settings.pwrMst), 0, 1, DEF_PWR_MST);
+        wd |= CopyCheckValidNumParm(json["reB"], settings.refBut, sizeof(settings.refBut), 0, 8, DEF_REF_BUT);
         
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
 
         wd |= CopyCheckValidNumParm(json["oorst"], settings.oorst, sizeof(settings.oorst), 0, 1, DEF_OORST);
         wd |= CopyCheckValidNumParm(json["oott"], settings.ooTT, sizeof(settings.ooTT), 0, 1, DEF_OO_TT);
+        wd |= CopyCheckValidNumParm(json["resat"], settings.resAT, sizeof(settings.resAT), 0, 1, DEF_RES_AT);
 
         #ifdef ALLOW_DIS_UB
         wd |= CopyCheckValidNumParm(json["disBP"], settings.disBPack, sizeof(settings.disBPack), 0, 1, DEF_DIS_BPACK);
@@ -637,6 +642,7 @@ static bool read_settings(File configFile, int cfgReadCount)
         #ifdef HAVE_CRSF
         if(haveNewBoard) {
             wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
+            wd |= CopyCheckValidNumParm(json["eWAP"], settings.crsfap, sizeof(settings.crsfap), 0, 1, DEF_CRSFWM);
             wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
             wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, sizeof(settings.elrsSpdUnit), 0, 1, DEF_ELRSSPDUNIT);
             wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, sizeof(settings.elrsTlmRatio), 0, 6, DEF_ELRSTLMRATIO);
@@ -694,12 +700,14 @@ void write_settings()
     
     json["tcdIP"] = (const char *)settings.tcdIP;
     json["pwM"] = (const char *)settings.pwrMst;
+    json["reB"] = (const char *)settings.refBut;
     
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
 
     json["oorst"] = (const char *)settings.oorst;
     json["oott"] = (const char *)settings.ooTT;
+    json["resat"] = (const char *)settings.resAT;
 
     #ifdef ALLOW_DIS_UB
     json["disBP"] = (const char *)settings.disBPack;
@@ -737,6 +745,7 @@ void write_settings()
     #ifdef HAVE_CRSF
     if(haveNewBoard) {
         json["opMode"] = (const char *)settings.opMode;
+        json["eWAP"] = (const char *)settings.crsfap;
         json["ePRHz"] = (const char *)settings.elrsPktRate;
         json["eSUnit"] = (const char *)settings.elrsSpdUnit;
         json["eTlmR"] = (const char *)settings.elrsTlmRatio;

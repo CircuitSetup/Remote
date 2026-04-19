@@ -8,7 +8,7 @@
  * Settings handling
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -83,11 +86,14 @@ extern uint8_t musFolderNum;
 
 #define DEF_TCD_IP          ""    // TCD ip address or hostname for networked polling
 #define DEF_PWR_MST         0     // 0: Remote is not BTTFN-wide power-master, 1: Remote is.
-#define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
-#define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
+#define DEF_REF_BUT         0
 
 #define DEF_CFG_ON_SD       1     // Save secondary settings on SD card. Default: Yes (1)
 #define DEF_SD_FREQ         0     // SD/SPI frequency: Default 16MHz
+
+#define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
+#define DEF_OO_TT           1     // O.O:   1: trigger BTTFN-wide TT; 0: musicplayer prev song
+#define DEF_RES_AT          0     // RESET: 1: toggle "auto-throttle" setting; 0: MP toggle shuffle
 
 #define DEF_DIS_BPACK       0     // 1: Disable ButtonPack (Buttons 1-8), 0: Use buttons 1-8 if detected
 #define DEF_BPMAINT         0     // ButtonPack button is momentary (0) or maintained (1)
@@ -103,7 +109,8 @@ extern uint8_t musFolderNum;
 #define DEF_BAT_CAP         2000  // battery capacity per cell
 
 #ifdef HAVE_CRSF
-#define DEF_OPMODE          0
+#define DEF_OPMODE          0     // 0: Prop mode (legacy)  1: CRSF/ELRS mode
+#define DEF_CRSFWM          1     // 0: Remain in AP mode   1: Connect to WiFi in CRSF/ELRS mode
 #define DEF_ELRSPKTRATE     3
 #define DEF_ELRSSPDUNIT     0
 #define DEF_ELRSTLMRATIO    0
@@ -132,12 +139,14 @@ struct Settings {
 
     char tcdIP[32]          = DEF_TCD_IP;
     char pwrMst[2]          = MS(DEF_PWR_MST);
+    char refBut[2]          = MS(DEF_REF_BUT);
 
     char CfgOnSD[2]         = MS(DEF_CFG_ON_SD);
     char sdFreq[2]          = MS(DEF_SD_FREQ);
 
     char oorst[2]           = MS(DEF_OORST);
     char ooTT[2]            = MS(DEF_OO_TT);
+    char resAT[2]           = MS(DEF_RES_AT);
 
 #ifdef ALLOW_DIS_UB
     char disBPack[2]        = MS(DEF_DIS_BPACK);
@@ -182,6 +191,7 @@ struct Settings {
 
 #ifdef HAVE_CRSF
     char opMode[2]          = MS(DEF_OPMODE);
+    char crsfap[2]          = MS(DEF_CRSFWM);
     char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
     char elrsSpdUnit[2]     = MS(DEF_ELRSSPDUNIT);
     char elrsTlmRatio[2]    = MS(DEF_ELRSTLMRATIO);

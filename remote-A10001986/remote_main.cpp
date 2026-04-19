@@ -8,7 +8,7 @@
  * Main
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -209,9 +212,13 @@ static bool          etmr = false;
 static unsigned long enow = 0;
 
 static bool ooTT = true;
+static bool resAT = false;
+
 static int  triggerTTonThrottle = 0;
 static int  triggerIntTTonThrottle = 0;
 static unsigned long triggerTTonThrottleNow = 0;
+
+static int refillButton = 0;
 
 bool ooresBri = true;
 
@@ -330,11 +337,8 @@ static bool          triggerP1NoLead = false;
 // Volume-factor for "travelstart" sounds
 #define TT_SOUND_FACT 0.60f
 
-static bool          volchanged = false;
 static unsigned long volchgnow = 0;
-static bool          brichanged = false;
 static unsigned long brichgnow = 0;
-static bool          vischanged = false;
 static unsigned long vischgnow = 0;
 
 bool                 FPBUnitIsOn = true;
@@ -352,7 +356,7 @@ static const char *  powerOnSnd  = "/poweron.mp3";   // Default provided
 static const char *  powerOffSnd = "/poweroff.mp3";  // No default sound
 static const char *  brakeOnSnd  = "/brakeon.mp3";   // Default provided
 static const char *  brakeOffSnd = "/brakeoff.mp3";  // No default sound
-static const char *  throttleUpSnd = "/throttleup.mp3";   // Default provided (wav)
+static const char *  throttleUpSnd = "/throttleup.mp3";   // Default built-in
 static char          brakeRem[]  = "/rbrake1.mp3";
 
 // BTTF network
@@ -451,6 +455,7 @@ static uint16_t      tcdSpdFake100 = 0;
 static unsigned long tcdSpdChgNow = 0;
 static unsigned long tcdClickNow = 0;
 static uint16_t      remSpdAtP0Start = 0;
+static bool          triggerRefill = false;
 
 static int      iCmdIdx = 0;
 static int      oCmdIdx = 0;
@@ -496,10 +501,14 @@ static void showDot();
 
 static void showUpd();
 
+static void toggleAutoThrottle();
+
 static void execute_remote_command();
 
 static void display_ip();
 static bool display_soc_voltage(int type, bool displayAndReturn = false);
+
+static void wifiOnFakePowerOn(bool showWait);
 
 static void play_startup();
 static void playBrakeWarning();
@@ -617,8 +626,9 @@ void main_boot2()
     havePwrMon = pwrMon.havePM();
     #endif
 
-    // Allow user to delete static IP data by holding Calibration button
-    // while booting and pressing Button A ("O.O") twice within 10 seconds
+    // Allow user to delete static IP data and temporarily disable the AP
+    // password by holding Calibration button while booting and pressing 
+    // Button A ("O.O") twice within 10 seconds
 
     // Pre-maturely init button IOs (initialized again later)
     pinMode(CALIBB_IO_PIN, INPUT);
@@ -719,7 +729,12 @@ void main_setup()
     updateConfigPortalVisValues();
     updateConfigPortalVis2Values();
 
+    refillButton = atoi(settings.refBut);
+    if(refillButton < 0) refillButton = 0;
+    else if(refillButton > 8) refillButton = 8;
+
     ooTT = evalBool(settings.ooTT);
+    resAT = evalBool(settings.resAT);
     ooresBri = !evalBool(settings.oorst);
 
     for(int i = 0; i < BTTFN_REM_MAX_COMMAND+1; i++) {
@@ -801,7 +816,8 @@ void main_setup()
             usePwrLED,
             useLvlMtr,
             pwrLEDonFP,
-            LvLMtronFP
+            LvLMtronFP,
+            wifiOnFakePowerOn
         );
 
         // Not used for now
@@ -917,9 +933,15 @@ void main_setup()
         Serial.println("Current audio data not installed");
         #endif
         remdisplay.on();
-        remdisplay.setText("ISP");
+        remdisplay.setText("INS");
         remdisplay.show();
-        delay(1000);
+        delay(500);
+        remdisplay.setText("SND");
+        remdisplay.show();
+        delay(500);
+        remdisplay.setText("PCK");
+        remdisplay.show();
+        delay(500);
         remdisplay.clearBuf();
         remdisplay.show();
     } else {
@@ -1057,7 +1079,6 @@ void main_loop()
         #endif
         if(isFPBKeyPressed) {
             if(!FPBUnitIsOn) {
-                bool wifiblocks = false;
                 
                 // Fake power on:
                 FPBUnitIsOn = true;
@@ -1073,16 +1094,8 @@ void main_loop()
 
                 // Re-connect if we're in AP mode but
                 // there is a configured WiFi network
-                if(!justBootedNow && wifiNeedReConnect(wifiblocks)) {
-                    if(wifiblocks) {
-                        showWaitSequence();
-                        remdisplay.on();
-                    }
-                    // Enable WiFi
-                    wifiOn(0);
-                    if(wifiblocks) {
-                        endWaitSequence();
-                    }
+                if(!justBootedNow) {
+                    wifiOnFakePowerOn(true);
                 }
                 justBootedNow = 0;
 
@@ -1225,7 +1238,7 @@ void main_loop()
     // Button A "O.O":
     //    Fake-power on:
     //        If buttonPack is enabled/present:
-    //            Short press: BTTFN-wide TT or MusicPlayer Previous Song (depending on option)
+    //            Short press: BTTFN-wide TT -or- MusicPlayer Previous Song (depending on option)
     //            Long press:  MusicPlayer Play/Stop
     //        If buttonPack is disabled/not present: 
     //            Short press: Play "key3"
@@ -1237,7 +1250,7 @@ void main_loop()
     //    Fake-power on: 
     //        If buttonPack is enabled/present:
     //            Short press: MusicPlayer Next Song
-    //            Long press:  MusicPlayer: Toggle shuffle
+    //            Long press:  Toggle Auto-Throttle -or- MusicPlayer: Toggle shuffle
     //        If buttonPack is disabled/not present: 
     //            Short press: Play "key6"
     //            Long press:  MusicPlayer Next Song
@@ -1357,11 +1370,16 @@ void main_loop()
                             play_bad();
                         }
                     } else if(isbuttonBKeyLongPressed) {
-                        mp_makeShuffle(!mpShuffle);
-                        if(haveMusic) {
-                            play_file(mpShuffle ? "/shufon.mp3" : "/shufoff.mp3", PA_ALLOWSD, 1.0f);
+                        if(resAT) {
+                            toggleAutoThrottle();
+                            play_file(autoThrottle ? "/ok.mp3" : "/cancel.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0f);
                         } else {
-                            play_bad();
+                            mp_makeShuffle(!mpShuffle);
+                            if(haveMusic) {
+                                play_file(mpShuffle ? "/shufon.mp3" : "/shufoff.mp3", PA_ALLOWSD, 1.0f);
+                            } else {
+                                play_bad();
+                            }
                         }
                     }
                 #ifdef ALLOW_DIS_UB
@@ -1629,7 +1647,7 @@ void main_loop()
     
                 // Auto throttle
                 if(keepCounting) {
-                    if(throttlePos < 0) {
+                    if(throttlePos < -50) {
                         keepCounting = false;
                     } else if(oldThrottlePos > 0) {
                         if(throttlePos < oldThrottlePos) {
@@ -1839,11 +1857,6 @@ void main_loop()
         remdisplay.show();
     }
 
-    // This serves as our KEEP_ALIVE
-    if(millis() - lastCommandSent > 10*1000) {
-        bttfn_remote_send_combined(powerState, brakeState, currSpeed);
-    }
-
     if(justBootedNow && (millis() - justBootedNow > 10*1000)) {
         justBootedNow = 0;
     }
@@ -2050,6 +2063,11 @@ void main_loop()
 
     now = millis();
 
+    // This serves as our KEEP_ALIVE
+    if((now - lastCommandSent > 10*1000) || triggerRefill) {
+        bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+    }
+
     // If network is interrupted, return to stand-alone
     if(useBTTFN) {
         if( !bttfnDataNotEnabled &&
@@ -2068,8 +2086,7 @@ void main_loop()
         int oldVol = curSoftVol;
         curSoftVol = rotEncVol->updateVolume(curSoftVol, false);
         if(oldVol != curSoftVol) {
-            volchanged = true;
-            volchgnow = millis();
+            volchgnow = milliNonZero();
             storeCurVolume();
             if(!FPBUnitIsOn && !TTrunning) {
                 play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD, 1.0f);
@@ -2080,16 +2097,17 @@ void main_loop()
 
     if(!tcdIsInP0 && !throttlePos && !keepCounting && !TTrunning && !calibMode) {
         // Save on-the-fly settings 8/3 seconds after last change
-        if(brichanged && (now - brichgnow > 8000)) {
-            brichanged = false;
+        now = millis();
+        if(brichgnow && (now - brichgnow > 8000)) {
+            brichgnow = 0;
             saveBrightness();
         }
-        if(volchanged && (now - volchgnow > 8000)) {
-            volchanged = false;
+        if(volchgnow && (now - volchgnow > 8000)) {
+            volchgnow = 0;
             saveCurVolume();
         }
-        if(vischanged && (now - vischgnow > 3000)) {
-            vischanged = false;
+        if(vischgnow && (now - vischgnow > 3000)) {
+            vischgnow = 0;
             saveVis();
         }
     }
@@ -2105,16 +2123,16 @@ void main_loop()
 
 void flushDelayedSave()
 {
-    if(brichanged) {
-        brichanged = false;
+    if(brichgnow) {
+        brichgnow = 0;
         saveBrightness();
     }
-    if(volchanged) {
-        volchanged = false;
+    if(volchgnow) {
+        volchgnow = 0;
         saveCurVolume();
     }
-    if(vischanged) {
-        vischanged = false;
+    if(vischgnow) {
+        vischgnow = 0;
         saveVis();
     }
 }
@@ -2128,8 +2146,7 @@ static void chgVolume(int d)
         
     curSoftVol = nv;
 
-    volchanged = true;
-    volchgnow = millis();
+    volchgnow = millisNonZero();
     storeCurVolume();
 }
 
@@ -2161,8 +2178,7 @@ static void changeBrightness(int d)
     else if(b > 15) b = 15;
     
     remdisplay.setBrightness(b);
-    brichanged = true;
-    brichgnow = millis();
+    brichgnow = millisNonZero();
     storeBrightness();
 }
 
@@ -2209,8 +2225,7 @@ void updateVisMode()
 
 static void triggerSaveVis()
 {
-    vischanged = true;
-    vischgnow = millis();
+    vischgnow = millisNonZero();
     storeVis();
     updateConfigPortalVisValues();
 }
@@ -2562,8 +2577,7 @@ static void execute_remote_command()
                 // nada
             } else if(command <= 19) {
                 curSoftVol = command;
-                volchanged = true;
-                volchgnow = millis();
+                volchgnow = millisNonZero();
                 storeCurVolume();
                 #ifdef HAVE_VOL_ROTENC
                 re_vol_reset();
@@ -2576,8 +2590,7 @@ static void execute_remote_command()
 
             command -= 400;                           // 7400-7415: Set brightness
             remdisplay.setBrightness(command);
-            brichanged = true;
-            brichgnow = millis();
+            brichgnow = millisNonZero();
             storeBrightness();
 
         } else if(command >= 501 && command <= 519) {
@@ -2806,6 +2819,23 @@ static bool display_soc_voltage(int type, bool displayAndReturn)
 }
 #endif
 
+static void wifiOnFakePowerOn(bool showWait)
+{
+    bool wifiblocks = false;
+
+    if(wifiNeedReConnect(wifiblocks)) {
+        if(wifiblocks && showWait) {
+            showWaitSequence();
+            remdisplay.on();
+        }
+        // Enable WiFi
+        wifiOn(0);
+        if(wifiblocks && showWait) {
+            endWaitSequence();
+        }
+    }
+}
+
 static void play_startup()
 {    
     blockScan = true;
@@ -3010,6 +3040,7 @@ static void butPackKeyPressed(int i)
         #ifdef REMOTE_HAVEMQTT
         mqtt_send_button_on(i);
         #endif
+        if(refillButton == i + 1) triggerRefill = true;
     }
 }
 
@@ -3037,6 +3068,7 @@ static void butPackKeyLongPressed(int i)
         #ifdef REMOTE_HAVEMQTT
         mqtt_send_button_on(i);
         #endif
+        if(refillButton == i + 1) triggerRefill = true;
     }
     isbutPackKeyChange[i] = true;
 }
@@ -3662,10 +3694,11 @@ static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t
 {
     if(!triggerCompleteUpdate) {
         uint8_t p1 = 0;
-        if(powerstate)     p1 |= 0x01;
-        if(brakestate)     p1 |= 0x02;
-        if(powerMaster)    p1 |= 0x08;  // 4 tainted by buggy TCD 3.7
-        if(displayGPSMode) p1 |= 0x10;
+        if(powerstate)       p1 |= 0x01;
+        if(brakestate)       p1 |= 0x02;
+        if(powerMaster)      p1 |= 0x08;  // 4 tainted by buggy TCD 3.7
+        if(displayGPSMode)   p1 |= 0x10;
+        if(triggerRefill)  { p1 |= 0x20; triggerRefill = false; };
         if(!bttfn_send_command(BTTFN_REMCMD_COMBINED, p1, speed)) {
             triggerCompleteUpdate = true;
         }
