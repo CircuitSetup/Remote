@@ -461,7 +461,15 @@ You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time
    <tr>
      <td align="left">Toggle <a href="#controlling-tcd-fake-power">Fake-Power control</a></td>
      <td align="left">7096&#9166;</td>
-    </tr> 
+    </tr>
+    <tr>
+     <td align="left">Disable <a href="#car-setup">Car mode</a><sup>1</sup></td>
+     <td align="left">7990&#9166;</td>
+    </tr>
+    <tr>
+     <td align="left">Enable <a href="#car-setup">Car mode</a><sup>1</sup></td>
+     <td align="left">7991&#9166;</td>
+    </tr>
     <tr>
      <td align="left">Reboot the device<sup>2</sup></td>
      <td align="left">7064738&#9166;</td>
@@ -476,7 +484,7 @@ You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time
     </tr>
 </table>
 
-1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
+1: Board >= 1.7, M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
 2: Not supported through HA/MQTT [_INJECT_](#the-inject_x-command) command
 
 [Here](CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
@@ -560,29 +568,31 @@ Limitations: TLS/SSL not supported; ".local" domains (MDNS) not supported; serve
 
 ## Car Setup
 
-If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, the following network configuration is recommended:
+If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car or other places without a local WiFi network, the following network configuration is recommended:
 
 ![STAmode-car](img/stamode-car2.png)
 
+This configuration can easily achieved by putting both the TCD and the Remote in *Car Mode*:
+
 #### TCD
 
-- Run your TCD in [*car mode*](https://tcd.out-a-ti.me/#car-mode);
-- disable WiFi power-saving on the TCD by setting **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the WiFi Configuration page.
+- Set **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the *WiFi Configuration* page
+- Put your TCD in [*Car Mode*](https://tcd.out-a-ti.me/#car-mode) by issuing keypad command 991.
 
 #### Remote
 
-Enter the Config Portal on the Remote, click on *Setup* and
-  - enter *192.168.4.1* into the field **_IP address or hostname of TCD_** under BTTFN settings;
-  - click on *Save*.
+One-time configuration steps:
+- Enter the Config Portal on the Remote, click on *Settings* and check that the hostname of the TCD (usually "timecircuits") is present in the  **_Hostname or IP address of TCD_** under *Wireless communication (BTTF-Network)* settings; do not use an IP address.
+- Furthermore, on the *WiFi Configuration* page, check that the TCD's WiFi network name (SSID; usually "TCD-AP") and password (if the TCD is configured with a password) are present under *Car mode settings*.
 
-After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
-  - click on *WiFi Configuration*,
-  - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "Scan for Networks") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
-  - click on *Save*.
+If everything is in place, you can enable Car mode on the Remote by holding the Calibration button for 6 seconds (until a triple-beep is emitted). The Remote will reboot and attempt to connect to the TCD's AP.
 
-In order to access the Remote's Config Portal in this setup, connect your handheld or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
+You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the Calibration button for 6 seconds, regardless of Fake Power.
 
-This "car setup" can also be used in a home setup with no local WiFi network present.
+In order to access the Remote's Config Portal in Car mode, connect your handheld or computer to the TCD's WiFi network ("TCD-AP"), and direct your browser to http://dtmremote.local.
+
+  ><details><summary>If that fails...</summary>
+  >If connecting to http://dtmremote.local fails due to a name resolution error, go to the TCD's keypad menu, navigate to "BTTFN CLIENTS", and look for the Remote's IP address there; then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the TCD display)</details>
 
 ## WiFi Power Saving Features
 
@@ -679,6 +689,16 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 ##### &#9193; Forget Saved WiFi Network
 
 Clicking this button (and selecting "yes" in the confirmation dialog) deletes the currently saved WiFi network (SSID and password as well as static IP data) and reboots the device; it will restart in "access point" (AP) mode. See [here](#connecting-to-a-wifi-network).
+
+##### &#9193; Car mode settings
+
+In Car mode, the device connects to the TCD-AP as configured here instead of the WiFi network configured above. 
+
+Enter your TCD's network name (usually "TCD-AP") in **_Network name (SSID) of TCD-AP_** and the TCD's AP password (if configured on the TCD) in **_Password for TCD-AP_**. 
+
+>In the unlikely case that multiple TCD's are in range, you can single out your TCD by its BSSID. The TCD displays its BSSID on its *WiFi Configuration* page (starting version 3.23).
+
+If you want to enter Car mode immediately, check **_Enable car mode_**. You can also later toggle between Car mode and normal WiFi connection by holding the Calibration button for 6 seconds (until a triple-beep is emitted).
 
 ##### &#9193; Hostname
 
@@ -784,11 +804,9 @@ This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such 
 
 #### <ins>Settings for BTTFN communication</ins>
 
-##### &#9193; IP address or hostname of TCD
+##### &#9193; Hostname or IP address of TCD
 
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
-
-If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
+In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here. Hostname is preferred because it makes the setup independent of the network environment.
 
 ##### &#9193; Remote Fake-Power controls TCD Fake-Power
 
