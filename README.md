@@ -321,13 +321,22 @@ The actual remote controlling is done wirelessly, and the TCD's keypad can be us
 |:--:|
 | Click to watch the video |
 
-BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network. BTTFN does not work over the Internet.
+BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network, or the TCD acting as access point. BTTFN does not work over the Internet.
 
-![STAmode-bttfn](img/stamode-bttfn.png)
+![STAmode-home](img/stamode-home.png)
+
+<p>&nbsp;</p>
+
+![STAmode-car](img/stamode-car.png)
+
+<details>
+<summary>More...</summary>
 
 >The term "WiFi network" is used for both "WiFi network" and "ip subnet" here for simplicity reasons. However, for BTTFN communication, the devices must be on the same IP subnet, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip subnet.
 
-In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_IP address or hostname of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
+</details>
+
+In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_Hostname or IP address of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
   
 Afterwards, the Remote and the TCD can communicate wirelessly and 
 - the TCD's speed control is done by the Remote,
@@ -484,7 +493,7 @@ You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time
     </tr>
 </table>
 
-1: Board >= 1.7, M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
+1: Board 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor.
 2: Not supported through HA/MQTT [_INJECT_](#the-inject_x-command) command
 
 [Here](CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
