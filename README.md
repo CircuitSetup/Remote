@@ -184,10 +184,10 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 <table>
   <tr><td></td><td>Short press</td><td>2 sec press<br>(double-beep)</td><td>6 sec press<br>(triple-beep)</td></tr>
   <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
-  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
+  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery state</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
 </table>
 
-(* Board version 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor input)
+(* Board version 1.6M or >= 1.7 required; LiPo battery must be properly connected to battery monitor input; battery charge percentage and time-to-empty shown alternately)
 
 The throttle of the Remote needs calibration:
 
