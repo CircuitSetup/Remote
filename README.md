@@ -336,7 +336,7 @@ BTTFN requires the props all to be connected to the same network, such as, for e
 
 </details>
 
-In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_Hostname or IP address of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
+In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_Hostname or IP address of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from permitting remote control through keypad command 993.
   
 Afterwards, the Remote and the TCD can communicate wirelessly and 
 - the TCD's speed control is done by the Remote,
@@ -472,11 +472,11 @@ You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time
      <td align="left">7096&#9166;</td>
     </tr>
     <tr>
-     <td align="left">Disable <a href="#car-setup">Car mode</a><sup>1</sup></td>
+     <td align="left">Disable <a href="#car-setup">Car mode</a><sup>2</sup></td>
      <td align="left">7990&#9166;</td>
     </tr>
     <tr>
-     <td align="left">Enable <a href="#car-setup">Car mode</a><sup>1</sup></td>
+     <td align="left">Enable <a href="#car-setup">Car mode</a><sup>2</sup></td>
      <td align="left">7991&#9166;</td>
     </tr>
     <tr>
