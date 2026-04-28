@@ -8,7 +8,7 @@
  * Settings handling
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -82,10 +85,10 @@
 // If defined, old settings files will be used
 // and converted if no new settings file is found.
 // Keep this defined for a few versions/months.
-#define SETTINGS_TRANSITION
+//#define SETTINGS_TRANSITION
 // Stage 2: Assume new settings are present, but
 // still delete obsolete files.
-//#define SETTINGS_TRANSITION_2
+#define SETTINGS_TRANSITION_2
 
 #ifdef SETTINGS_TRANSITION
 #undef SETTINGS_TRANSITION_2
@@ -103,10 +106,10 @@
 #define DECLARE_D_JSON(x,n) DynamicJsonDocument n(x);
 #endif
 
-#define NUM_AUDIOFILES 22
-#define SND_REQ_VERSION "RM10"
+#define NUM_AUDIOFILES 26
+#define SND_REQ_VERSION "RM12"
 #define AC_FMTV 2
-#define AC_TS   815107
+#define AC_TS   831819
 #define AC_OHSZ (14 + ((NUM_AUDIOFILES+1)*(32+4)))
 
 static const char *CONFN  = "/REMA.bin";
@@ -133,6 +136,7 @@ static struct [[gnu::packed]] {
     uint8_t showUpdAvail   = 1;
     uint8_t updateV        = 0;
     uint8_t updateR        = 0;
+    uint8_t carMode        = 0;
 } secSettings;
 
 // Tertiary settings (SD only)
@@ -226,6 +230,8 @@ static bool checkValidNumParm(char *text, int lowerLim, int upperLim, int setDef
 static bool checkValidNumParmF(char *text, float lowerLim, float upperLim, float setDefault);
 
 static void loadUpdAvail();
+
+static void loadCarMode();
 
 static bool     loadId();
 static uint32_t createId();
@@ -487,6 +493,11 @@ void settings_setup()
     read_mqtt_settings();
     #endif
 
+    // Load car mode
+    if(*settings.cm_ssid) {
+        loadCarMode();
+    }
+
     loadUpdAvail();
     updateConfigPortalUpdValues();
 
@@ -573,6 +584,10 @@ static bool read_settings(File configFile, int cfgReadCount)
             }
         }
 
+        wd |= CopyTextParm(json["cmsid"], settings.cm_ssid, sizeof(settings.cm_ssid));
+        wd |= CopyTextParm(json["cmpwd"], settings.cm_pass, sizeof(settings.cm_pass));
+        wd |= CopyTextParm(json["cmbid"], settings.cm_bssid, sizeof(settings.cm_bssid));
+
         wd |= CopyTextParm(json["hostName"], settings.hostName, sizeof(settings.hostName));
         wd |= CopyCheckValidNumParm(json["wifiConRetries"], settings.wifiConRetries, sizeof(settings.wifiConRetries), 1, 10, DEF_WIFI_RETRY);
         wd |= CopyCheckValidNumParm(json["rcOFP"], settings.reconOnFP, sizeof(settings.reconOnFP), 0, 1, DEF_RECON_ON_FP);
@@ -594,12 +609,14 @@ static bool read_settings(File configFile, int cfgReadCount)
         
         wd |= CopyTextParm(json["tcdIP"], settings.tcdIP, sizeof(settings.tcdIP));
         wd |= CopyCheckValidNumParm(json["pwM"], settings.pwrMst, sizeof(settings.pwrMst), 0, 1, DEF_PWR_MST);
+        wd |= CopyCheckValidNumParm(json["reB"], settings.refBut, sizeof(settings.refBut), 0, 8, DEF_REF_BUT);
         
         wd |= CopyCheckValidNumParm(json["CfgOnSD"], settings.CfgOnSD, sizeof(settings.CfgOnSD), 0, 1, DEF_CFG_ON_SD);
         //wd |= CopyCheckValidNumParm(json["sdFreq"], settings.sdFreq, sizeof(settings.sdFreq), 0, 1, DEF_SD_FREQ);
 
         wd |= CopyCheckValidNumParm(json["oorst"], settings.oorst, sizeof(settings.oorst), 0, 1, DEF_OORST);
         wd |= CopyCheckValidNumParm(json["oott"], settings.ooTT, sizeof(settings.ooTT), 0, 1, DEF_OO_TT);
+        wd |= CopyCheckValidNumParm(json["resat"], settings.resAT, sizeof(settings.resAT), 0, 1, DEF_RES_AT);
 
         #ifdef ALLOW_DIS_UB
         wd |= CopyCheckValidNumParm(json["disBP"], settings.disBPack, sizeof(settings.disBPack), 0, 1, DEF_DIS_BPACK);
@@ -637,6 +654,7 @@ static bool read_settings(File configFile, int cfgReadCount)
         #ifdef HAVE_CRSF
         if(haveNewBoard) {
             wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, sizeof(settings.opMode), 0, 1, DEF_OPMODE);
+            wd |= CopyCheckValidNumParm(json["eWAP"], settings.crsfap, sizeof(settings.crsfap), 0, 1, DEF_CRSFWM);
             wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, sizeof(settings.elrsPktRate), 0, 3, DEF_ELRSPKTRATE);
             wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, sizeof(settings.elrsSpdUnit), 0, 1, DEF_ELRSSPDUNIT);
             wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, sizeof(settings.elrsTlmRatio), 0, 6, DEF_ELRSTLMRATIO);
@@ -677,6 +695,10 @@ void write_settings()
         json["bssid"] = (const char *)settings.bssid;
     }
 
+    json["cmsid"] = (const char *)settings.cm_ssid;
+    json["cmpwd"] = (const char *)settings.cm_pass;
+    json["cmbid"] = (const char *)settings.cm_bssid;
+
     json["hostName"] = (const char *)settings.hostName;
     json["wifiConRetries"] = (const char *)settings.wifiConRetries;
     json["rcOFP"] = (const char *)settings.reconOnFP;
@@ -694,12 +716,14 @@ void write_settings()
     
     json["tcdIP"] = (const char *)settings.tcdIP;
     json["pwM"] = (const char *)settings.pwrMst;
+    json["reB"] = (const char *)settings.refBut;
     
     json["CfgOnSD"] = (const char *)settings.CfgOnSD;
     //json["sdFreq"] = (const char *)settings.sdFreq;
 
     json["oorst"] = (const char *)settings.oorst;
     json["oott"] = (const char *)settings.ooTT;
+    json["resat"] = (const char *)settings.resAT;
 
     #ifdef ALLOW_DIS_UB
     json["disBP"] = (const char *)settings.disBPack;
@@ -737,6 +761,7 @@ void write_settings()
     #ifdef HAVE_CRSF
     if(haveNewBoard) {
         json["opMode"] = (const char *)settings.opMode;
+        json["eWAP"] = (const char *)settings.crsfap;
         json["ePRHz"] = (const char *)settings.elrsPktRate;
         json["eSUnit"] = (const char *)settings.elrsSpdUnit;
         json["eTlmR"] = (const char *)settings.elrsTlmRatio;
@@ -1231,6 +1256,23 @@ void saveAllSecCP()
     secSettings.movieMode = movieMode ? 1 : 0;
     secSettings.displayGPSMode = displayGPSMode ? 1 : 0;
     secSettings.showUpdAvail = showUpdAvail ? 1 : 0;
+    saveSecSettings(true);
+}
+
+/*
+ *  Load/save carMode
+ */
+
+static void loadCarMode()
+{
+    if(haveSecSettings) {
+        carMode = !!secSettings.carMode;
+    }
+}
+
+void saveCarMode()
+{
+    secSettings.carMode = carMode ? 1 : 0;
     saveSecSettings(true);
 }
 

@@ -1,5 +1,5 @@
 /**
- * WiFiManager.h
+ * wm_local.h - REMOTE
  *
  * Based on:
  * WiFiManager, a library for the ESP32/Arduino platform
@@ -29,11 +29,14 @@
 
 #ifdef HAVE_CRSF
 #define WM_PARAM3
-#define WM_PARAM3_CAPTION "CRSF Settings"
-#define WM_PARAM3_TITLE "CRSF Settings"
+#define WM_PARAM3_CAPTION "ELSR/CRSF Settings"
+#define WM_PARAM3_TITLE "ELSR/CRSF Settings"
+#define WM_DYNPARM3
 #endif
 
 #define WM_UPLOAD
+
+#define WM_CCM
 
 // #define WM_AP_STATIC_IP
 // #define WM_APCALLBACK
