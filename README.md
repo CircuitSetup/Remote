@@ -182,9 +182,9 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 ### Calibration
 
 <table>
-  <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td></tr>
-  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
+  <tr><td></td><td>Short press</td><td>2 sec press<br>(double-beep)</td><td>6 sec press<br>(triple-beep)</td></tr>
+  <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
+  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
 </table>
 
 (* Board version 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor input)
@@ -193,7 +193,7 @@ The throttle of the Remote needs calibration:
 
 - Put the "ON/OFF" switch in "OFF" position.
 - Put the throttle lever in neutral (center) position, press the Calibration button. The display will briefly show "CAL" to show acceptance.
-- Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
+- Hold the Calibration button for >= 2 seconds until a double-beep is emitted, then release the button. Shortly later "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
 - Pull the throttle lever to the bottom-most position and press the Calibration button. The display will clear, calibration is finished.
 
 If you change power-source (ie a new battery, or power via USB to the ESP32), re-calibration is required.
