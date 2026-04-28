@@ -274,7 +274,7 @@ Replacements and custom sounds can either be copied to the SD card using a compu
 
 Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "Update & Upload". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
-In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
+To delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
 
 For technical reasons, the Remote must reboot after mp3 files are uploaded in this way.
 
@@ -284,7 +284,7 @@ Please remember that the maximum bitrate for mp3 files is 128kbps. Also note tha
 
 The firmware contains a simple music player to play mp3 files located on the SD card. 
 
-In order to be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, ie the player starts searching for music in folder *music0*. This folder number can be changed in the Config Portal or through the TCD keypad (705x).
+To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, ie the player starts searching for music in folder *music0*. This folder number can be changed in the Config Portal or through the TCD keypad (705x).
 
 The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). *The maximum bitrate is 128kpbs.*
 
@@ -598,7 +598,7 @@ If everything is in place, you can enable Car mode on the Remote by holding the 
 
 You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the Calibration button for 6 seconds, regardless of Fake Power.
 
-In order to access the Remote's Config Portal in Car mode, connect your handheld or computer to the TCD's WiFi network ("TCD-AP"), and direct your browser to http://dtmremote.local.
+To access the Remote's Config Portal in Car mode, connect your handheld or computer to the TCD's WiFi network ("TCD-AP"), and direct your browser to http://dtmremote.local.
 
   ><details><summary>If that fails...</summary>
   >If connecting to http://dtmremote.local fails due to a name resolution error, go to the TCD's keypad menu, navigate to "BTTFN CLIENTS", and look for the Remote's IP address there; then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the TCD display)</details>
@@ -671,7 +671,7 @@ This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
 This leads to the firmware update and audio upload page.
 
-In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
+To upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
 
 You can also install the Remote's sound-pack on this page; download the sound-pack (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)), extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click *Upload*. Note that an SD card is required for this operation.
 
@@ -687,7 +687,7 @@ Through this page you can either connect your Remote to your local WiFi network,
 
 #### <ins>Connecting to an existing WiFi network</ins>
 
-In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "Scan for Networks".
+To connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "Scan for Networks".
 
 >By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
 
@@ -815,7 +815,7 @@ This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such 
 
 ##### &#9193; Hostname or IP address of TCD
 
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here. Hostname is preferred because it makes the setup independent of the network environment.
+To connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here. Hostname is preferred because it makes the setup independent of the network environment.
 
 ##### &#9193; Remote Fake-Power controls TCD Fake-Power
 
