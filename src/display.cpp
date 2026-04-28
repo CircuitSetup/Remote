@@ -9,7 +9,7 @@
  * remDisplay Class: 3-digit 7-segment Display (HT16K33; addr 0x70)
  * 
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -21,6 +21,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -173,33 +176,28 @@ remDisplay::remDisplay(uint8_t address)
 // Start the display
 bool remDisplay::begin()
 {
-    bool ret = true;
-
     // Check for display on i2c bus
     Wire.beginTransmission(_address);
-    if(Wire.endTransmission(true)) {
+    _haveDisp = !Wire.endTransmission(true);
 
-        ret = false;
+    _dispType = 0;
+    _num_digs = displays[_dispType].num_digs;
+    _buf_max = displays[_dispType].max_bufPos;
+    _bufPosArr = displays[_dispType].bufPosArr;
+    _bufShftArr = displays[_dispType].bufShftArr;
 
-    } else {
+    _fontXSeg = displays[_dispType].fontSeg;
 
-        _dispType = 0;
-        _num_digs = displays[_dispType].num_digs;
-        _buf_max = displays[_dispType].max_bufPos;
-        _bufPosArr = displays[_dispType].bufPosArr;
-        _bufShftArr = displays[_dispType].bufShftArr;
+    _speed_pos10 = *(_bufPosArr + 0);
+    _speed_pos01 = *(_bufPosArr + 1);
+    _speed_pos_1 = *(_bufPosArr + 2);
+    _dig10_shift = *(_bufShftArr + 0);
+    _dig01_shift = *(_bufShftArr + 1);
+    _dig_1_shift = *(_bufShftArr + 2);
+    _dot_pos01   = *(_bufPosArr + 1);
+    _dot01_shift = _dig01_shift = *(_bufShftArr + 1);
 
-        _fontXSeg = displays[_dispType].fontSeg;
-
-        _speed_pos10 = *(_bufPosArr + 0);
-        _speed_pos01 = *(_bufPosArr + 1);
-        _speed_pos_1 = *(_bufPosArr + 2);
-        _dig10_shift = *(_bufShftArr + 0);
-        _dig01_shift = *(_bufShftArr + 1);
-        _dig_1_shift = *(_bufShftArr + 2);
-        _dot_pos01   = *(_bufPosArr + 1);
-        _dot01_shift = _dig01_shift = *(_bufShftArr + 1);
-    }
+    _dotPattern  = *(_fontXSeg + 36) << _dot01_shift;
 
     directCmd(0x20 | 1); // turn on oscillator
 
@@ -208,7 +206,7 @@ bool remDisplay::begin()
     clearDisplay();      // clear display RAM
     on();                // turn it on
 
-    return ret;
+    return _haveDisp;
 }
 
 // Turn on the display
@@ -285,13 +283,11 @@ uint8_t remDisplay::getBrightness()
 // Show the buffer
 void remDisplay::show()
 {
-    int i;
-
-    if(_dispType >= 0) {
+    if(_haveDisp) {
         Wire.beginTransmission(_address);
         Wire.write(0x00);  // start address
     
-        for(i = 0; i <= _buf_max; i++) {
+        for(int i = 0; i <= _buf_max; i++) {
             Wire.write(_displayBuffer[i] & 0xFF);
             Wire.write(_displayBuffer[i] >> 8);
         }
@@ -312,54 +308,51 @@ void remDisplay::setText(const char *text)
 
     clearBuf();
 
-    if(_dispType >= 0) {
-        while(text[idx] && (pos < _num_digs)) {
-            temp = getLEDChar(text[idx]) << (*(_bufShftArr + pos));
+    while(text[idx] && (pos < _num_digs)) {
+        temp = getLEDChar(text[idx]) << (*(_bufShftArr + pos));
+        idx++;
+        if(text[idx] == '.') {
+            temp |= (getLEDChar('.') << (*(_bufShftArr + pos)));
             idx++;
-            if(text[idx] == '.') {
-                temp |= (getLEDChar('.') << (*(_bufShftArr + pos)));
-                idx++;
-            }
-            _displayBuffer[*(_bufPosArr + pos)] |= temp;
-            pos++;
         }
+        _displayBuffer[*(_bufPosArr + pos)] |= temp;
+        pos++;
     }
 }
 
 void remDisplay::setSpeed(int speed)    // times 10
 {
-    uint16_t b1, b2, b3;
+    uint16_t b1 = 0, b2, b3;
     int temp;
     
     _speed = speed;
 
-    if(_dispType >= 0) {
+    clearBuf();
 
-        clearBuf();
-    
-        if(speed < 0) {
-            b1 = b2 = b3 = *(_fontXSeg + 37);
-            _spdpd = 0;
-        } else if(speed > 990) {
-            b1 = *(_fontXSeg + ('H' - 'A' + 10));
-            b2 = *(_fontXSeg + ('I' - 'A' + 10));
-            b3 = _spdpd = 0;
-        } else {
-            temp = speed / 100;
-            b1 = temp ? *(_fontXSeg + temp) : 0;
+    if(speed < 0) {
+        b1 = b2 = b3 = *(_fontXSeg + 37);
+        _spdpd = 0;
+    } else if(speed > 990) {
+        b1 = *(_fontXSeg + ('H' - 'A' + 10));
+        b2 = *(_fontXSeg + ('I' - 'A' + 10));
+        b3 = _spdpd = 0;
+    } else {
+        if((temp = speed / 100)) {
+            b1 = *(_fontXSeg + temp);
             speed -= (temp * 100);
-            b2 = *(_fontXSeg + (speed / 10));
-            _spdpd = speed % 10;
-            b3 =  *(_fontXSeg + _spdpd);
         }
-    
-        _displayBuffer[_speed_pos10] |= (b1 << _dig10_shift);
-        _displayBuffer[_speed_pos01] |= (b2 << _dig01_shift);
-        _displayBuffer[_speed_pos_1] |= (b3 << _dig_1_shift);
-        
-        _displayBuffer[_dot_pos01] |= (*(_fontXSeg + 36) << _dot01_shift);
-
+        temp = speed / 10;
+        b2 = *(_fontXSeg + temp);
+        _spdpd = speed - (temp * 10);
+        b3 = *(_fontXSeg + _spdpd);
     }
+
+    _displayBuffer[_speed_pos10] |= (b1 << _dig10_shift);
+    _displayBuffer[_speed_pos01] |= (b2 << _dig01_shift);
+    _displayBuffer[_speed_pos_1] |= (b3 << _dig_1_shift);
+    
+    _displayBuffer[_dot_pos01] |= _dotPattern;
+
 }
 
 // Query data ------------------------------------------------------------------
@@ -401,7 +394,7 @@ uint16_t remDisplay::getLEDChar(uint8_t value)
 // Directly clear the display
 void remDisplay::clearDisplay()
 {
-    if(_dispType >= 0) {
+    if(_haveDisp) {
         Wire.beginTransmission(_address);
         Wire.write(0x00);  // start address
     
@@ -416,7 +409,7 @@ void remDisplay::clearDisplay()
 
 void remDisplay::directCmd(uint8_t val)
 {
-    if(_dispType >= 0) {
+    if(_haveDisp) {
         Wire.beginTransmission(_address);
         Wire.write(val);
         Wire.endTransmission();

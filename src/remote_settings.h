@@ -8,7 +8,7 @@
  * Settings handling
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -52,14 +55,86 @@
 #ifndef _REMOTE_SETTINGS_H
 #define _REMOTE_SETTINGS_H
 
-extern bool haveFS;
-extern bool haveSD;
-extern bool FlashROMode;
-extern const char rspv[];
+void settings_setup();
 
-extern bool haveAudioFiles;
+void unmount_fs();
 
-extern uint8_t musFolderNum;
+void write_settings();
+bool checkConfigExists();
+#ifdef REMOTE_HAVEMQTT
+void write_mqtt_settings();
+#endif
+
+bool evalBool(char *s);
+
+void loadCalib();
+void saveCalib();
+
+void loadBrightness();
+void storeBrightness();
+void saveBrightness();
+
+void loadCurVolume();
+void storeCurVolume();
+void saveCurVolume();
+
+void loadMovieMode();
+void saveMovieMode();
+
+void loadDisplayGPSMode();
+void saveDisplayGPSMode();
+
+void saveUpdAvail();
+
+void loadUpdVers(int &v, int& r);
+void saveUpdVers(int v, int r);
+
+void saveAllSecCP();
+
+void saveCarMode();
+
+bool loadVis();
+void storeVis();
+void saveVis();
+
+void loadMusFoldNum();
+void saveMusFoldNum();
+
+void loadShuffle();
+void saveShuffle();
+
+void saveAllTerCP();
+
+bool loadIpSettings();
+void writeIpSettings();
+void deleteIpSettings();
+
+bool check_if_default_audio_present();
+bool prepareCopyAudioFiles();
+void doCopyAudioFiles();
+
+bool check_allow_CPA();
+void delete_ID_file();
+
+void moveSettings();
+
+#define MAX_SIM_UPLOADS 16
+#define UPL_OPENERR 1
+#define UPL_NOSDERR 2
+#define UPL_WRERR   3
+#define UPL_BADERR  4
+#define UPL_MEMERR  5
+#define UPL_UNKNOWN 6
+#define UPL_DPLBIN  7
+#include <FS.h>
+bool   openUploadFile(String& fn, File& file, int idx, bool haveAC, int& opType, int& errNo);
+size_t writeACFile(File& file, uint8_t *buf, size_t len);
+void   closeACFile(File& file);
+void   removeACFile(int idx);
+void   renameUploadFile(int idx);
+char   *getUploadFileName(int idx);
+int    getUploadFileNameLen(int idx);
+void   freeUploadFileNames();
 
 #define MS(s) XMS(s)
 #define XMS(s) #s
@@ -75,19 +150,22 @@ extern uint8_t musFolderNum;
 
 #define DEF_COAST           0     // Engine braking / coasting
 #define DEF_AT              0     // Auto-throttle: Default off
-#define DEF_MOV_MD          1     // 1: (mostly) movie-accurate accel pace, 0: linear and faster
+#define DEF_MOV_MD          1     // 1: movie-accurate accel pace, 0: linear and faster
 #define DEF_PLAY_CLK        1     // 1: Play accel-clicks, 0: Do not
 #define DEF_PLAY_ALM_SND    0     // 1: Play TCD-alarm sound, 0: do not
 #define DEF_DISP_GPS        0     // 1: Display TCD speed (GPS, RotEnc) when fake-off, 0: Do not
 #define DEF_BRI             15    // Default display brightness
 
-#define DEF_TCD_IP          ""    // TCD ip address or hostname for networked polling
+#define DEF_TCD_IP          ""    // TCD hostname (or ip address) for BTTFN
 #define DEF_PWR_MST         0     // 0: Remote is not BTTFN-wide power-master, 1: Remote is.
-#define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
-#define DEF_OO_TT           1     // O.O: 1 = trigger BTTFN-wide TT; 0 = musicplayer prev song
+#define DEF_REF_BUT         0     // Button for "Refill". 0 = none; 1-8 button number
 
 #define DEF_CFG_ON_SD       1     // Save secondary settings on SD card. Default: Yes (1)
 #define DEF_SD_FREQ         0     // SD/SPI frequency: Default 16MHz
+
+#define DEF_OORST           0     // 0: O.O/RESET used for bri adjustment; 1: used for toggling powermaster
+#define DEF_OO_TT           1     // O.O:   1: trigger BTTFN-wide TT; 0: musicplayer prev song
+#define DEF_RES_AT          0     // RESET: 1: toggle "auto-throttle" setting; 0: MP toggle shuffle
 
 #define DEF_DIS_BPACK       0     // 1: Disable ButtonPack (Buttons 1-8), 0: Use buttons 1-8 if detected
 #define DEF_BPMAINT         0     // ButtonPack button is momentary (0) or maintained (1)
@@ -103,7 +181,8 @@ extern uint8_t musFolderNum;
 #define DEF_BAT_CAP         2000  // battery capacity per cell
 
 #ifdef HAVE_CRSF
-#define DEF_OPMODE          0
+#define DEF_OPMODE          0     // 0: Prop mode (legacy)  1: CRSF/ELRS mode
+#define DEF_CRSFWM          1     // 0: Remain in AP mode   1: Connect to WiFi in CRSF/ELRS mode
 #define DEF_ELRSPKTRATE     3
 #define DEF_ELRSSPDUNIT     0
 #define DEF_ELRSTLMRATIO    0
@@ -115,6 +194,10 @@ struct Settings {
     char ssid[34]           = "";
     char pass[66]           = "";
     char bssid[18]          = "";
+
+    char cm_ssid[14]        = "TCD-AP";
+    char cm_pass[10]        = "";
+    char cm_bssid[18]       = "";
 
     char hostName[32]       = DEF_HOSTNAME;
     char wifiConRetries[4]  = MS(DEF_WIFI_RETRY);
@@ -132,12 +215,14 @@ struct Settings {
 
     char tcdIP[32]          = DEF_TCD_IP;
     char pwrMst[2]          = MS(DEF_PWR_MST);
+    char refBut[2]          = MS(DEF_REF_BUT);
 
     char CfgOnSD[2]         = MS(DEF_CFG_ON_SD);
     char sdFreq[2]          = MS(DEF_SD_FREQ);
 
     char oorst[2]           = MS(DEF_OORST);
     char ooTT[2]            = MS(DEF_OO_TT);
+    char resAT[2]           = MS(DEF_RES_AT);
 
 #ifdef ALLOW_DIS_UB
     char disBPack[2]        = MS(DEF_DIS_BPACK);
@@ -182,6 +267,7 @@ struct Settings {
 
 #ifdef HAVE_CRSF
     char opMode[2]          = MS(DEF_OPMODE);
+    char crsfap[2]          = MS(DEF_CRSFWM);
     char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
     char elrsSpdUnit[2]     = MS(DEF_ELRSSPDUNIT);
     char elrsTlmRatio[2]    = MS(DEF_ELRSTLMRATIO);
@@ -194,6 +280,7 @@ struct Settings {
     char dgps[2]            = MS(DEF_DISP_GPS);
     char upd[2]             = "1";
     char musicFolder[2];
+    char ecmKludge[2]       = "0";  // MUST BE 0
 };
 
 struct IPSettings {
@@ -206,83 +293,13 @@ struct IPSettings {
 extern struct Settings settings;
 extern struct IPSettings ipsettings;
 
-void settings_setup();
+extern bool   haveFS;
+extern bool   haveSD;
+extern bool   FlashROMode;
+extern const char rspv[];
 
-void unmount_fs();
+extern bool   haveAudioFiles;
 
-void write_settings();
-bool checkConfigExists();
-#ifdef REMOTE_HAVEMQTT
-void write_mqtt_settings();
-#endif
-
-bool evalBool(char *s);
-
-void loadCalib();
-void saveCalib();
-
-void loadBrightness();
-void storeBrightness();
-void saveBrightness();
-
-void loadCurVolume();
-void storeCurVolume();
-void saveCurVolume();
-
-void loadMovieMode();
-void saveMovieMode();
-
-void loadDisplayGPSMode();
-void saveDisplayGPSMode();
-
-void saveUpdAvail();
-
-void loadUpdVers(int &v, int& r);
-void saveUpdVers(int v, int r);
-
-void saveAllSecCP();
-
-bool loadVis();
-void storeVis();
-void saveVis();
-
-void loadMusFoldNum();
-void saveMusFoldNum();
-
-void loadShuffle();
-void saveShuffle();
-
-void saveAllTerCP();
-
-bool loadIpSettings();
-void writeIpSettings();
-void deleteIpSettings();
-
-bool check_if_default_audio_present();
-bool prepareCopyAudioFiles();
-void doCopyAudioFiles();
-
-bool check_allow_CPA();
-void delete_ID_file();
-
-void moveSettings();
-
-#define MAX_SIM_UPLOADS 16
-#define UPL_OPENERR 1
-#define UPL_NOSDERR 2
-#define UPL_WRERR   3
-#define UPL_BADERR  4
-#define UPL_MEMERR  5
-#define UPL_UNKNOWN 6
-#define UPL_DPLBIN  7
-#include <FS.h>
-bool   openUploadFile(String& fn, File& file, int idx, bool haveAC, int& opType, int& errNo);
-size_t writeACFile(File& file, uint8_t *buf, size_t len);
-void   closeACFile(File& file);
-void   removeACFile(int idx);
-void   renameUploadFile(int idx);
-char   *getUploadFileName(int idx);
-int    getUploadFileNameLen(int idx);
-void   freeUploadFileNames();
+extern uint8_t musFolderNum;
 
 #endif

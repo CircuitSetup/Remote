@@ -8,7 +8,7 @@
  * Main
  *
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -57,6 +60,44 @@
 #ifdef HAVE_PM
 #include "power.h"
 #endif
+
+void main_boot();
+void main_boot2();
+void main_setup();
+void main_loop();
+
+void flushDelayedSave();
+void increaseVolume();
+void decreaseVolume();
+
+void disectOldVisMode();
+void updateVisMode();
+
+void setAutoThrottle(bool isOn);
+void setCoast(bool isOn);
+void setMovieMode(bool isOn);
+void setDisplayGPS(bool isOn);
+
+void showWaitSequence();
+void endWaitSequence();
+void showCopyError();
+void showNumber(int num);
+
+void allOff();
+void prepareReboot();
+
+void prepareTT();
+void wakeup();
+
+bool switchMusicFolder(uint8_t nmf, bool isSetup = false);
+void waitAudioDone(bool withBTTFN = false);
+
+void mydelay(unsigned long mydel, bool withBTTFN = false);
+unsigned long millisNonZero();
+
+void addCmdQueue(uint32_t command);
+void bttfn_loop();
+void bttfn_remote_unregister();
 
 extern unsigned long powerupMillis;
 
@@ -113,42 +154,8 @@ extern bool     keepCounting;
 
 extern bool blockScan;
 
-void main_boot();
-void main_boot2();
-void main_setup();
-void main_loop();
-
-void flushDelayedSave();
-void increaseVolume();
-void decreaseVolume();
-
-void disectOldVisMode();
-void updateVisMode();
-
-void setAutoThrottle(bool isOn);
-void setCoast(bool isOn);
-void setMovieMode(bool isOn);
-void setDisplayGPS(bool isOn);
-
-void showWaitSequence();
-void endWaitSequence();
-void showCopyError();
-void showNumber(int num);
-
-void allOff();
-void prepareReboot();
-
-void prepareTT();
-void wakeup();
-
-bool switchMusicFolder(uint8_t nmf, bool isSetup = false);
-void waitAudioDone(bool withBTTFN = false);
-
-void mydelay(unsigned long mydel, bool withBTTFN = false);
-unsigned long millisNonZero();
-
-void addCmdQueue(uint32_t command);
-void bttfn_loop();
-void bttfn_remote_unregister();
+extern int     bttfnHaveTCDSSID;
+extern char    TCDSSID[];
+extern uint8_t TCDpwMarker;
 
 #endif

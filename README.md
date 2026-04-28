@@ -182,18 +182,18 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 ### Calibration
 
 <table>
-  <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td></tr>
-  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery charge percentage(*), battery time-to-empty(*)</td></tr>
+  <tr><td></td><td>Short press</td><td>Hold (2 secs)<br>(double-beep)</td><td>Hold (6 secs)<br>(triple-beep)</td></tr>
+  <tr><td>Fake-power off</td><td>Calibrate, see below</td><td>Calibration, see below</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
+  <tr><td>Fake-power on</td><td>Reset speed to 0</td><td>Display IP address, battery state(*)</td><td>Toggle <a href="#car-setup">Car mode</a></td></tr>
 </table>
 
-(* Board version 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor input)
+(* Board version 1.6M or >= 1.7 required; LiPo battery must be properly connected to battery monitor input; battery charge percentage and time-to-empty shown alternately)
 
 The throttle of the Remote needs calibration:
 
 - Put the "ON/OFF" switch in "OFF" position.
 - Put the throttle lever in neutral (center) position, press the Calibration button. The display will briefly show "CAL" to show acceptance.
-- Hold the Calibration button for >= 2 seconds, "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
+- Hold the Calibration button for >= 2 seconds until a double-beep is emitted, then release the button. Shortly after "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
 - Pull the throttle lever to the bottom-most position and press the Calibration button. The display will clear, calibration is finished.
 
 If you change power-source (ie a new battery, or power via USB to the ESP32), re-calibration is required.
@@ -206,7 +206,7 @@ When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
   <tr><td>Button "O.O"</td><td>Prepare TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous Song<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
-  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td><a href="#the-music-player">Music Player</a>: Toggle Shuffle</td></tr>
+  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next Song</td><td>Toggle Auto-Throttle<br>or<br><a href="#the-music-player">Music Player</a>: Toggle Shuffle<br>(depending on <a href="#-holding-reset-when-fake-power-on">configuration</a>)</td></tr>
 </table>
 
 When fake power is off, the buttons are used to set up audio volume and display brightness:
@@ -240,9 +240,9 @@ If a "button" is configured as a maintained switch in the Config Portal, keyX wi
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
  
-## SD card
+## SD Card
 
-Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend, Sandisk Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards work fine in my experience.
+>Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend, Sandisk Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards work fine in my experience.
 
 The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
@@ -270,11 +270,11 @@ Those files are not provided here. You can use any mp3, with a bitrate of 128kpb
 
 ### Installing Custom & Replacement Audio Files
 
-Replacements and custom sounds can either be copied to the SD card using a computer (as before), or uploaded through the Config Portal.
+Replacements and custom sounds can either be copied to the SD card using a computer or uploaded through the Config Portal.
 
 Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "Update & Upload". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
-In order to delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
+To delete a file from the SD card, upload a file whose name is prefixed with "delete-". For example: To delete "key3.mp3" from the SD card, upload a file named "delete-key3.mp3"; the file's contents does not matter, so it's easiest to use a newly created empty file. The firmware detects the "delete-" part and, instead of storing the uploaded file, it throws it away and deletes "key3.mp3" from the SD card.
 
 For technical reasons, the Remote must reboot after mp3 files are uploaded in this way.
 
@@ -284,7 +284,7 @@ Please remember that the maximum bitrate for mp3 files is 128kbps. Also note tha
 
 The firmware contains a simple music player to play mp3 files located on the SD card. 
 
-In order to be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, ie the player starts searching for music in folder *music0*. This folder number can be changed in the Config Portal or through the TCD keypad (705x).
+To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, ie the player starts searching for music in folder *music0*. This folder number can be changed in the Config Portal or through the TCD keypad (705x).
 
 The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). *The maximum bitrate is 128kpbs.*
 
@@ -298,7 +298,7 @@ See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for 
 
 While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
 
-## Battery monitoring
+## Battery Monitoring
 
 If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
 
@@ -313,7 +313,7 @@ The "low battery" warning is given as follows:
 
 ## Connecting a Time Circuits Display
 
-The TCD communicates with the Remote wirelessly, via the built-in "**B**asic-**T**elematics-**T**ransmission-**F**ramework" (BTTFN) over WiFi. Note that a wired connection is not supported.
+The TCD communicates with the Remote wirelessly, via the built-in "**B**asic-**T**elematics-**T**ransmission-**F**ramework" (BTTFN) over WiFi. A wired connection is not supported.
 
 The actual remote controlling is done wirelessly, and the TCD's keypad can be used to remote-control the Remote (to control the Music Player, for instance).
 
@@ -321,13 +321,22 @@ The actual remote controlling is done wirelessly, and the TCD's keypad can be us
 |:--:|
 | Click to watch the video |
 
-BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network. BTTFN does not work over the Internet.
+BTTFN requires the props all to be connected to the same network, such as, for example, your home WiFi network, or the TCD acting as access point. BTTFN does not work over the Internet.
 
-![STAmode-bttfn](img/stamode-bttfn.png)
+![STAmode-home](img/stamode-home.png)
+
+<p>&nbsp;</p>
+
+![STAmode-car](img/stamode-car.png)
+
+<details>
+<summary>More...</summary>
 
 >The term "WiFi network" is used for both "WiFi network" and "ip subnet" here for simplicity reasons. However, for BTTFN communication, the devices must be on the same IP subnet, regardless of how they take part in it: They can be connected to different WiFi networks, if those WiFi networks are part of the same ip subnet.
 
-In order to connect your Remote to the TCD, just enter the TCD's IP address or hostname in the **_IP address or hostname of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from enabling remote controlling through the command 993 followed by ENTER.
+</details>
+
+To connect your Remote to the TCD, just enter the TCD's hostname - usually "timecircuits" - in the **_Hostname or IP address of TCD_** field in the Remote's Config Portal. On the TCD, no special configuration is required apart from permitting remote control through keypad command 993.
   
 Afterwards, the Remote and the TCD can communicate wirelessly and 
 - the TCD's speed control is done by the Remote,
@@ -339,7 +348,6 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
 You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time-circuits-display).
 
 ### TCD remote command reference
-
 
 <table>
    <tr><td>Function</td><td>Code on TCD</td></tr>
@@ -462,7 +470,15 @@ You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time
    <tr>
      <td align="left">Toggle <a href="#controlling-tcd-fake-power">Fake-Power control</a></td>
      <td align="left">7096&#9166;</td>
-    </tr> 
+    </tr>
+    <tr>
+     <td align="left">Disable <a href="#car-setup">Car mode</a><sup>2</sup></td>
+     <td align="left">7990&#9166;</td>
+    </tr>
+    <tr>
+     <td align="left">Enable <a href="#car-setup">Car mode</a><sup>2</sup></td>
+     <td align="left">7991&#9166;</td>
+    </tr>
     <tr>
      <td align="left">Reboot the device<sup>2</sup></td>
      <td align="left">7064738&#9166;</td>
@@ -477,7 +493,7 @@ You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time
     </tr>
 </table>
 
-1: M-board (>= 1.6), or non-M-board (>= 1.6) with BatMon Add-on required; if LiPo battery is properly connected to battery monitor.
+1: Board 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor.
 2: Not supported through HA/MQTT [_INJECT_](#the-inject_x-command) command
 
 [Here](CheatSheet.pdf) is a cheat sheet for printing or screen-use. (Note that MacOS' preview application has a bug that scrambles the links in the document. Acrobat Reader does it correctly.)
@@ -559,33 +575,35 @@ If your broker does not allow anonymous logins, a username and password can be s
 
 Limitations: TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
 
-## Car setup
+## Car Setup
 
-If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, the following network configuration is recommended:
+If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car or other places without a local WiFi network, the following network configuration is recommended:
 
 ![STAmode-car](img/stamode-car2.png)
 
+This configuration can easily achieved by putting both the TCD and the Remote in *Car Mode*:
+
 #### TCD
 
-- Run your TCD in [*car mode*](https://tcd.out-a-ti.me/#car-mode);
-- disable WiFi power-saving on the TCD by setting **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the WiFi Configuration page.
+- Set **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the *WiFi Configuration* page
+- Put your TCD in [*Car Mode*](https://tcd.out-a-ti.me/#car-mode) by issuing keypad command 991.
 
 #### Remote
 
-Enter the Config Portal on the Remote, click on *Setup* and
-  - enter *192.168.4.1* into the field **_IP address or hostname of TCD_** under BTTFN settings;
-  - click on *Save*.
+One-time configuration steps:
+- Enter the Config Portal on the Remote, click on *Settings* and check that the hostname of the TCD (usually "timecircuits") is present in the  **_Hostname or IP address of TCD_** under *Wireless communication (BTTF-Network)* settings; do not use an IP address.
+- Furthermore, on the *WiFi Configuration* page, check that the TCD's WiFi network name (SSID; usually "TCD-AP") and password (if the TCD is configured with a password) are present under *Car mode settings*.
 
-After the Remote has restarted, re-enter the Remote's Config Portal (while the TCD is powered and in *car mode*) and
-  - click on *WiFi Configuration*,
-  - select the TCD's access point name in the list at the top ("TCD-AP"; if there is no list, click on "Scan for Networks") or enter *TCD-AP* into the *Network name (SSID)* field; if you password-protected your TCD's AP, enter this password in the *password* field. Leave all other fields empty,
-  - click on *Save*.
+If everything is in place, you can enable Car mode on the Remote by holding the Calibration button for 6 seconds (until a triple-beep is emitted). The Remote will reboot and attempt to connect to the TCD's AP.
 
-In order to access the Remote's Config Portal in this setup, connect your handheld or computer to the TCD's WiFi access point ("TCD-AP"), and direct your browser to http://dtmremote.local ; if that does not work, hold the Calibration button for 2 seconds while the Remote is fake-powered on, it will display its IP address. Then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the Remote display).
+You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the Calibration button for 6 seconds, regardless of Fake Power.
 
-This "car setup" can also be used in a home setup with no local WiFi network present.
+To access the Remote's Config Portal in Car mode, connect your handheld or computer to the TCD's WiFi network ("TCD-AP"), and direct your browser to http://dtmremote.local.
 
-## WiFi power saving features
+  ><details><summary>If that fails...</summary>
+  >If connecting to http://dtmremote.local fails due to a name resolution error, go to the TCD's keypad menu, navigate to "BTTFN CLIENTS", and look for the Remote's IP address there; then direct your browser to that IP by using the URL http://a.b.c.d (a-d being the IP address displayed on the TCD display)</details>
+
+## WiFi Power Saving Features
 
 In AP-mode (ie when the device acts as an access point), WiFi can [only be used for the Config Portal](#connecting-to-a-wifi-network). Since changing settings in the Config Portal isn't something done on a regular basis, the Remote can switch off WiFi in AP-mode after a configurable period of time in order to save battery power.
 
@@ -653,7 +671,7 @@ This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
 This leads to the firmware update and audio upload page.
 
-In order to upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
+To upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
 
 You can also install the Remote's sound-pack on this page; download the sound-pack (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)), extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click *Upload*. Note that an SD card is required for this operation.
 
@@ -669,9 +687,9 @@ Through this page you can either connect your Remote to your local WiFi network,
 
 #### <ins>Connecting to an existing WiFi network</ins>
 
-In order to connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "Scan for Networks".
+To connect your Remote to your WiFi network, all you need to do is either to click on one of the networks listed at the top or to enter a __Network name (SSID)__, and optionally a __password__ (WPAx). If there is no list displayed, click on "Scan for Networks".
 
->By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty. If you connect your Remote to your Time Circuits Display acting as access point ("TCD-AP"), leave these all empty.
+>By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty.
 
 If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it, or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
 
@@ -680,6 +698,16 @@ If the WiFi network the Remote is supposed to connect to wasn't reachable when t
 ##### &#9193; Forget Saved WiFi Network
 
 Clicking this button (and selecting "yes" in the confirmation dialog) deletes the currently saved WiFi network (SSID and password as well as static IP data) and reboots the device; it will restart in "access point" (AP) mode. See [here](#connecting-to-a-wifi-network).
+
+##### &#9193; Car mode settings
+
+In Car mode, the device connects to the TCD-AP as configured here instead of the WiFi network configured above. 
+
+Enter your TCD's network name (usually "TCD-AP") in **_Network name (SSID) of TCD-AP_** and the TCD's AP password (if configured on the TCD) in **_Password for TCD-AP_**. 
+
+>In the unlikely case that multiple TCD's are in range, you can single out your TCD by its BSSID. The TCD displays its BSSID on its *WiFi Configuration* page (starting version 3.23).
+
+If you want to enter Car mode immediately, check **_Enable car mode_**. You can also later toggle between Car mode and normal WiFi connection by holding the Calibration button for 6 seconds (until a triple-beep is emitted).
 
 ##### &#9193; Hostname
 
@@ -749,6 +777,8 @@ If a power save timer is configured and has expired, and this option is checked,
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick, or when 88mph is reached.
 
+This setting can quickly be toggled by holding the RESET button, if [so configured](#-holding-reset-when-fake-power-on).
+
 ##### &#9193; Coasting when throttle in neutral
 
 Normally, when this is unchecked, keeping the throttle in neutral (center) position holds the current speed. If this option is checked, speed will slowly decrease in neutral, just like a car when the kludge is held down or the gear is in neutral.
@@ -783,11 +813,9 @@ This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such 
 
 #### <ins>Settings for BTTFN communication</ins>
 
-##### &#9193; IP address or hostname of TCD
+##### &#9193; Hostname or IP address of TCD
 
-In order to connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here.
-
-If you connect your Remote to the TCD's access point ("TCD-AP"), the TCD's IP address is 192.168.4.1.
+To connect your Remote to a Time Circuits Display wirelessly ("BTTF-Network"), enter the TCD's hostname - usually 'timecircuits' - or IP address here. Hostname is preferred because it makes the setup independent of the network environment.
 
 ##### &#9193; Remote Fake-Power controls TCD Fake-Power
 
@@ -796,6 +824,10 @@ This selects the power-up behavior of Fake-Power control over the TCD.
 If this option is checked, the Remote takes over Fake-Power control from the TCD when booting. If the TCD is powered-up after the Remote, it will recognize the Remote's state and stay silent and dark until the Remote is fake-powered up.
 
 If this option is unchecked, you need to hold O.O to gain Fake-Power control on the TCD, as described [here](#controlling-tcd-fake-power).
+
+##### &#9193; Button to refill Plutonium
+
+Here you can select a user button/switch which, when activated, sends a "REFILL" command to the [Dash Gauges](https://dg.out-a-ti.me) through the TCD. This is useful for quickly silencing the Dash Gauges after a Time Travel.
 
 #### <ins>Other settings</ins>
 
@@ -816,6 +848,13 @@ This procedure ensures that all your settings are copied from the old to the new
 
 #### <ins>Button assignment settings</ins>
 
+##### &#9193; Holding O.O/RESET when Fake-Power off
+
+This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
+
+- _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
+- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](#controlling-tcd-fake-power), RESET releases it.
+
 ##### &#9193; Pressing O.O when Fake-Power on
 
 This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
@@ -823,12 +862,12 @@ This selects what happens when you (briefly) press the O.O button when Fake-Powe
 - _Plays previous song in Music Player_: As it says, as part of Music Player control, O.O jumps to the previous song.
 - _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a Time Travel, which is then triggered when pushing the throttle stick upward.
 
-##### &#9193; Holding O.O/RESET when Fake-Power off
+##### &#9193; Holding RESET when Fake-Power on
 
-This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
+This selects what happens when you hold the RESET button when Fake-Power is on:
 
-- _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
-- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](#controlling-tcd-fake-power), RESET releases it.
+- _toggles shuffle in Music Player_: As it says, as part of Music Player control, it toggles the shuffle setting.
+- _toggles auto-throttle_: Holding RESET toggles the [auto-throttle](#-auto-throttle) setting.
 
 #### <ins>Hardware configuration settings</ins>
 
@@ -912,7 +951,7 @@ The MQTT message to publish to the button's topic when a button is pressed/relea
 
 ## Appendix B: Display messages
 
-- "ISP": Please install/update the [sound pack](#sound-pack-installation)
+- "INS" -> "SND" -> "PCK": Please install/update the [sound pack](#sound-pack-installation)
 - "BAT": Battery is low
 - "CAL", "UP", "DN": Shown during [calibration](#calibration)
 - "ERR": Error while installing the sound-pack, or during calibration. Please try again.

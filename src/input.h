@@ -8,7 +8,7 @@
  * RotEnc Class, RemButton Class: I2C-RotEnc and Button handling
  * 
  * -------------------------------------------------------------------
- * License: MIT NON-AI
+ * License: Modified MIT NON-AI
  * 
  * Permission is hereby granted, free of charge, to any person 
  * obtaining a copy of this software and associated documentation 
@@ -20,6 +20,9 @@
  *
  * The above copyright notice and this permission notice shall be 
  * included in all copies or substantial portions of the Software.
+ * 
+ * Links inside the Software pointing to the original source must not 
+ * be changed or removed.
  *
  * In addition, the following restrictions apply:
  * 
@@ -128,7 +131,9 @@ typedef enum {
     REMBUS_PRESSED,
     REMBUS_HOLD,
     REMBUS_RELEASED,
-    REMBUS_HOLDEND
+    REMBUS_HOLDEND,
+    REMBUS_EHOLD,
+    REMBUS_EHOLDEND
 } ButState;
 
 struct ButStruct {
@@ -143,29 +148,34 @@ class RemButton {
 
         void begin(const int pin, const bool activeLow = true, const bool pullupActive = true, const bool pulldownActive = false);
       
-        void setTiming(const int debounceTs, const int lPressTs);
+        void setTiming(const int debounceDur, const int lPressDur, const int elPressDur = 0);
       
-        void attachPressDown(void (*newFunction)());       // pressed down
-        void attachPressEnd(void (*newFunction)());        // released after "press" (=short)
-        void attachLongPressStart(void (*newFunction)());  // "Hold" started (pressed > holdTime)
-        void attachLongPressStop(void (*newFunction)());   // released after "hold" (=long)
+        void attachPressDown(void (*newFunction)());            // pressed down
+        void attachPressEnd(void (*newFunction)());             // released after "press" (=short)
+        void attachLongPressStart(void (*newFunction)());       // "Hold" started (pressed > holdTime)
+        void attachLongPressStop(void (*newFunction)());        // released after "hold" (=long)
+        void attachELongPressStart(void (*newFunction)(void));
+        void attachELongPressStop(void (*newFunction)(void));
 
         void scan();
+        void reset(void);
 
     private:
 
-        void reset(void);
         void transitionTo(ButState nextState);
 
         void (*_pressDownFunc)() = NULL;
         void (*_pressEndFunc)() = NULL;
         void (*_longPressStartFunc)() = NULL;
         void (*_longPressStopFunc)() = NULL;
+        void (*_elongPressStartFunc)(void) = NULL;
+        void (*_elongPressStopFunc)(void) = NULL;
 
         int _pin;
         
         unsigned int _debounceDur = 50;
         unsigned int _longPressDur = 800;
+        unsigned int _elongPressDur = 5000;
       
         int _buttonPressed;
       
