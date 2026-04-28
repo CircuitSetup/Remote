@@ -240,7 +240,7 @@ If a "button" is configured as a maintained switch in the Config Portal, keyX wi
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
  
-## SD card
+## SD Card
 
 Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend, Sandisk Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards work fine in my experience.
 
@@ -298,7 +298,7 @@ See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for 
 
 While the music player is playing music, other sound effects might be disabled/muted. The TCD-triggered alarm will, if so configured, interrupt the music player.
 
-## Battery monitoring
+## Battery Monitoring
 
 If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
 
@@ -339,7 +339,6 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
 You can use BTTF-Network and MQTT at the [same time](#receive-commands-from-time-circuits-display).
 
 ### TCD remote command reference
-
 
 <table>
    <tr><td>Function</td><td>Code on TCD</td></tr>
@@ -559,7 +558,7 @@ If your broker does not allow anonymous logins, a username and password can be s
 
 Limitations: TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
 
-## Car setup
+## Car Setup
 
 If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car, the following network configuration is recommended:
 
@@ -585,7 +584,7 @@ In order to access the Remote's Config Portal in this setup, connect your handhe
 
 This "car setup" can also be used in a home setup with no local WiFi network present.
 
-## WiFi power saving features
+## WiFi Power Saving Features
 
 In AP-mode (ie when the device acts as an access point), WiFi can [only be used for the Config Portal](#connecting-to-a-wifi-network). Since changing settings in the Config Portal isn't something done on a regular basis, the Remote can switch off WiFi in AP-mode after a configurable period of time in order to save battery power.
 
