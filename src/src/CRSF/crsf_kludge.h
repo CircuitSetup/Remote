@@ -75,8 +75,11 @@ bool      crsf_begin(
             bool usePowerLed,
             bool useLevelMeter,
             bool powerLedOnFakePower,
-            bool levelMeterOnFakePower);
+            bool levelMeterOnFakePower,
+            void (*fpOnWifiHandler)(bool));
 
 void      crsf_loop(int battWarn);
 
 void      csrf_query_status(bool &FPBUnitIsOn);
+
+

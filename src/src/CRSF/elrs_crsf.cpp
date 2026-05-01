@@ -40,7 +40,8 @@ bool ELRSCrsfMode::begin(
     bool usePowerLed,
     bool useLevelMeter,
     bool powerLedOnFakePower,
-    bool levelMeterOnFakePower)
+    bool levelMeterOnFakePower,
+    void (*fpOnWifiHandler)(bool))
 {
     ELRSCrsfCoreConfig config;
 
@@ -56,6 +57,8 @@ bool ELRSCrsfMode::begin(
     _levelMeterOnFakePower = levelMeterOnFakePower;
     _haveAds = false;
     _oeActiveLow = true;
+
+    _fpOnWifiHandler = fpOnWifiHandler;
 
     pinMode(FPOWER_IO_PIN, INPUT_PULLUP);
     pinMode(STOPS_IO_PIN, INPUT);
@@ -85,7 +88,11 @@ bool ELRSCrsfMode::begin(
                                                   elrsPacketRateOrDefault(config.transport.packetRateHz));
     config.transport.telemetryTimeoutMs = 2000;
     config.transport.replyTimeoutMs = 20;
+    #ifdef REMOTE_DBG
+    config.transport.debugEnabled = true;
+    #else
     config.transport.debugEnabled = false;
+    #endif
     config.transport.oeActiveLow = _oeActiveLow;
 
     return _core.begin(*this, config, millis(), micros());

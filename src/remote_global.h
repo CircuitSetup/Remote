@@ -52,7 +52,7 @@
 // Use SPIFFS (if defined) or LittleFS (if undefined; esp32-arduino >= 2.x)
 //#define USE_SPIFFS
 
-#define HAVE_CRSF
+//#define HAVE_CRSF
 
 /*************************************************************************
  ***                               Debug                               ***

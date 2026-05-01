@@ -333,6 +333,34 @@ static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const c
     return makeExtendedFrame(0xEE, 0x2B, 0xEA, 0xEE, payload);
 }
 
+static std::vector<uint8_t> makeTextSelectionEntryData(const char *name, const char *options, uint8_t value, uint8_t maxValue)
+{
+    std::vector<uint8_t> data;
+
+    data.push_back(0x00);
+    data.push_back(0x09);
+    data.insert(data.end(), name, name + strlen(name) + 1);
+    data.insert(data.end(), options, options + strlen(options) + 1);
+    data.push_back(value);
+    data.push_back(0x00);
+    data.push_back(maxValue);
+    data.push_back(0x00);
+    data.push_back(0x00);
+
+    return data;
+}
+
+static std::vector<uint8_t> makeParameterChunkFrame(uint8_t fieldId, uint8_t chunksRemain, const std::vector<uint8_t> &chunkData)
+{
+    std::vector<uint8_t> payload;
+
+    payload.push_back(fieldId);
+    payload.push_back(chunksRemain);
+    payload.insert(payload.end(), chunkData.begin(), chunkData.end());
+
+    return makeExtendedFrame(0xEE, 0x2B, 0xEA, 0xEE, payload);
+}
+
 static int countWrittenFrameType(const FakeHost &host, uint8_t type)
 {
     int count = 0;
@@ -381,6 +409,21 @@ static std::string writtenFrameTypes(const FakeHost &host)
     }
 
     return result;
+}
+
+static bool logsContain(const FakeHost &host, const char *needle)
+{
+    if(!needle || !*needle) {
+        return false;
+    }
+
+    for(size_t i = 0; i < host.logs.size(); i++) {
+        if(host.logs[i].find(needle) != std::string::npos) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static std::vector<uint8_t> makeGarbage()
@@ -454,6 +497,26 @@ static void test_transport_inversion_setting_is_passed_to_hal()
     TEST_ASSERT_TRUE(statusOf(core).invertLine);
 }
 
+static void test_echoed_tx_frame_is_ignored_as_reply()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    core.loop(host, 10, 0);
+
+    TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
+    host.queueFrame(host.writes[0]);
+    core.loop(host, 11, 0);
+
+    ELRSCrsfStatus status = statusOf(core);
+    TEST_ASSERT_FALSE(status.replyActive);
+    TEST_ASSERT_FALSE(status.synced);
+    TEST_ASSERT_FALSE(status.everReplied);
+    TEST_ASSERT_EQUAL_UINT32(0, status.lastReplyAt);
+    TEST_ASSERT_EQUAL_UINT32(0, status.lastRxAt);
+}
+
 static void test_reply_timeout_is_reported()
 {
     FakeHost host;
@@ -502,54 +565,65 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     FakeHost host100;
     FakeHost host150;
     FakeHost host250;
+    FakeHost host500;
     ELRSCrsfCore core50;
     ELRSCrsfCore core100;
     ELRSCrsfCore core150;
     ELRSCrsfCore core250;
+    ELRSCrsfCore core500;
     ELRSCrsfCoreConfig config50 = defaultConfig();
     ELRSCrsfCoreConfig config100 = defaultConfig();
     ELRSCrsfCoreConfig config150 = defaultConfig();
     ELRSCrsfCoreConfig config250 = defaultConfig();
+    ELRSCrsfCoreConfig config500 = defaultConfig();
 
     config50.transport.packetRateHz = 50;
     config100.transport.packetRateHz = 100;
     config150.transport.packetRateHz = 150;
     config250.transport.packetRateHz = 250;
+    config500.transport.packetRateHz = 500;
 
     TEST_ASSERT_TRUE(core50.begin(host50, config50, 0, 0));
     TEST_ASSERT_TRUE(core100.begin(host100, config100, 0, 0));
     TEST_ASSERT_TRUE(core150.begin(host150, config150, 0, 0));
     TEST_ASSERT_TRUE(core250.begin(host250, config250, 0, 0));
+    TEST_ASSERT_TRUE(core500.begin(host500, config500, 0, 0));
 
     loopAt(core50, host50, 0, 0);
     loopAt(core100, host100, 0, 0);
     loopAt(core150, host150, 0, 0);
     loopAt(core250, host250, 0, 0);
+    loopAt(core500, host500, 0, 0);
 
     TEST_ASSERT_EQUAL_INT(1, (int)host50.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host100.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host500.writes.size());
 
     loopAt(core50, host50, 19, 19999);
     loopAt(core100, host100, 9, 9999);
     loopAt(core150, host150, 6, 6665);
     loopAt(core250, host250, 3, 3999);
+    loopAt(core500, host500, 1, 1999);
 
     TEST_ASSERT_EQUAL_INT(1, (int)host50.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host100.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
+    TEST_ASSERT_EQUAL_INT(1, (int)host500.writes.size());
 
     loopAt(core50, host50, 20, 20000);
     loopAt(core100, host100, 10, 10000);
     loopAt(core150, host150, 6, 6666);
     loopAt(core250, host250, 4, 4000);
+    loopAt(core500, host500, 2, 2000);
 
     TEST_ASSERT_EQUAL_INT(2, (int)host50.writes.size());
     TEST_ASSERT_EQUAL_INT(2, (int)host100.writes.size());
     TEST_ASSERT_EQUAL_INT(2, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(2, (int)host250.writes.size());
+    TEST_ASSERT_EQUAL_INT(2, (int)host500.writes.size());
 
     loopAt(core150, host150, 13, 13332);
     TEST_ASSERT_EQUAL_INT(2, (int)host150.writes.size());
@@ -564,6 +638,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     TEST_ASSERT_EQUAL_UINT16(100, statusOf(core100).packetRateHz);
     TEST_ASSERT_EQUAL_UINT16(150, statusOf(core150).packetRateHz);
     TEST_ASSERT_EQUAL_UINT16(250, statusOf(core250).packetRateHz);
+    TEST_ASSERT_EQUAL_UINT16(500, statusOf(core500).packetRateHz);
 }
 
 static void test_self_test_emits_known_frame()
@@ -1138,8 +1213,8 @@ static void test_module_settings_are_discovered_and_written()
     TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
     frame = findWrittenFrameType(host, 0x28, 0);
     TEST_ASSERT_NOT_NULL(frame);
-    TEST_ASSERT_EQUAL_UINT8(0xEE, (*frame)[0]);
-    TEST_ASSERT_EQUAL_UINT8(0xEE, (*frame)[3]);
+    TEST_ASSERT_EQUAL_UINT8(0xC8, (*frame)[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x00, (*frame)[3]);
     TEST_ASSERT_EQUAL_UINT8(0xEA, (*frame)[4]);
 
     host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 3));
@@ -1147,6 +1222,11 @@ static void test_module_settings_are_discovered_and_written()
 
     loopAt(core, host, 1120, 1120000);
     TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
+    frame = findWrittenFrameType(host, 0x2C, 0);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(0xC8, (*frame)[0]);
+    TEST_ASSERT_EQUAL_UINT8(0xEE, (*frame)[3]);
+    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
     host.queueFrame(makeTextSelectionEntryFrame(1, "Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4));
     loopAt(core, host, 1130, 1130000);
 
@@ -1167,6 +1247,7 @@ static void test_module_settings_are_discovered_and_written()
     TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
     frame = findWrittenFrameType(host, 0x2D, 0);
     TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
     TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
     TEST_ASSERT_EQUAL_UINT8(2, (*frame)[6]);
 
@@ -1176,6 +1257,7 @@ static void test_module_settings_are_discovered_and_written()
     TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2D));
     frame = findWrittenFrameType(host, 0x2D, 1);
     TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
     TEST_ASSERT_EQUAL_UINT8(2, (*frame)[5]);
     TEST_ASSERT_EQUAL_UINT8(4, (*frame)[6]);
 
@@ -1185,6 +1267,7 @@ static void test_module_settings_are_discovered_and_written()
     TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2D));
     frame = findWrittenFrameType(host, 0x2D, 2);
     TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
     TEST_ASSERT_EQUAL_UINT8(3, (*frame)[5]);
     TEST_ASSERT_EQUAL_UINT8(1, (*frame)[6]);
 }
@@ -1213,6 +1296,178 @@ static void test_module_settings_retry_without_blocking_rc_output()
     TEST_ASSERT_GREATER_THAN_INT(2, countWrittenFrameType(host, 0x16));
 }
 
+static void test_module_settings_request_remaining_chunks_before_advancing_field()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    std::vector<uint8_t> field1;
+    std::vector<uint8_t> chunk0;
+    std::vector<uint8_t> chunk1;
+    const std::vector<uint8_t> *frame = NULL;
+
+    config.transport.packetRateHz = 50;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+
+    host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 2));
+    loopAt(core, host, 1030, 1030000);
+
+    loopAt(core, host, 1120, 1120000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
+    frame = findWrittenFrameType(host, 0x2C, 0);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(0, (*frame)[6]);
+
+    field1 = makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4);
+    chunk0.assign(field1.begin(), field1.begin() + (field1.size() / 2));
+    chunk1.assign(field1.begin() + (field1.size() / 2), field1.end());
+    host.queueFrame(makeParameterChunkFrame(1, 1, chunk0));
+    loopAt(core, host, 1130, 1130000);
+
+    loopAt(core, host, 1230, 1230000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x2C), writtenFrameTypes(host).c_str());
+    frame = findWrittenFrameType(host, 0x2C, 1);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[6]);
+
+    host.queueFrame(makeParameterChunkFrame(1, 0, chunk1));
+    loopAt(core, host, 1240, 1240000);
+
+    loopAt(core, host, 1340, 1340000);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
+    frame = findWrittenFrameType(host, 0x2C, 2);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(2, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(0, (*frame)[6]);
+}
+
+static void test_module_settings_retry_timed_out_chunk_before_scan_backoff()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    std::vector<uint8_t> field1;
+    std::vector<uint8_t> chunk0;
+    std::vector<uint8_t> chunk1;
+    std::vector<uint8_t> chunk2;
+    const std::vector<uint8_t> *frame = NULL;
+    const size_t splitA = 18;
+    const size_t splitB = 36;
+
+    config.transport.packetRateHz = 50;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+
+    host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 1));
+    loopAt(core, host, 1030, 1030000);
+
+    loopAt(core, host, 1120, 1120000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
+
+    field1 = makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4);
+    chunk0.assign(field1.begin(), field1.begin() + splitA);
+    chunk1.assign(field1.begin() + splitA, field1.begin() + splitB);
+    chunk2.assign(field1.begin() + splitB, field1.end());
+
+    host.queueFrame(makeParameterChunkFrame(1, 2, chunk0));
+    loopAt(core, host, 1130, 1130000);
+
+    loopAt(core, host, 1230, 1230000);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
+    frame = findWrittenFrameType(host, 0x2C, 1);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[6]);
+
+    loopAt(core, host, 1740, 1740000);
+    loopAt(core, host, 1760, 1760000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, countWrittenFrameType(host, 0x2C), writtenFrameTypes(host).c_str());
+    frame = findWrittenFrameType(host, 0x2C, 2);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[6]);
+
+    host.queueFrame(makeParameterChunkFrame(1, 1, chunk1));
+    loopAt(core, host, 1770, 1770000);
+
+    loopAt(core, host, 1880, 1880000);
+    TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x2C));
+    frame = findWrittenFrameType(host, 0x2C, 3);
+    TEST_ASSERT_NOT_NULL(frame);
+    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
+    TEST_ASSERT_EQUAL_UINT8(2, (*frame)[6]);
+
+    host.queueFrame(makeParameterChunkFrame(1, 0, chunk2));
+    loopAt(core, host, 1890, 1890000);
+    loopAt(core, host, 1990, 1990000);
+
+    TEST_ASSERT_FALSE(logsContain(host, "parameter scan timed out"));
+}
+
+static void test_module_settings_retry_probe_before_long_backoff()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+
+    config.transport.packetRateHz = 50;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+
+    loopAt(core, host, 1700, 1700000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+
+    loopAt(core, host, 2800, 2800000);
+    loopAt(core, host, 2820, 2820000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x28), writtenFrameTypes(host).c_str());
+    TEST_ASSERT_FALSE(logsContain(host, "module settings probe timed out"));
+}
+
+static void test_module_ping_holds_rc_until_reply_timeout_on_half_duplex_link()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+
+    config.transport.packetRateHz = 500;
+    config.transport.replyTimeoutMs = 20;
+
+    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+
+    loopAt(core, host, 0, 0);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x16));
+
+    loopAt(core, host, 1000, 1000000);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x16));
+
+    loopAt(core, host, 1002, 1002000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x16));
+
+    loopAt(core, host, 1010, 1010000);
+    loopAt(core, host, 1018, 1018000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
+
+    loopAt(core, host, 1021, 1021000);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
+
+    loopAt(core, host, 1023, 1023000);
+    TEST_ASSERT_TRUE(countWrittenFrameType(host, 0x16) >= 3);
+}
+
 }
 
 void setUp(void)
@@ -1231,6 +1486,7 @@ int main(int argc, char **argv)
     UNITY_BEGIN();
     RUN_TEST(test_rc_frame_packing_and_driver_enable);
     RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
+    RUN_TEST(test_echoed_tx_frame_is_ignored_as_reply);
     RUN_TEST(test_reply_timeout_is_reported);
     RUN_TEST(test_unknown_frame_updates_raw_frame_status);
     RUN_TEST(test_packet_rate_scheduler_50_100_150_250hz);
@@ -1259,5 +1515,9 @@ int main(int argc, char **argv)
     RUN_TEST(test_battery_overlay_and_calibration_prompt_still_override_normal_display);
     RUN_TEST(test_module_settings_are_discovered_and_written);
     RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
+    RUN_TEST(test_module_settings_request_remaining_chunks_before_advancing_field);
+    RUN_TEST(test_module_settings_retry_timed_out_chunk_before_scan_backoff);
+    RUN_TEST(test_module_settings_retry_probe_before_long_backoff);
+    RUN_TEST(test_module_ping_holds_rc_until_reply_timeout_on_half_duplex_link);
     return UNITY_END();
 }

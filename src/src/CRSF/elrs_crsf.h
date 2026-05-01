@@ -31,7 +31,8 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             bool usePowerLed,
             bool useLevelMeter,
             bool powerLedOnFakePower,
-            bool levelMeterOnFakePower
+            bool levelMeterOnFakePower,
+            void (*fpOnWifiHandler)(bool)
         );
 
         void loop(int battWarn);
@@ -84,6 +85,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         remLED *_powerLed = NULL;
         remLED *_levelMeter = NULL;
         remLED *_stopLed = NULL;
+        void (*_fpOnWifiHandler)(bool) = NULL;
 
         bool _haveButtonPack = false;
         bool _usePowerLed = false;

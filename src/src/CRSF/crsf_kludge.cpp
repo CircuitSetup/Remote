@@ -5,7 +5,7 @@
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
- * CRSF kludge
+ * CRSF kludge: Stuff that is called from the main prop firmware
  *
  * -------------------------------------------------------------------
  * License: MIT NON-AI
@@ -66,6 +66,8 @@ extern bool     loadConfigFile(const char *fn, uint8_t *buf, int len, int& valid
 extern bool     saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
 extern uint32_t calcHash(uint8_t *buf, int len);
 
+extern void     wifiOnFakePowerOn(bool showWait);
+
 // CRSF settings
 // Do not change or insert new values, this
 // struct is saved as such. Append new stuff.
@@ -84,11 +86,12 @@ static bool     haveCRSFSettings  = false;
 
 static const char *crsfCfgName  = "/crsfcfg";
 
-static const uint16_t packetRates[4] = {
+static const uint16_t packetRates[5] = {
     ELRS_PACKET_RATE_50HZ,
     ELRS_PACKET_RATE_100HZ,
     ELRS_PACKET_RATE_150HZ,
-    ELRS_PACKET_RATE_250HZ
+    ELRS_PACKET_RATE_250HZ,
+    ELRS_PACKET_RATE_500HZ
 };
 
 static const uint8_t speedUnits[2] = {
@@ -122,7 +125,7 @@ static const uint8_t dynamicPowers[2] = {
 
 uint16_t crsf_getPacketRate(int idx)
 {
-    if(idx < 0 || idx > 3) idx = 3;
+    if(idx < 0 || idx > 4) idx = 3;
     return packetRates[idx];
 }
 
@@ -213,7 +216,8 @@ bool crsf_begin(
             bool usePowerLed,
             bool useLevelMeter,
             bool powerLedOnFakePower,
-            bool levelMeterOnFakePower)
+            bool levelMeterOnFakePower,
+            void (*fpOnWifiHandler)(bool))
 {
     return elrsMode.begin(
             packetRateHz,
@@ -230,7 +234,8 @@ bool crsf_begin(
             usePowerLed,
             useLevelMeter,
             powerLedOnFakePower,
-            levelMeterOnFakePower
+            levelMeterOnFakePower,
+            fpOnWifiHandler
         );
 }
 
@@ -245,6 +250,5 @@ void csrf_query_status(bool &FPBUnitIsOn)
     FPBUnitIsOn = elrsStatus.fakePowerOn;
     //calibMode = elrsStatus.calibrating;
 }
-
 
 #endif
