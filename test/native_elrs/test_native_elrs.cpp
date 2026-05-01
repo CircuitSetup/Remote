@@ -824,6 +824,25 @@ static void test_control_mapping_and_reversed_axis_calibration()
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(3));
 }
 
+static void test_axis_order_roll_pitch_throttle_yaw_matches_runtime_banner()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_YAW] = 512;
+    host.axes[AXIS_PITCH] = 1536;
+    host.axes[AXIS_ROLL] = 2047;
+
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    loopAt(core, host, 20, 20000);
+
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(1401, core.channelAt(1));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(582, core.channelAt(3));
+}
+
 static void test_telemetry_parsing_and_bad_crc_rejection()
 {
     FakeHost host;
@@ -1497,6 +1516,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_button_pack_missing_at_boot_defaults_low);
     RUN_TEST(test_status_fault_transitions_clear_on_recovery);
     RUN_TEST(test_control_mapping_and_reversed_axis_calibration);
+    RUN_TEST(test_axis_order_roll_pitch_throttle_yaw_matches_runtime_banner);
     RUN_TEST(test_telemetry_parsing_and_bad_crc_rejection);
     RUN_TEST(test_non_c8_sync_frame_is_accepted);
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);

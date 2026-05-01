@@ -23,6 +23,15 @@ Baseline provenance: `serial_capture_baseline_adc_crsf.log`, captured on `COM4 @
 - Moving one physical control changes only one raw ADC stream.
 - Unmoved controls stay roughly stable.
 
+## Mapping Checks
+
+- Raw ADC values produce expected CH1-CH4 changes.
+- Roll only affects CH1.
+- Pitch only affects CH2.
+- Throttle only affects CH3.
+- Yaw only affects CH4.
+- Safe fallback appears when ADC is missing or stale.
+
 ## Bench Matrix
 
 | Test | Raw ADC evidence | Mapped channel evidence | TX frame evidence | Result |

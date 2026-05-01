@@ -204,6 +204,18 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     }
 
     updateChannels(now, fakePower, stopOn, buttonAOn, buttonBOn, packStates);
+#ifdef REMOTE_DBG
+    static unsigned long lastMapLogAt = 0;
+    if(now - lastMapLogAt >= 200) {
+        lastMapLogAt = now;
+        logf(host,
+             "ELRS/CRSF map: raw=[%d,%d,%d,%d] ch1=%u ch2=%u ch3=%u ch4=%u faults=0x%02X",
+             _rawAxes[0], _rawAxes[1], _rawAxes[2], _rawAxes[3],
+             (unsigned)_channels[0], (unsigned)_channels[1],
+             (unsigned)_channels[2], (unsigned)_channels[3],
+             (unsigned)_faultFlags);
+    }
+#endif
     _transport.setChannels(_channels);
     _transport.loop(host, now, nowUs);
 
