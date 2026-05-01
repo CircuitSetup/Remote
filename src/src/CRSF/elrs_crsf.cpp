@@ -121,7 +121,11 @@ ELRSCrsfStatus ELRSCrsfMode::getStatus() const
 bool ELRSCrsfMode::initAds1015()
 {
     Wire.beginTransmission(ADS1015_ADDR);
-    return (Wire.endTransmission(true) == 0);
+    bool ok = (Wire.endTransmission(true) == 0);
+    #ifdef REMOTE_DBG
+    Serial.printf("ELRS/CRSF ADC: ADS1015 probe %s @0x%02X\n", ok ? "ok" : "failed", ADS1015_ADDR);
+    #endif
+    return ok;
 }
 
 int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
@@ -223,6 +227,8 @@ void ELRSCrsfMode::discardSerialInput()
 
 bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
+    static unsigned long lastAxisLogAt = 0;
+
     if(!_haveAds) {
         return false;
     }
@@ -231,6 +237,15 @@ bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
         _rawAxes[i] = readAdsChannel(i);
         axes[i] = _rawAxes[i];
     }
+
+    #ifdef REMOTE_DBG
+    unsigned long now = millis();
+    if(now - lastAxisLogAt >= 200) {
+        lastAxisLogAt = now;
+        Serial.printf("ELRS/CRSF ADC raw: A0=%d A1=%d A2=%d A3=%d\n",
+                      _rawAxes[0], _rawAxes[1], _rawAxes[2], _rawAxes[3]);
+    }
+    #endif
 
     return true;
 }

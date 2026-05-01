@@ -16,6 +16,13 @@ Baseline provenance: `serial_capture_baseline_adc_crsf.log`, captured on `COM4 @
 - CH3 = Throttle
 - CH4 = Yaw
 
+## ADC Source Checks
+
+- ADS1015 probe success is printed once at boot.
+- Raw axes A0-A3 are printed at a controlled rate.
+- Moving one physical control changes only one raw ADC stream.
+- Unmoved controls stay roughly stable.
+
 ## Bench Matrix
 
 | Test | Raw ADC evidence | Mapped channel evidence | TX frame evidence | Result |
