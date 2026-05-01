@@ -1,5 +1,7 @@
 # ADC to CRSF Bench Results
 
+Baseline log: `serial_capture_baseline_adc_crsf.log`. BatMon startup lines in that capture are unrelated baseline boot noise, not CRSF failure.
+
 ## Runtime Path
 
 - ADC probe: `ELRSCrsfMode::initAds1015()`
