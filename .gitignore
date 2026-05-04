@@ -7,3 +7,7 @@
 remote.code-workspace
 /src/data
 /test
+*.log
+/docs
+/docs/validation
+*.txt
