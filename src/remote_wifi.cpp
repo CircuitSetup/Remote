@@ -669,7 +669,9 @@ static void setupWebServerCallback();
 static void handleUploadDone();
 static void handleUploading();
 static void handleUploadDone();
+#ifdef HAVE_CRSF
 static void handleELRSRawRead();
+#endif
 
 #ifdef REMOTE_HAVEMQTT
 static void strcpyutf8(char *dst, const char *src, unsigned int len);
@@ -2091,6 +2093,7 @@ static void updateConfigPortalValues()
     #endif
 }
 
+#ifdef HAVE_CRSF
 static void syncCRSFPortalBuffers()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
@@ -2172,6 +2175,7 @@ static bool saveCRSFPortalInputSettings()
 
     return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 }
+#endif
 
 void updateConfigPortalMFValues()
 {
@@ -2282,6 +2286,7 @@ static const char *wmBuildSelect(const char *dest, int op, const char **src, int
     return str;
 }
 
+#ifdef HAVE_CRSF
 static const char *wmBuildSelectOneBased(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)
 {
     char tempSetting[3];
@@ -2297,6 +2302,7 @@ static const char *wmBuildSelectOneBased(const char *dest, int op, const char **
 
     return wmBuildSelect(dest, op, src, count, tempSetting, indent);
 }
+#endif
 
 static unsigned int lengthRadioButtons(const char **theHTML, int cnt, char *setting)
 {
@@ -2796,16 +2802,20 @@ static void allocUplArrays()
 static void setupWebServerCallback()
 {
     wm.server->on(R_updateacdone, HTTP_POST, &handleUploadDone, &handleUploading);
-    wm.server->on("/elrsraw", HTTP_GET, &handleELRSRawRead);
+    #ifdef HAVE_CRSF
+    if(haveNewBoard) {
+        wm.server->on("/elrsraw", HTTP_GET, &handleELRSRawRead);
+    }
+    #endif
 }
 
+#ifdef HAVE_CRSF
 static void handleELRSRawRead()
 {
-#ifdef HAVE_CRSF
     int16_t axes[ELRS_GIMBAL_AXIS_COUNT];
     char buf[128];
 
-    if(!haveNewBoard || !readELRSCurrentRawAxes(axes)) {
+    if(!readELRSCurrentRawAxes(axes)) {
         wm.server->send(503, "application/json", "{\"ok\":false}");
         return;
     }
@@ -2817,10 +2827,8 @@ static void handleELRSRawRead()
              axes[ELRS_GIMBAL_INPUT_THROTTLE],
              axes[ELRS_GIMBAL_INPUT_RUDDER]);
     wm.server->send(200, "application/json", buf);
-#else
-    wm.server->send(404, "application/json", "{\"ok\":false}");
-#endif
 }
+#endif
 
 static void doCloseACFile(int idx, bool doRemove)
 {
@@ -3149,6 +3157,7 @@ static void getServerParam(const char *name, char *destBuf, size_t length, int m
     }
 }
 
+#ifdef HAVE_CRSF
 static void getServerParamOneBased(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal)
 {
     char tempBuf[4];
@@ -3156,6 +3165,7 @@ static void getServerParamOneBased(const char *name, char *destBuf, size_t lengt
     getServerParam(name, tempBuf, sizeof(tempBuf) - 1, minval - 1, maxval - 1, defaultVal - 1);
     snprintf(destBuf, length + 1, "%d", atoi(tempBuf) + 1);
 }
+#endif
 
 static bool myisspace(char mychar)
 {
