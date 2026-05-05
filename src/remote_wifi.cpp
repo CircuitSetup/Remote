@@ -2613,7 +2613,7 @@ static void wmAppendCRSFCALPoint(String &html,
     html += inputId;
     html += "'>";
     html += label;
-    html += "</label><input id='";
+    html += "</label><div class='elrscal-ctl'><input id='";
     html += inputId;
     html += "' name='";
     html += inputId;
@@ -2623,17 +2623,18 @@ static void wmAppendCRSFCALPoint(String &html,
     html += liveId;
     html += "','";
     html += inputId;
-    html += "')\">Capture</button></div>";
+    html += "')\">Capture</button></div></div>";
 }
 
 static void wmAppendCRSFCALAxis(String &html,
                                 const char *name,
                                 const char *liveId,
-                                const char *hint,
+                                const char *lowLabel,
                                 const char *lowId,
                                 const char *lowValue,
                                 const char *centerId,
                                 const char *centerValue,
+                                const char *highLabel,
                                 const char *highId,
                                 const char *highValue)
 {
@@ -2641,12 +2642,10 @@ static void wmAppendCRSFCALAxis(String &html,
     html += name;
     html += "</span><span class='elrscal-live'>Live <span id='";
     html += liveId;
-    html += "'>--</span></span></div><small class='elrscal-help'>";
-    html += hint;
-    html += "</small>";
-    wmAppendCRSFCALPoint(html, "Low", lowId, liveId, lowValue);
+    html += "'>--</span></span></div>";
+    wmAppendCRSFCALPoint(html, lowLabel, lowId, liveId, lowValue);
     wmAppendCRSFCALPoint(html, "Center", centerId, liveId, centerValue);
-    wmAppendCRSFCALPoint(html, "High", highId, liveId, highValue);
+    wmAppendCRSFCALPoint(html, highLabel, highId, liveId, highValue);
     html += "</div>";
 }
 
@@ -2672,32 +2671,36 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
             ".elrscal-head{display:block;line-height:1.3em;max-width:100%;overflow-wrap:anywhere;white-space:normal}"
             ".elrscal-name{font-weight:bold}"
             ".elrscal-live{display:block;font-size:.85em;color:#333}"
-            ".elrscal-help{display:block;font-size:.72em;color:#555;margin:2px 0 8px 0;line-height:1.25em;white-space:normal;overflow-wrap:anywhere}"
-            ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:0 0 8px 0;overflow:hidden}"
+            ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:8px 0;overflow:hidden;padding:0}"
             ".elrscal-row label{display:block;font-size:.82em;margin:0 0 2px 0}"
+            ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) minmax(4.8em,1fr);gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
             ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
-            ".elrscal-row button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:4px 0 0 0;font-size:.95em;line-height:2rem}"
+            ".elrscal-row button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:0;font-size:.95em;line-height:2rem}"
             "</style>";
 
     wmAppendCRSFCALAxis(html, "Aileron", "elrs_roll_live",
-                        "right gimbal, left (low) - right (high)",
+                        "Left",
                         "crrlo", settings.elrsRollLow,
                         "crrct", settings.elrsRollCtr,
+                        "Right",
                         "crrhi", settings.elrsRollHigh);
     wmAppendCRSFCALAxis(html, "Elevator", "elrs_pitch_live",
-                        "right gimbal, down (low) - up (high)",
+                        "Down",
                         "cptlo", settings.elrsPitchLow,
                         "cptct", settings.elrsPitchCtr,
+                        "Up",
                         "cpthi", settings.elrsPitchHigh);
     wmAppendCRSFCALAxis(html, "Throttle", "elrs_throttle_live",
-                        "left gimbal, down (low) - up (high)",
+                        "Down",
                         "cthlo", settings.elrsThrLow,
                         "cthct", settings.elrsThrCtr,
+                        "Up",
                         "cthhi", settings.elrsThrHigh);
     wmAppendCRSFCALAxis(html, "Rudder", "elrs_yaw_live",
-                        "left gimbal, left (low) - right (high)",
+                        "Left",
                         "cywlo", settings.elrsYawLow,
                         "cywct", settings.elrsYawCtr,
+                        "Right",
                         "cywhi", settings.elrsYawHigh);
 
     html += "<script>(function(){if(window.__elrsCalInit)return;window.__elrsCalInit=true;"
