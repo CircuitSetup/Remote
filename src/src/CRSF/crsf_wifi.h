@@ -1,6 +1,9 @@
 
 #ifdef HAVE_CRSF
 
+#include "elrs_crsf.h"
+
+static const char *wmBuildCRSFStatus(const char *dest, int op);
 static const char *wmBuildCRSFOM(const char *dest, int op);
 static const char *wmBuildCRSFPR(const char *dest, int op);
 static const char *wmBuildCRSFSU(const char *dest, int op);
@@ -16,6 +19,8 @@ static const char *wmBuildCRSFCAL(const char *dest, int op);
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
 static void getServerParamOneBased(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal);
+static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
+static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel);
 
 static const char *cOpModeCustHTMLSrc[4] = {
     "'>Operation mode",
@@ -65,69 +70,7 @@ static const char *cDynPowerCustHTMLSrc[4] = {
     ">Off%s1'",
     ">Dyn%s"
 };
-static const char *cRollChCustHTMLSrc[18] = {
-    "'>Aileron target channel",
-    "crlch",
-    ">CH1%s1'",
-    ">CH2%s2'",
-    ">CH3%s3'",
-    ">CH4%s4'",
-    ">CH5%s5'",
-    ">CH6%s6'",
-    ">CH7%s7'",
-    ">CH8%s8'",
-    ">CH9%s9'",
-    ">CH10%s10'",
-    ">CH11%s11'",
-    ">CH12%s12'",
-    ">CH13%s13'",
-    ">CH14%s14'",
-    ">CH15%s15'",
-    ">CH16%s"
-};
-static const char *cPitchChCustHTMLSrc[18] = {
-    "'>Elevator target channel",
-    "cptch",
-    ">CH1%s1'",
-    ">CH2%s2'",
-    ">CH3%s3'",
-    ">CH4%s4'",
-    ">CH5%s5'",
-    ">CH6%s6'",
-    ">CH7%s7'",
-    ">CH8%s8'",
-    ">CH9%s9'",
-    ">CH10%s10'",
-    ">CH11%s11'",
-    ">CH12%s12'",
-    ">CH13%s13'",
-    ">CH14%s14'",
-    ">CH15%s15'",
-    ">CH16%s"
-};
-static const char *cThrChCustHTMLSrc[18] = {
-    "'>Throttle target channel",
-    "cthch",
-    ">CH1%s1'",
-    ">CH2%s2'",
-    ">CH3%s3'",
-    ">CH4%s4'",
-    ">CH5%s5'",
-    ">CH6%s6'",
-    ">CH7%s7'",
-    ">CH8%s8'",
-    ">CH9%s9'",
-    ">CH10%s10'",
-    ">CH11%s11'",
-    ">CH12%s12'",
-    ">CH13%s13'",
-    ">CH14%s14'",
-    ">CH15%s15'",
-    ">CH16%s"
-};
-static const char *cYawChCustHTMLSrc[18] = {
-    "'>Rudder target channel",
-    "cywch",
+static const char *cChannelCustHTMLSrc[16] = {
     ">CH1%s1'",
     ">CH2%s2'",
     ">CH3%s3'",
@@ -146,8 +89,73 @@ static const char *cYawChCustHTMLSrc[18] = {
     ">CH16%s"
 };
 
+enum CRSFSelectFieldId : uint8_t {
+    CRSF_SELECT_OPMODE,
+    CRSF_SELECT_PKTRATE,
+    CRSF_SELECT_SPDUNIT,
+    CRSF_SELECT_TLMRATIO,
+    CRSF_SELECT_MAXPOWER,
+    CRSF_SELECT_DYNPOWER,
+    CRSF_SELECT_COUNT
+};
+
+struct CRSFSelectField {
+    const char **html;
+    int count;
+    char *setting;
+};
+
+static CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
+    { cOpModeCustHTMLSrc, 4, settings.opMode },
+    { cPktRateCustHTMLSrc, 7, settings.elrsPktRate },
+    { cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit },
+    { cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio },
+    { cMaxPowerCustHTMLSrc, 8, settings.elrsMaxPower },
+    { cDynPowerCustHTMLSrc, 4, settings.elrsDynPower }
+};
+
+struct CRSFAxisSettings {
+    uint8_t axis;
+    char *channel;
+    char *reverse;
+    char *low;
+    char *center;
+    char *high;
+};
+
+static CRSFAxisSettings crsfAxisSettings[] = {
+    { ELRS_GIMBAL_INPUT_AILERON, settings.elrsRollCh, settings.elrsRollRev, settings.elrsRollLow, settings.elrsRollCtr, settings.elrsRollHigh },
+    { ELRS_GIMBAL_INPUT_ELEVATOR, settings.elrsPitchCh, settings.elrsPitchRev, settings.elrsPitchLow, settings.elrsPitchCtr, settings.elrsPitchHigh },
+    { ELRS_GIMBAL_INPUT_THROTTLE, settings.elrsThrCh, settings.elrsThrRev, settings.elrsThrLow, settings.elrsThrCtr, settings.elrsThrHigh },
+    { ELRS_GIMBAL_INPUT_RUDDER, settings.elrsYawCh, settings.elrsYawRev, settings.elrsYawLow, settings.elrsYawCtr, settings.elrsYawHigh }
+};
+
+static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
+{
+    if(fieldId >= CRSF_SELECT_COUNT) {
+        return NULL;
+    }
+
+    const CRSFSelectField &field = crsfSelectFields[fieldId];
+    return wmBuildSelect(dest, op, field.html, field.count, field.setting, false);
+}
+
+#define CRSF_SELECT_BUILDER(fn, fieldId) \
+static const char *fn(const char *dest, int op) \
+{ \
+    return wmBuildCRSFSelectField(dest, op, fieldId); \
+}
+
+CRSF_SELECT_BUILDER(wmBuildCRSFOM, CRSF_SELECT_OPMODE)
+CRSF_SELECT_BUILDER(wmBuildCRSFPR, CRSF_SELECT_PKTRATE)
+CRSF_SELECT_BUILDER(wmBuildCRSFSU, CRSF_SELECT_SPDUNIT)
+CRSF_SELECT_BUILDER(wmBuildCRSFTR, CRSF_SELECT_TLMRATIO)
+CRSF_SELECT_BUILDER(wmBuildCRSFMP, CRSF_SELECT_MAXPOWER)
+CRSF_SELECT_BUILDER(wmBuildCRSFDP, CRSF_SELECT_DYNPOWER)
+
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
 WiFiManagerParameter custom_ss_crsf("ELRS/CRSF Settings", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_crsfstatus(wmBuildCRSFStatus);
 WiFiManagerParameter custom_crsfap("cAP", "Connect to WiFi in ELRS/CRSF mode<br><span>If unchecked, device will remain in AP mode.</span>", settings.crsfap, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
 WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
@@ -168,6 +176,7 @@ WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsfom,
       &custom_ss_crsf,
+      &custom_crsfstatus,
       &custom_crsfap,
       &custom_crsfpr,
       &custom_crsfsu,
@@ -196,6 +205,11 @@ static bool crsf_wifi_loop_settings()
 {
     evalCB(settings.crsfap, &custom_crsfap);
     if(saveCRSFPortalInputSettings()) {
+        if(opModeCRSF) {
+            requestELRSModuleConfigUpdate((uint8_t)atoi(settings.elrsTlmRatio),
+                                          (uint8_t)atoi(settings.elrsMaxPower),
+                                          (uint8_t)atoi(settings.elrsDynPower));
+        }
         return true;
     }
     Serial.println("Config Portal: Failed to save CRSF input settings");
@@ -238,6 +252,41 @@ static void crsf_wifi_saveParamsCallback()
     }
 }
 
+static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis)
+{
+    switch(axis) {
+    case ELRS_GIMBAL_INPUT_AILERON:
+        return routing.aileronChannel;
+    case ELRS_GIMBAL_INPUT_ELEVATOR:
+        return routing.elevatorChannel;
+    case ELRS_GIMBAL_INPUT_THROTTLE:
+        return routing.throttleChannel;
+    case ELRS_GIMBAL_INPUT_RUDDER:
+        return routing.rudderChannel;
+    default:
+        return 1;
+    }
+}
+
+static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel)
+{
+    switch(axis) {
+    case ELRS_GIMBAL_INPUT_AILERON:
+        routing.aileronChannel = channel;
+        break;
+    case ELRS_GIMBAL_INPUT_ELEVATOR:
+        routing.elevatorChannel = channel;
+        break;
+    case ELRS_GIMBAL_INPUT_THROTTLE:
+        routing.throttleChannel = channel;
+        break;
+    case ELRS_GIMBAL_INPUT_RUDDER:
+        routing.rudderChannel = channel;
+        break;
+    default:
+        break;
+    }
+}
 
 static void syncCRSFPortalBuffers()
 {
@@ -250,35 +299,17 @@ static void syncCRSFPortalBuffers()
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 
-    snprintf(settings.elrsRollCh, sizeof(settings.elrsRollCh), "%u", (unsigned)routing.aileronChannel);
-    snprintf(settings.elrsPitchCh, sizeof(settings.elrsPitchCh), "%u", (unsigned)routing.elevatorChannel);
-    snprintf(settings.elrsThrCh, sizeof(settings.elrsThrCh), "%u", (unsigned)routing.throttleChannel);
-    snprintf(settings.elrsYawCh, sizeof(settings.elrsYawCh), "%u", (unsigned)routing.rudderChannel);
+    for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
+        const CRSFAxisSettings &axis = crsfAxisSettings[i];
+        ELRSInputAxisProfile &profile = profiles[axis.axis];
 
-    settings.elrsRollRev[0] = profiles[ELRS_GIMBAL_INPUT_AILERON].reverse ? '1' : '0';
-    settings.elrsRollRev[1] = 0;
-    settings.elrsPitchRev[0] = profiles[ELRS_GIMBAL_INPUT_ELEVATOR].reverse ? '1' : '0';
-    settings.elrsPitchRev[1] = 0;
-    settings.elrsThrRev[0] = profiles[ELRS_GIMBAL_INPUT_THROTTLE].reverse ? '1' : '0';
-    settings.elrsThrRev[1] = 0;
-    settings.elrsYawRev[0] = profiles[ELRS_GIMBAL_INPUT_RUDDER].reverse ? '1' : '0';
-    settings.elrsYawRev[1] = 0;
-
-    snprintf(settings.elrsRollLow, sizeof(settings.elrsRollLow), "%d", profiles[ELRS_GIMBAL_INPUT_AILERON].minimum);
-    snprintf(settings.elrsRollCtr, sizeof(settings.elrsRollCtr), "%d", profiles[ELRS_GIMBAL_INPUT_AILERON].center);
-    snprintf(settings.elrsRollHigh, sizeof(settings.elrsRollHigh), "%d", profiles[ELRS_GIMBAL_INPUT_AILERON].maximum);
-
-    snprintf(settings.elrsPitchLow, sizeof(settings.elrsPitchLow), "%d", profiles[ELRS_GIMBAL_INPUT_ELEVATOR].minimum);
-    snprintf(settings.elrsPitchCtr, sizeof(settings.elrsPitchCtr), "%d", profiles[ELRS_GIMBAL_INPUT_ELEVATOR].center);
-    snprintf(settings.elrsPitchHigh, sizeof(settings.elrsPitchHigh), "%d", profiles[ELRS_GIMBAL_INPUT_ELEVATOR].maximum);
-
-    snprintf(settings.elrsThrLow, sizeof(settings.elrsThrLow), "%d", profiles[ELRS_GIMBAL_INPUT_THROTTLE].minimum);
-    snprintf(settings.elrsThrCtr, sizeof(settings.elrsThrCtr), "%d", profiles[ELRS_GIMBAL_INPUT_THROTTLE].center);
-    snprintf(settings.elrsThrHigh, sizeof(settings.elrsThrHigh), "%d", profiles[ELRS_GIMBAL_INPUT_THROTTLE].maximum);
-
-    snprintf(settings.elrsYawLow, sizeof(settings.elrsYawLow), "%d", profiles[ELRS_GIMBAL_INPUT_RUDDER].minimum);
-    snprintf(settings.elrsYawCtr, sizeof(settings.elrsYawCtr), "%d", profiles[ELRS_GIMBAL_INPUT_RUDDER].center);
-    snprintf(settings.elrsYawHigh, sizeof(settings.elrsYawHigh), "%d", profiles[ELRS_GIMBAL_INPUT_RUDDER].maximum);
+        snprintf(axis.channel, sizeof(settings.elrsRollCh), "%u", (unsigned)crsfRoutingChannel(routing, axis.axis));
+        axis.reverse[0] = profile.reverse ? '1' : '0';
+        axis.reverse[1] = 0;
+        snprintf(axis.low, sizeof(settings.elrsRollLow), "%d", profile.minimum);
+        snprintf(axis.center, sizeof(settings.elrsRollCtr), "%d", profile.center);
+        snprintf(axis.high, sizeof(settings.elrsRollHigh), "%d", profile.maximum);
+    }
 }
 
 static bool saveCRSFPortalInputSettings()
@@ -292,31 +323,16 @@ static bool saveCRSFPortalInputSettings()
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 
-    routing.aileronChannel = (uint8_t)atoi(settings.elrsRollCh);
-    routing.elevatorChannel = (uint8_t)atoi(settings.elrsPitchCh);
-    routing.throttleChannel = (uint8_t)atoi(settings.elrsThrCh);
-    routing.rudderChannel = (uint8_t)atoi(settings.elrsYawCh);
+    for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
+        const CRSFAxisSettings &axis = crsfAxisSettings[i];
+        ELRSInputAxisProfile &profile = profiles[axis.axis];
 
-    profiles[ELRS_GIMBAL_INPUT_AILERON].reverse = (settings.elrsRollRev[0] != '0');
-    profiles[ELRS_GIMBAL_INPUT_ELEVATOR].reverse = (settings.elrsPitchRev[0] != '0');
-    profiles[ELRS_GIMBAL_INPUT_THROTTLE].reverse = (settings.elrsThrRev[0] != '0');
-    profiles[ELRS_GIMBAL_INPUT_RUDDER].reverse = (settings.elrsYawRev[0] != '0');
-
-    profiles[ELRS_GIMBAL_INPUT_AILERON].minimum = (int16_t)atoi(settings.elrsRollLow);
-    profiles[ELRS_GIMBAL_INPUT_AILERON].center = (int16_t)atoi(settings.elrsRollCtr);
-    profiles[ELRS_GIMBAL_INPUT_AILERON].maximum = (int16_t)atoi(settings.elrsRollHigh);
-
-    profiles[ELRS_GIMBAL_INPUT_ELEVATOR].minimum = (int16_t)atoi(settings.elrsPitchLow);
-    profiles[ELRS_GIMBAL_INPUT_ELEVATOR].center = (int16_t)atoi(settings.elrsPitchCtr);
-    profiles[ELRS_GIMBAL_INPUT_ELEVATOR].maximum = (int16_t)atoi(settings.elrsPitchHigh);
-
-    profiles[ELRS_GIMBAL_INPUT_THROTTLE].minimum = (int16_t)atoi(settings.elrsThrLow);
-    profiles[ELRS_GIMBAL_INPUT_THROTTLE].center = (int16_t)atoi(settings.elrsThrCtr);
-    profiles[ELRS_GIMBAL_INPUT_THROTTLE].maximum = (int16_t)atoi(settings.elrsThrHigh);
-
-    profiles[ELRS_GIMBAL_INPUT_RUDDER].minimum = (int16_t)atoi(settings.elrsYawLow);
-    profiles[ELRS_GIMBAL_INPUT_RUDDER].center = (int16_t)atoi(settings.elrsYawCtr);
-    profiles[ELRS_GIMBAL_INPUT_RUDDER].maximum = (int16_t)atoi(settings.elrsYawHigh);
+        crsfSetRoutingChannel(routing, axis.axis, (uint8_t)atoi(axis.channel));
+        profile.reverse = (axis.reverse[0] != '0');
+        profile.minimum = (int16_t)atoi(axis.low);
+        profile.center = (int16_t)atoi(axis.center);
+        profile.maximum = (int16_t)atoi(axis.high);
+    }
 
     return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 }
@@ -352,6 +368,94 @@ static const char *wmBuildSelectOneBased(const char *dest, int op, const char **
     return wmBuildSelect(dest, op, src, count, tempSetting, indent);
 }
 
+static void wmAppendEscaped(String &html, const char *text)
+{
+    if(!text) {
+        return;
+    }
+
+    while(*text) {
+        switch(*text) {
+        case '&': html += "&amp;"; break;
+        case '<': html += "&lt;"; break;
+        case '>': html += "&gt;"; break;
+        case '"': html += "&quot;"; break;
+        case '\'': html += "&#39;"; break;
+        default: html += *text; break;
+        }
+        text++;
+    }
+}
+
+static const char *wmBuildCRSFStatus(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+
+    ELRSCrsfStatus status = elrsMode.getStatus();
+    String html;
+
+    html.reserve(180);
+    html += "<div class='cmp0' style='font-size:0.85em;line-height:1.3em;margin:0 0 10px 0;color:";
+    if(!opModeCRSF) {
+        html += "#777'>ELRS/CRSF mode inactive";
+    } else if(status.replyActive) {
+        html += "#176d2f'>Module communicating";
+        if(status.moduleName[0]) {
+            html += ": ";
+            wmAppendEscaped(html, status.moduleName);
+        }
+    } else if(status.everReplied) {
+        html += "#8a6d1d'>Module response lost";
+        if(status.moduleName[0]) {
+            html += ": ";
+            wmAppendEscaped(html, status.moduleName);
+        }
+    } else {
+        html += "#a22'>No module response yet";
+    }
+    html += "</div>";
+
+    if(op == WM_CP_LEN) {
+        wmLenBuf = html.length() + 1;
+        return (const char *)&wmLenBuf;
+    }
+
+    char *str = (char *)malloc(html.length() + 1);
+    if(!str) {
+        return NULL;
+    }
+    strcpy(str, html.c_str());
+    return str;
+}
+
+static const char *wmBuildCRSFChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
+{
+    const char *html[18];
+
+    html[0] = label;
+    html[1] = id;
+    for(int i = 0; i < 16; i++) {
+        html[i + 2] = cChannelCustHTMLSrc[i];
+    }
+
+    return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
+}
+
+struct CRSFGimbalCalField {
+    const char *label;
+    const char *inputId;
+    char *value;
+};
+
+struct CRSFGimbalCalAxis {
+    const char *name;
+    const char *liveId;
+    CRSFGimbalCalField fields[3];
+};
+
 static void wmAppendCRSFCALPoint(String &html,
                                  const char *label,
                                  const char *inputId,
@@ -375,28 +479,54 @@ static void wmAppendCRSFCALPoint(String &html,
     html += "')\">Capture</button></div></div>";
 }
 
-static void wmAppendCRSFCALAxis(String &html,
-                                const char *name,
-                                const char *liveId,
-                                const char *lowLabel,
-                                const char *lowId,
-                                const char *lowValue,
-                                const char *centerId,
-                                const char *centerValue,
-                                const char *highLabel,
-                                const char *highId,
-                                const char *highValue)
+static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 {
     html += "<div class='elrscal-axis'><div class='elrscal-head'><span class='elrscal-name'>";
-    html += name;
+    html += axis.name;
     html += "</span><span class='elrscal-live'>Live <span id='";
-    html += liveId;
+    html += axis.liveId;
     html += "'>--</span></span></div>";
-    wmAppendCRSFCALPoint(html, lowLabel, lowId, liveId, lowValue);
-    wmAppendCRSFCALPoint(html, "Center", centerId, liveId, centerValue);
-    wmAppendCRSFCALPoint(html, highLabel, highId, liveId, highValue);
+    for(int i = 0; i < 3; i++) {
+        wmAppendCRSFCALPoint(html, axis.fields[i].label, axis.fields[i].inputId, axis.liveId, axis.fields[i].value);
+    }
     html += "</div>";
 }
+
+static const char crsfCalIntro[] =
+    "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
+    "Capture each gimbal's raw ADC low, center, and high points here, then save this page. "
+    "Those saved points become the real CRSF gimbal output mapping: low=1000, center=1500, high=2000."
+    "</p>"
+    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Live ADC: waiting for samples...</div>";
+
+static const char crsfCalStyle[] =
+    "<style>"
+    ".elrscal-wrap{box-sizing:border-box;width:100%;max-width:100%;padding:0;margin:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden}"
+    ".elrscal-wrap p,.elrscal-wrap #elrscalstat{white-space:normal;overflow-wrap:anywhere;max-width:100%}"
+    ".elrscal-axis{box-sizing:border-box;width:100%;max-width:100%;margin:12px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;overflow:hidden;white-space:normal}"
+    ".elrscal-head{display:block;line-height:1.3em;max-width:100%;overflow-wrap:anywhere;white-space:normal}"
+    ".elrscal-name{font-weight:bold}"
+    ".elrscal-live{display:block;font-size:.85em;color:#333}"
+    ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:8px 0;overflow:hidden;padding:0}"
+    ".elrscal-row label{display:block;font-size:.82em;margin:0 0 2px 0}"
+    ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) minmax(4.8em,1fr);gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
+    ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
+    ".elrscal-row button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:0;font-size:.95em;line-height:2rem}"
+    "</style>";
+
+static const char crsfCalScript[] =
+    "<script>(function(){if(window.__elrsCalInit)return;window.__elrsCalInit=true;"
+    "function ge(id){return document.getElementById(id);}function setLive(id,val){var el=ge(id);if(el)el.textContent=val;}"
+    "function setStatus(msg){var el=ge('elrscalstat');if(el)el.textContent=msg;}"
+    "window.elrsCapture=function(liveId,targetId){var live=ge(liveId),target=ge(targetId);if(!live||!target)return;"
+    "if(live.textContent==='--')return;target.value=live.textContent;};"
+    "function fail(){setStatus('Live ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
+    "setLive('elrs_roll_live','--');setLive('elrs_pitch_live','--');setLive('elrs_throttle_live','--');setLive('elrs_yaw_live','--');}"
+    "function poll(){fetch('/elrsraw',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
+    "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
+    "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
+    "setStatus('Live ADC connected.');"
+    "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>";
 
 static const char *wmBuildCRSFCAL(const char *dest, int op)
 {
@@ -410,63 +540,38 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
 
     String html;
 
-    html.reserve(7000);
-    html += "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
-            "Capture each gimbal's raw ADC low, center, and high points here, then save this page. "
-            "Those saved points become the real CRSF gimbal output mapping: low=1000, center=1500, high=2000."
-            "</p>";
-    html += "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Live ADC: waiting for samples...</div>";
-    html += "<style>"
-            ".elrscal-wrap{box-sizing:border-box;width:100%;max-width:100%;padding:0;margin:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden}"
-            ".elrscal-wrap p,.elrscal-wrap #elrscalstat{white-space:normal;overflow-wrap:anywhere;max-width:100%}"
-            ".elrscal-axis{box-sizing:border-box;width:100%;max-width:100%;margin:12px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;overflow:hidden;white-space:normal}"
-            ".elrscal-head{display:block;line-height:1.3em;max-width:100%;overflow-wrap:anywhere;white-space:normal}"
-            ".elrscal-name{font-weight:bold}"
-            ".elrscal-live{display:block;font-size:.85em;color:#333}"
-            ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:8px 0;overflow:hidden;padding:0}"
-            ".elrscal-row label{display:block;font-size:.82em;margin:0 0 2px 0}"
-            ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) minmax(4.8em,1fr);gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
-            ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
-            ".elrscal-row button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:0;font-size:.95em;line-height:2rem}"
-            "</style>";
+    html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + 1600);
+    html += crsfCalIntro;
+    html += crsfCalStyle;
 
-    wmAppendCRSFCALAxis(html, "Aileron", "elrs_roll_live",
-                        "Left",
-                        "crrlo", settings.elrsRollLow,
-                        "crrct", settings.elrsRollCtr,
-                        "Right",
-                        "crrhi", settings.elrsRollHigh);
-    wmAppendCRSFCALAxis(html, "Elevator", "elrs_pitch_live",
-                        "Down",
-                        "cptlo", settings.elrsPitchLow,
-                        "cptct", settings.elrsPitchCtr,
-                        "Up",
-                        "cpthi", settings.elrsPitchHigh);
-    wmAppendCRSFCALAxis(html, "Throttle", "elrs_throttle_live",
-                        "Down",
-                        "cthlo", settings.elrsThrLow,
-                        "cthct", settings.elrsThrCtr,
-                        "Up",
-                        "cthhi", settings.elrsThrHigh);
-    wmAppendCRSFCALAxis(html, "Rudder", "elrs_yaw_live",
-                        "Left",
-                        "cywlo", settings.elrsYawLow,
-                        "cywct", settings.elrsYawCtr,
-                        "Right",
-                        "cywhi", settings.elrsYawHigh);
+    CRSFGimbalCalAxis axes[] = {
+        { "Rudder", "elrs_yaw_live", {
+            { "Left", "cywlo", settings.elrsYawLow },
+            { "Center", "cywct", settings.elrsYawCtr },
+            { "Right", "cywhi", settings.elrsYawHigh }
+        } },
+        { "Throttle", "elrs_throttle_live", {
+            { "Up", "cthhi", settings.elrsThrHigh },
+            { "Center", "cthct", settings.elrsThrCtr },
+            { "Down", "cthlo", settings.elrsThrLow }
+        } },
+        { "Aileron", "elrs_roll_live", {
+            { "Left", "crrlo", settings.elrsRollLow },
+            { "Center", "crrct", settings.elrsRollCtr },
+            { "Right", "crrhi", settings.elrsRollHigh }
+        } },
+        { "Elevator", "elrs_pitch_live", {
+            { "Up", "cpthi", settings.elrsPitchHigh },
+            { "Center", "cptct", settings.elrsPitchCtr },
+            { "Down", "cptlo", settings.elrsPitchLow }
+        } }
+    };
 
-    html += "<script>(function(){if(window.__elrsCalInit)return;window.__elrsCalInit=true;"
-            "function ge(id){return document.getElementById(id);}function setLive(id,val){var el=ge(id);if(el)el.textContent=val;}"
-            "function setStatus(msg){var el=ge('elrscalstat');if(el)el.textContent=msg;}"
-            "window.elrsCapture=function(liveId,targetId){var live=ge(liveId),target=ge(targetId);if(!live||!target)return;"
-            "if(live.textContent==='--')return;target.value=live.textContent;};"
-            "function fail(){setStatus('Live ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
-            "setLive('elrs_roll_live','--');setLive('elrs_pitch_live','--');setLive('elrs_throttle_live','--');setLive('elrs_yaw_live','--');}"
-            "function poll(){fetch('/elrsraw',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
-            "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
-            "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
-            "setStatus('Live ADC connected. Capture low, center, and high for each gimbal, then save the page.');"
-            "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>";
+    for(size_t i = 0; i < sizeof(axes) / sizeof(axes[0]); i++) {
+        wmAppendCRSFCALAxis(html, axes[i]);
+    }
+
+    html += crsfCalScript;
 
     if(op == WM_CP_LEN) {
         wmLenBuf = html.length() + 1;
@@ -481,45 +586,21 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
     return str;
 }
 
-static const char *wmBuildCRSFOM(const char *dest, int op)
-{
-    return wmBuildSelect(dest, op, cOpModeCustHTMLSrc, 4, settings.opMode, false);
-}
-static const char *wmBuildCRSFPR(const char *dest, int op)
-{
-    return wmBuildSelect(dest, op, cPktRateCustHTMLSrc, 7, settings.elrsPktRate, false);
-}
-static const char *wmBuildCRSFSU(const char *dest, int op)
-{
-    return wmBuildSelect(dest, op, cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit, false);
-}
-static const char *wmBuildCRSFTR(const char *dest, int op)
-{
-    return wmBuildSelect(dest, op, cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio, false);
-}
-static const char *wmBuildCRSFMP(const char *dest, int op)
-{
-    return wmBuildSelect(dest, op, cMaxPowerCustHTMLSrc, 8, settings.elrsMaxPower, false);
-}
-static const char *wmBuildCRSFDP(const char *dest, int op)
-{
-    return wmBuildSelect(dest, op, cDynPowerCustHTMLSrc, 4, settings.elrsDynPower, false);
-}
 static const char *wmBuildCRSFRC(const char *dest, int op)
 {
-    return wmBuildSelectOneBased(dest, op, cRollChCustHTMLSrc, 18, settings.elrsRollCh, false);
+    return wmBuildCRSFChannelSelect(dest, op, "'>Aileron target channel", "crlch", settings.elrsRollCh);
 }
 static const char *wmBuildCRSFPC(const char *dest, int op)
 {
-    return wmBuildSelectOneBased(dest, op, cPitchChCustHTMLSrc, 18, settings.elrsPitchCh, false);
+    return wmBuildCRSFChannelSelect(dest, op, "'>Elevator target channel", "cptch", settings.elrsPitchCh);
 }
 static const char *wmBuildCRSFTC(const char *dest, int op)
 {
-    return wmBuildSelectOneBased(dest, op, cThrChCustHTMLSrc, 18, settings.elrsThrCh, false);
+    return wmBuildCRSFChannelSelect(dest, op, "'>Throttle target channel", "cthch", settings.elrsThrCh);
 }
 static const char *wmBuildCRSFYC(const char *dest, int op)
 {
-    return wmBuildSelectOneBased(dest, op, cYawChCustHTMLSrc, 18, settings.elrsYawCh, false);
+    return wmBuildCRSFChannelSelect(dest, op, "'>Rudder target channel", "cywch", settings.elrsYawCh);
 }
 
 static void handleELRSRawRead()

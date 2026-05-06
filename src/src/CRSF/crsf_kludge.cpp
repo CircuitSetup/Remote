@@ -346,6 +346,11 @@ bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
     return elrsMode.readCurrentRawAxes(axes);
 }
 
+void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
+{
+    elrsMode.requestModuleConfigUpdate(telemetryRatio, maxPower, dynamicPower);
+}
+
 bool crsf_begin(
             uint16_t packetRateHz,
             uint8_t speedDisplayUnits,

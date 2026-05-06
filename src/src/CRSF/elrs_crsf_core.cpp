@@ -71,6 +71,7 @@ ELRSCrsfCore::ELRSCrsfCore()
 
     memset(_overlayText, 0, sizeof(_overlayText));
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
+    memset(_moduleName, 0, sizeof(_moduleName));
 }
 
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now)
@@ -134,6 +135,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _calStage = CAL_IDLE;
     memset(_overlayText, 0, sizeof(_overlayText));
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
+    memset(_moduleName, 0, sizeof(_moduleName));
     resetModuleConfigSession();
     _moduleConfigPending = true;
     _moduleConfigState = MODULECFG_WAIT_START;
@@ -354,8 +356,18 @@ ELRSCrsfStatus ELRSCrsfCore::getStatus() const
     status.fakePowerOn = _fakePowerOn;
     status.calibrating = (_calStage != CAL_IDLE);
     status.selfTestActive = _selfTestActive;
+    strncpy(status.moduleName, _moduleName, sizeof(status.moduleName) - 1);
+    status.moduleName[sizeof(status.moduleName) - 1] = 0;
 
     return status;
+}
+
+void ELRSCrsfCore::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower, unsigned long now)
+{
+    _config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
+    _config.maxPower = elrsMaxPowerOrDefault(maxPower);
+    _config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
+    startModuleConfigSession(now);
 }
 
 bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
@@ -1024,6 +1036,7 @@ void ELRSCrsfCore::handleDeviceInfo(const uint8_t *payload, size_t payloadLen, u
     }
 
     noteModuleConfigResponse();
+    copyToken(_moduleName, sizeof(_moduleName), (const char *)name, nameLen);
     resetModuleParameters();
     _moduleProbeRetryCount = 0;
     _moduleFieldCount = info[12];

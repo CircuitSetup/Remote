@@ -43,6 +43,7 @@ struct ELRSCrsfStatus {
     bool fakePowerOn = false;
     bool calibrating = false;
     bool selfTestActive = false;
+    char moduleName[32] = {};
 };
 
 class ELRSCrsfHost : public ELRSCrsfTransportHal {
@@ -120,6 +121,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool synced() const;
         SpeedSource activeSpeedSource() const;
         ELRSCrsfStatus getStatus() const;
+        void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower, unsigned long now);
 
         static uint8_t crc8D5(const uint8_t *data, size_t len);
         static size_t packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize);
@@ -289,6 +291,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         char _overlayText[4];
         char _commOverlayText[4];
+        char _moduleName[32];
 };
 
 #endif

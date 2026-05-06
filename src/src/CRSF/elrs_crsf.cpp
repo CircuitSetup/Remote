@@ -142,6 +142,11 @@ ELRSCrsfStatus ELRSCrsfMode::getStatus() const
     return _core.getStatus();
 }
 
+void ELRSCrsfMode::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
+{
+    _core.requestModuleConfigUpdate(telemetryRatio, maxPower, dynamicPower, millis());
+}
+
 bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
     if(!axes) {
