@@ -170,6 +170,7 @@ WiFiManagerParameter custom_crsftc(wmBuildCRSFTC);
 WiFiManagerParameter custom_crsftrv("ctrv", "Reverse Throttle", settings.elrsThrRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfyc(wmBuildCRSFYC);
 WiFiManagerParameter custom_crsfyrv("cyrv", "Reverse Rudder", settings.elrsYawRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
+WiFiManagerParameter custom_crsfswmap("<div class='cmp0' style='font-size:0.82em;line-height:1.35em;margin:8px 0 0 0;color:#444'>Switch outputs:<ul style='margin:4px 0 0 1.2em;padding:0'><li>CH5 - Stop</li><li>CH6 - FakePower</li><li>CH7 - O.O</li><li>CH8 - RESET</li><li>CH9-CH16 - ButtonPack 1-8</li></ul></div>");
 WiFiManagerParameter custom_ss_crsfcal("ELRS/CRSF Gimbal Calibration", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
@@ -191,6 +192,7 @@ WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsftrv,
       &custom_crsfyc,
       &custom_crsfyrv,
+      &custom_crsfswmap,
       &custom_ss_crsfcal,
       &custom_crsfcal,
       NULL
@@ -228,10 +230,10 @@ static void crsf_wifi_saveParamsCallback()
     getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
     getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
     getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
-    getServerParamOneBased("crlch", settings.elrsRollCh, 2, 1, 16, DEF_ELRSROLLCH);
-    getServerParamOneBased("cptch", settings.elrsPitchCh, 2, 1, 16, DEF_ELRSPITCHCH);
-    getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 16, DEF_ELRSTHRCH);
-    getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 16, DEF_ELRSYAWCH);
+    getServerParamOneBased("crlch", settings.elrsRollCh, 2, 1, 4, DEF_ELRSROLLCH);
+    getServerParamOneBased("cptch", settings.elrsPitchCh, 2, 1, 4, DEF_ELRSPITCHCH);
+    getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 4, DEF_ELRSTHRCH);
+    getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 4, DEF_ELRSYAWCH);
     getServerParam("crrv", settings.elrsRollRev, 1, 0, 1, 0);
     getServerParam("cprv", settings.elrsPitchRev, 1, 0, 1, 0);
     getServerParam("ctrv", settings.elrsThrRev, 1, 0, 1, 0);
@@ -431,17 +433,17 @@ static const char *wmBuildCRSFStatus(const char *dest, int op)
     return str;
 }
 
-static const char *wmBuildCRSFChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
+static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
 {
-    const char *html[18];
+    const char *html[6];
 
     html[0] = label;
     html[1] = id;
-    for(int i = 0; i < 16; i++) {
+    for(int i = 0; i < 4; i++) {
         html[i + 2] = cChannelCustHTMLSrc[i];
     }
 
-    return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
+    return wmBuildSelectOneBased(dest, op, html, 6, setting, false);
 }
 
 struct CRSFGimbalCalField {
@@ -588,19 +590,19 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
 
 static const char *wmBuildCRSFRC(const char *dest, int op)
 {
-    return wmBuildCRSFChannelSelect(dest, op, "'>Aileron target channel", "crlch", settings.elrsRollCh);
+    return wmBuildCRSFGimbalChannelSelect(dest, op, "'>Aileron target channel", "crlch", settings.elrsRollCh);
 }
 static const char *wmBuildCRSFPC(const char *dest, int op)
 {
-    return wmBuildCRSFChannelSelect(dest, op, "'>Elevator target channel", "cptch", settings.elrsPitchCh);
+    return wmBuildCRSFGimbalChannelSelect(dest, op, "'>Elevator target channel", "cptch", settings.elrsPitchCh);
 }
 static const char *wmBuildCRSFTC(const char *dest, int op)
 {
-    return wmBuildCRSFChannelSelect(dest, op, "'>Throttle target channel", "cthch", settings.elrsThrCh);
+    return wmBuildCRSFGimbalChannelSelect(dest, op, "'>Throttle target channel", "cthch", settings.elrsThrCh);
 }
 static const char *wmBuildCRSFYC(const char *dest, int op)
 {
-    return wmBuildCRSFChannelSelect(dest, op, "'>Rudder target channel", "cywch", settings.elrsYawCh);
+    return wmBuildCRSFGimbalChannelSelect(dest, op, "'>Rudder target channel", "cywch", settings.elrsYawCh);
 }
 
 static void handleELRSRawRead()

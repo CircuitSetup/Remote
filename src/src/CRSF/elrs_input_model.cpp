@@ -156,10 +156,10 @@ ELRSInputAxisProfile elrsSanitizeInputAxisProfile(const ELRSInputAxisProfile &pr
 
 bool elrsIsValidGimbalRouting(const ELRSGimbalRouting &routing)
 {
-    return (routing.aileronChannel >= 1 && routing.aileronChannel <= 16) &&
-           (routing.elevatorChannel >= 1 && routing.elevatorChannel <= 16) &&
-           (routing.throttleChannel >= 1 && routing.throttleChannel <= 16) &&
-           (routing.rudderChannel >= 1 && routing.rudderChannel <= 16) &&
+    return (routing.aileronChannel >= 1 && routing.aileronChannel <= 4) &&
+           (routing.elevatorChannel >= 1 && routing.elevatorChannel <= 4) &&
+           (routing.throttleChannel >= 1 && routing.throttleChannel <= 4) &&
+           (routing.rudderChannel >= 1 && routing.rudderChannel <= 4) &&
            (routing.aileronChannel != routing.elevatorChannel) &&
            (routing.aileronChannel != routing.throttleChannel) &&
            (routing.aileronChannel != routing.rudderChannel) &&
