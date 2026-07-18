@@ -159,9 +159,9 @@ For acceleration, there are two modes: Linear mode and "movie mode". In linear m
 
 When the remote hits 88.0mph, the TCD triggers a BTFN-wide time travel; all connected props will play a synchronized time travel sequence. If operated stand-alone, a time travel sequence will be played on the Remote.
 
-Auto-throttle: If this option is checked in the Config Portal, acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick or when 88mph is reached.
+Auto-throttle: If enabled, acceleration will continue to run after briefly pushing up the throttle stick and releasing it into neutral. Acceleration is stopped when pulling down the throttle stick or when 88mph is reached.
 
-Coasting: If this feature is enabled through the Config Portal, the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
+Coasting: If this feature is enabled, the Remote will ever so slightly reduce the current speed when the throttle lever is in neutral. Like a car when you put the transmission in neutral or press the clutch.
 
 All the operation modes described above can also be switched on/off through the [TCD keypad](#tcd-remote-command-reference) or [HA/MQTT](#control-the-remote-via-mqtt).
 
@@ -220,7 +220,7 @@ When fake power is off, the buttons are used to set up audio volume and display 
 
 ### User Buttons
 
-These buttons are entirely optional. You can install any number of buttons, they only serve the purpose of playing back user-provided sound effects and/or send user-configurable messages to an [MQTT](#home-assistant--mqtt) broker.
+These buttons are entirely optional. You can install up to 8 buttons, they only serve the purpose of playing back user-provided sound effects and/or send user-configurable messages to an [MQTT](#home-assistant--mqtt) broker.
 
 Sound playback is mapped as follows:
 
@@ -242,7 +242,7 @@ If the button/switch is pressed/flipped while audio from a previous press/flip o
  
 ## SD Card
 
->Preface note on SD cards: For unknown reasons, some SD cards simply do not work with this device. For instance, I had no luck with Sandisk Ultra 32GB and  "Intenso" cards. If your SD card is not recognized, check if it is formatted in FAT32 format (not exFAT!). Also, the size must not exceed 32GB (as larger cards cannot be formatted with FAT32). Transcend, Sandisk Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards work fine in my experience.
+>Preface note on SD cards: Only SD/SDHC/SDXC cards up to 32GB are supported. Card needs to be FAT32-formatted (not exFAT). Transcend, Sandisk Ultra (as of firmware version 1.25) and Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards usually work fine. Some SD cards might not be recognized due to off-specs initialization quirks. SDUC cards are not supported.
 
 The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
@@ -292,7 +292,7 @@ To be recognized, your mp3 files need to be organized in music folders named *mu
 
 The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). 
 
-Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you: Just copy your files with their original filenames to a music folder of your choice; when selecting that folder, the files will be sorted alphabetically and renamed according to the 3-digit name scheme. (If you want your tracks in a specific order, you must rename them, for instance by inserting a letter or number at the start.) The renaming process can take a while (11 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the Dash Gauges as this speeds up the process. While the renaming is in progress, the Remote's display shows how many files are still left to be processed.
+Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you: Just copy your files with their original filenames to a music folder of your choice; when selecting that folder, the files will be sorted alphabetically and renamed according to the 3-digit name scheme. (If you want your tracks in a specific order, you must rename them, for instance by inserting a letter or number at the start.) The renaming process can take a while (11 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the Remote as this speeds up the process. While the renaming is in progress, the Remote's display shows how many files are still left to be processed.
 
 To add files to a music folder later, just copy them to the folder and delete the file "TCD_DONE.TXT" (so that the firmware knows that something has changed). 
 
