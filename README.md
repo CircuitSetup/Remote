@@ -48,7 +48,7 @@ For information on updating the firmware on your Remote, see [here](#firmware-in
 
 The first step is to establish access to the Remote's configuration website ("Config Portal") in order to configure your device:
 
-- Power up your Remote and wait until it has finished booting.
+- Power up your Remote and wait a few seconds.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 
