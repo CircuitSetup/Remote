@@ -46,7 +46,7 @@ For information on updating the firmware on your Remote, see [here](#firmware-in
 
 >The following instructions only need to be followed once, on fresh Remotes. They do not need to be repeated after a firmware update.
 
-The first step is to establish access to the Remote's configuration web site ("Config Portal") in order to configure your device:
+The first step is to establish access to the Remote's configuration website ("Config Portal") in order to configure your device:
 
 - Power up your Remote and wait until it has finished booting.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
