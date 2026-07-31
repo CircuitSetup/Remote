@@ -40,15 +40,15 @@ Firmware features:
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
 
-For information on updating the firmware on your Remote, see [here](#firmware-installation--firmware-update).
+For information on updating the firmware of your Remote, see [here](#firmware-installation--firmware-update).
 
 ## Initial Configuration
 
 >The following instructions only need to be followed once, on fresh Remotes. They do not need to be repeated after a firmware update.
 
-The first step is to establish access to the Remote's configuration web site ("Config Portal") in order to configure your device:
+The first step is to establish access to the Remote's configuration website ("Config Portal") in order to configure your device:
 
-- Power up your Remote and wait until it has finished booting.
+- Power up your Remote and wait a few seconds.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
 - Navigate your browser to http://dtmremote.local or http://192.168.4.1 to enter the Config Portal.
 
@@ -84,7 +84,7 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 <details>
 <summary>More...</summary>
 
->If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
+>If there are several APs with identical SSID nearby, you can select a specific AP by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
   
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
@@ -242,15 +242,15 @@ If the button/switch is pressed/flipped while audio from a previous press/flip o
  
 ## SD Card
 
->Preface note on SD cards: Only SD/SDHC/SDXC cards up to 32GB are supported. Card needs to be FAT32-formatted (not exFAT). Transcend, Sandisk Ultra (as of firmware version 1.25) and Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards usually work fine. Some SD cards might not be recognized due to off-specs initialization quirks. SDUC cards are not supported.
+>Only SD/SDHC/SDXC cards up to 32GB are supported. Card needs to be FAT32-formatted (not exFAT). Transcend, Sandisk Ultra (as of firmware version 1.25) and Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards usually work fine. Some SD cards might not be recognized due to off-specs initialization quirks. SDUC cards are not supported.
 
-The SD card, apart from being required for [installing](#sound-pack-installation) of the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
+The SD card, apart from being required for [installing](#sound-pack-installation) the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
 
 The SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
 
 ### Sound substitution
 
-The Remote's built-in sound effects can be substituted by your own sound files on a FAT32-formatted SD card. These files will be played back directly from the SD card during operation, so the SD card has to remain in the slot.
+The Remote's built-in sound effects can be substituted by your own sound files stored on the SD card. These files will be played back directly from the SD card during operation, so the SD card has to remain in the slot.
 
 Your replacements need to be put in the root (top-most) directory of the SD card, be in mp3 format (128kbps max) and named as follows:
 - "poweron.mp3": Played when the Remote is (fake)-powered on.
@@ -270,7 +270,7 @@ Those files are not provided here. You can use any mp3, with a bitrate of 128kpb
 
 ### Installing Custom & Replacement Audio Files
 
-Replacements and custom sounds can either be uploaded through the Config Portal or copied to the SD card using a computer.
+Replacements and custom sounds can either be uploaded through the Config Portal or copied to the SD card’s root folder using a computer.
 
 Uploading through the Config Portal works exactly like [installing the sound-pack](#sound-pack-installation); on the main menu, click "Update & Upload". Afterwards choose one or more mp3 files to upload using the bottom file selector, and click "UPLOAD". The firmware will store the uploaded mp3 files on the SD card.
 
@@ -699,7 +699,7 @@ To connect your Remote to your WiFi network, all you need to do is either to cli
 
 >By default, the Remote requests an IP address via DHCP. However, you can also configure a static IP for the Remote by entering the IP, netmask, gateway and DNS server. All four fields must be filled for a valid static IP configuration. If you want to stick to DHCP, leave those four fields empty.
 
-If there are several APs with identical SSID in your area, you can select a specific AP to use by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
+If there are several APs with identical SSID nearby, the Remote will connect to the first one found, which might not be the one with the strongest signal. It is therefore recommended to select the nearest/strongest AP by its BSSID (AP's MAC address). You can either manually find out your AP's BSSID and enter it or have it filled out automatically: Click "Scan for networks", then "Show all". If you click on an AP, its BSSID will be copied into BSSID field in the form below. To see which AP is which, hover over the name to see its BSSID as a tooltip.
 
 If the WiFi network the Remote is supposed to connect to wasn't reachable when the Remote was powered up, it will run in AP mode. You can trigger a re-connection attempt by fake-powering it down and up. This technique is also used for WiFi power-saving in AP-mode, see [here](#wifi-power-saving-features).
 
