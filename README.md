@@ -528,7 +528,7 @@ The Remote supports MQTT protocol versions 3.1.1 and 5.0.
 
 ### Send messages through User Buttons
 
-In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight User buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm. You could switch HA-integrated lights on or off or send TIMETRAVEL to your [Time Circuits Display](https://tcd.out-a-ti.me) (bttf/tcd/cmd) or REFILL to your [Dash Gauges](https://dg.out-a-ti.me) (bttf/dg/cmd).
+In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight User buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm. You could switch HA-integrated lights on or off or send ```TIMETRAVEL``` to your [Time Circuits Display](https://tcd.out-a-ti.me) (bttf/tcd/cmd) or ```REFILL``` to your [Dash Gauges](https://dg.out-a-ti.me) (bttf/dg/cmd).
 
 The ON message will be sent when a button has been pressed, the OFF message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the ON message will be sent when the switch is closed, the OFF message when it is opened.
 
@@ -537,33 +537,33 @@ For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr
 ### Control the Remote via MQTT
 
 The Remote can be controlled through messages sent to topic **bttf/remote/cmd**. Supported commands are
-- AUTOTHROTTLE_ON, AUTOTHROTTLE_OFF: Enable/disable [auto-throttle](#-auto-throttle)
-- COASTING_ON, COASTING_OFF: Enable/disable [coasting](#-coasting-when-throttle-in-neutral)
-- MOVIEACCEL_ON, MOVIEACCEL_OFF: Switch between movie and linear [acceleration](#-movie-like-acceleration)
-- DISPTCDSPD_ON, DISPTCDSPD_OFF: Enable/disable [speed display while fake-off](#-display-tcd-speed-when-fake-off)
-- MP_PLAY: Starts the [Music Player](#the-music-player)
-- MP_STOP: Stops the [Music Player](#the-music-player)
-- MP_NEXT: Jump to next track
-- MP_PREV: Jump to previous track
-- MP_SHUFFLE_ON: Enables shuffle mode in [Music Player](#the-music-player)
-- MP_SHUFFLE_OFF: Disables shuffle mode in [Music Player](#the-music-player)
-- MP_FOLDER_x: x being 0-9, set folder number for [Music Player](#the-music-player)
-- VOLUME_UP, VOLUME_DOWN: Increase/decrease volume by a notch
-- VOLUME_SET_x: Set volume to x% (x=0-100)
-- PLAYKEY_x: Play keyX.mp3 (from SD card), X being in the range from 1 to 9.
-- PLAYKEY_xL: Play keyXl.mp3 (from SD card), X being in the range from 1 to 9.
-- STOPKEY: Stop playback of keyX file. Does nothing if no keyX file is currently played back.
-- INJECT_x: See immediately below.
+- ```AUTOTHROTTLE_ON```, ```AUTOTHROTTLE_OFF```: Enable/disable [auto-throttle](#-auto-throttle)
+- ```COASTING_ON```, ```COASTING_OFF```: Enable/disable [coasting](#-coasting-when-throttle-in-neutral)
+- ```MOVIEACCEL_ON```, ```MOVIEACCEL_OFF```: Switch between movie and linear [acceleration](#-movie-like-acceleration)
+- ```DISPTCDSPD_ON```, ```DISPTCDSPD_OFF```: Enable/disable [speed display while fake-off](#-display-tcd-speed-when-fake-off)
+- ```MP_PLAY```: Starts the [Music Player](#the-music-player)
+- ```MP_STOP```: Stops the [Music Player](#the-music-player)
+- ```MP_NEXT```: Jump to next track
+- ```MP_PREV```: Jump to previous track
+- ```MP_SHUFFLE_ON```: Enables shuffle mode in [Music Player](#the-music-player)
+- ```MP_SHUFFLE_OFF```: Disables shuffle mode in [Music Player](#the-music-player)
+- ```MP_FOLDER_x```: x being 0-9, set folder number for [Music Player](#the-music-player)
+- ```VOLUME_UP```, ```VOLUME_DOWN```: Increase/decrease volume by a notch
+- ```VOLUME_SET_x```: Set volume to x% (x=0-100)
+- ```PLAYKEY_x```: Play keyX.mp3 (from SD card), X being in the range from 1 to 9.
+- ```PLAYKEY_xL```: Play keyXl.mp3 (from SD card), X being in the range from 1 to 9.
+- ```STOPKEY```: Stop playback of keyX file. Does nothing if no keyX file is currently played back.
+- ```INJECT_x```: See immediately below.
 
 #### The INJECT_x command
 
 This command allows remote control of the Remote through HA/MQTT in the same way as through the TCD keypad by injecting commands in the Remote's command queue (hence the name). Commands are listed [here](#tcd-remote-command-reference); nearly all are supported. 
 
-To toggle movie/linear mode (7060), issue the following command: **INJECT_7060**
+To toggle movie/linear mode (7060), issue the following command: ```INJECT_7060```
 
-To play "key2.mp3" (7502), issue **INJECT_7502**
+To play "key2.mp3" (7502), issue ```INJECT_7502```
 
-To select the 'music1' folder (7051), issue **INJECT_7051**
+To select the 'music1' folder (7051), issue ```INJECT_7051```
 
 ### Setup
 
