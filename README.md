@@ -585,7 +585,7 @@ If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car or
 
 ![STAmode-car](img/stamode-car2.png)
 
-This configuration can easily achieved by putting both the TCD and the Remote in *Car Mode*:
+This configuration can easily be achieved by putting both the TCD and the Remote in *Car Mode*:
 
 #### TCD
 
@@ -600,7 +600,7 @@ One-time configuration steps:
 
 If everything is in place, you can enable Car mode on the Remote by holding the Calibration button for 6 seconds (until a triple-beep is emitted). The Remote will reboot and attempt to connect to the TCD's AP.
 
-You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the Calibration button for 6 seconds, regardless of Fake Power.
+You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the Calibration button for 6 seconds. This works in both fake-power on and off states.
 
 To access the Remote's Config Portal in Car mode, connect your handheld or computer to the TCD's WiFi network ("TCD-AP"), and direct your browser to http://dtmremote.local.
 
