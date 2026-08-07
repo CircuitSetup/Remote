@@ -32,7 +32,7 @@ Firmware features:
 - Movie-accurate sound effects
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
-- [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
+- [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the _O.O_/_RESET_ buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local)
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
@@ -212,8 +212,8 @@ When fake power is on:
 When fake power is off, the buttons are used to set up audio volume and display brightness:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button _O.O_</td><td>Volume up</td><td>Brightness up<br>or<br>Take over TCD Fake-Power control<br>(depending on <a href="#-holding-ooreset-when-fake-power-off">configuration</a>)</td></tr>
-  <tr><td>Button _RESET_</td><td>Volume down</td><td>Brightness down<br>or<br>Release TCD Fake-Power control</td></tr>
+  <tr><td>Button <i>O.O</i></td><td>Volume up</td><td>Brightness up<br>or<br>Take over TCD Fake-Power control<br>(depending on <a href="#-holding-ooreset-when-fake-power-off">configuration</a>)</td></tr>
+  <tr><td>Button <i>RESET</i></td><td>Volume down</td><td>Brightness down<br>or<br>Release TCD Fake-Power control</td></tr>
 </table>
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use.
@@ -715,7 +715,7 @@ Enter your TCD's network name (usually "TCD-AP") in **_Network name (SSID) of TC
 
 >In the unlikely case that multiple TCD's are in range, you can single out your TCD by its BSSID. The TCD displays its BSSID on its *WiFi Configuration* page.
 
-If you want to enter Car mode immediately after saving your settings, check **_Enable car mode now_**. You can also later toggle between Car mode and normal WiFi connection by holding the Calibration button for 6 seconds (until a triple-beep is emitted).
+If you want to enter Car mode immediately after saving your settings, check **_Enable car mode now_**. You can also later toggle between Car mode and normal WiFi connection by holding the _Calibration_ button for 6 seconds (until a triple-beep is emitted).
 
 ##### &#9193; Hostname
 
