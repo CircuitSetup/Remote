@@ -397,7 +397,7 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Select music folder (0-9)</td>
-     <td align="left"><code>7050</code> - 7059</code></td>
+     <td align="left"><code>7050</code> - <code>7059</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Shuffle off</td>
