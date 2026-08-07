@@ -308,7 +308,7 @@ While the music player is playing music, other sound effects might be disabled/m
 
 If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
 
-Monitoring can be done through the [_Calibration_ button](#calibration) and the TCD (```7091```/```7092```).
+Monitoring works through the [_Calibration_ button](#calibration) and the TCD (```7091```/```7092```).
 
 The "low battery" warning is given as follows:
 
