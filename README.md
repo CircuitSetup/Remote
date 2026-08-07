@@ -590,7 +590,7 @@ This configuration can easily be achieved by putting both the TCD and the Remote
 #### TCD
 
 - Set **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the *WiFi Configuration* page
-- Put your TCD in [*Car Mode*](https://tcd.out-a-ti.me/#car-mode) by issuing keypad command 991.
+- Put your TCD in [*Car Mode*](https://tcd.out-a-ti.me/#car-mode) by issuing keypad command ```991```.
 
 #### Remote
 
