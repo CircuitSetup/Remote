@@ -32,7 +32,7 @@ Firmware features:
 - Movie-accurate sound effects
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
-- [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the "O.O"/"RESET" buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
+- [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the _O.O_/_RESET_ buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local)
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
@@ -88,12 +88,12 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
   
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
->- hold the Calibration button,
->- power-up the device (while still holding the Calibration button)
+>- hold the _Calibration_ button,
+>- power-up the device (while still holding the _Calibration_ button)
 >- wait until the displays shows a circle animation,
->- press Button "O.O" twice within 10 seconds,
+>- press Button _O.O_ twice within 10 seconds,
 >- wait until the display shows "RST",
->- then release the Calibration button.
+>- then release the _Calibration_ button.
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
 </details>
@@ -135,7 +135,7 @@ It can be accessed as follows:
 
   >Accessing the Config Portal through this address requires the operating system of your handheld/computer to support Bonjour/mDNS: Windows 10 version TH2     (1511) [other sources say 1703] and later, Android 13 and later; MacOS and iOS since the dawn of time.
 
-  >If connecting to http://dtmremote.local fails due to a name resolution error, you need to find out the Remote's IP address: Power up and fake-power-up the Remote and hold the Calibration button for 2 seconds. The Remote will display its current IP address (a. - b. - c. - d). Then, on your handheld or computer, navigate to http://a.b.c.d (a.b.c.d being the IP address as displayed on the Remote) in order to enter the Config Portal.</details>
+  >If connecting to http://dtmremote.local fails due to a name resolution error, you need to find out the Remote's IP address: Power up and fake-power-up the Remote and hold the _Calibration_ button for 2 seconds. The Remote will display its current IP address (a. - b. - c. - d). Then, on your handheld or computer, navigate to http://a.b.c.d (a.b.c.d being the IP address as displayed on the Remote) in order to enter the Config Portal.</details>
 
 In the main menu, click on "Settings" to configure your Remote. 
 
@@ -169,15 +169,15 @@ Buttons and switches:
 
 ### "ON/OFF": Fake power
 
-The "ON/OFF" switch turns the Remote on and off in a sense that it takes over speed control on the TCD when fake-powered on, and hands back speed control when fake-powered off.
+The _ON/OFF_ switch turns the Remote on and off in a sense that it takes over speed control on the TCD when fake-powered on, and hands back speed control when fake-powered off.
 
-"ON/OFF" must be a maintained contact.
+_ON/OFF_ must be a maintained contact.
 
 ### "Stop"
 
-The "Stop" switch activates the brakes on your virtual Delorean; if the brakes are on, speed changes on the Remote are not followed by the TCD, instead the TCD will count speed down to 0. Upon releasing the brake, the virtual car accelerates up to the speed shown on the Remote, and will then follow its speed changes.
+The _Stop_ switch activates the brakes on your virtual Delorean; if the brakes are on, speed changes on the Remote are not followed by the TCD, instead the TCD will count speed down to 0. Upon releasing the brake, the virtual car accelerates up to the speed shown on the Remote, and will then follow its speed changes.
 
-"Stop" must be a maintained contact.
+_Stop_ must be a maintained contact.
 
 ### Calibration
 
@@ -191,29 +191,29 @@ The "Stop" switch activates the brakes on your virtual Delorean; if the brakes a
 
 The throttle of the Remote needs calibration:
 
-- Put the "ON/OFF" switch in "OFF" position.
-- Put the throttle lever in neutral (center) position, press the Calibration button. The display will briefly show "CAL" to show acceptance.
-- Hold the Calibration button for >= 2 seconds until a double-beep is emitted, then release the button. Shortly after, "UP" will be displayed. Now push the throttle to the up-most position and press the Calibration button. "DN" will be displayed.
-- Pull the throttle lever to the bottom-most position and press the Calibration button. The display will clear, calibration is finished.
+- Put the _ON/OFF_ switch in "OFF" position.
+- Put the throttle lever in neutral (center) position, press the _Calibration_ button. The display will briefly show "CAL" to show acceptance.
+- Hold the _Calibration_ button for >= 2 seconds until a double-beep is emitted, then release the button. Shortly after, "UP" will be displayed. Now push the throttle to the up-most position and press the _Calibration_ button. "DN" will be displayed.
+- Pull the throttle lever to the bottom-most position and press the _Calibration_ button. The display will clear, calibration is finished.
 
 If you change power-source (ie a new battery or power via USB to the ESP32), re-calibration is required.
  
-The Calibration button needs to be a momentary contact.
+The _Calibration_ button needs to be a momentary contact.
 
 ### Buttons "O.O" and "RESET"
 
 When fake power is on:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td>Prepare TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous track<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
-  <tr><td>Button "RESET"</td><td><a href="#the-music-player">Music Player</a>: Next track</td><td>Toggle Auto-Throttle<br>or<br><a href="#the-music-player">Music Player</a>: Toggle Shuffle<br>(depending on <a href="#-holding-reset-when-fake-power-on">configuration</a>)</td></tr>
+  <tr><td>Button <i>O.O</i></td><td>Prepare TT<br>or<br><a href="#the-music-player">Music Player</a>: Previous track<br>(depending on <a href="#-pressing-oo-when-fake-power-on">configuration</a>)</td><td><a href="#the-music-player">Music Player</a>: Play/Stop</td></tr>
+  <tr><td>Button <i>RESET</i></td><td><a href="#the-music-player">Music Player</a>: Next track</td><td>Toggle Auto-Throttle<br>or<br><a href="#the-music-player">Music Player</a>: Toggle Shuffle<br>(depending on <a href="#-holding-reset-when-fake-power-on">configuration</a>)</td></tr>
 </table>
 
 When fake power is off, the buttons are used to set up audio volume and display brightness:
 <table>
   <tr><td></td><td>Short press</td><td>Long press</td></tr>
-  <tr><td>Button "O.O"</td><td>Volume up</td><td>Brightness up<br>or<br>Take over TCD Fake-Power control<br>(depending on <a href="#-holding-ooreset-when-fake-power-off">configuration</a>)</td></tr>
-  <tr><td>Button "RESET"</td><td>Volume down</td><td>Brightness down<br>or<br>Release TCD Fake-Power control</td></tr>
+  <tr><td>Button <i>O.O</i></td><td>Volume up</td><td>Brightness up<br>or<br>Take over TCD Fake-Power control<br>(depending on <a href="#-holding-ooreset-when-fake-power-off">configuration</a>)</td></tr>
+  <tr><td>Button <i>RESET</i></td><td>Volume down</td><td>Brightness down<br>or<br>Release TCD Fake-Power control</td></tr>
 </table>
 
 [Here](https://github.com/realA10001986/Remote/blob/main/CheatSheet.pdf) is a cheat sheet for printing or screen-use.
@@ -288,7 +288,7 @@ The firmware contains a simple music player to play mp3 files located on the SD 
 
 *The maximum bitrate is __128kpbs__. The free [Adapter](https://macroplant.com/adapter/audio-converter) tool can re-encode your mp3 files in batches.*
 
-To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, i.e. the player starts searching for music in folder *music0*. To select a different folder, select it in the Config Portal ("Settings"), through the TCD (705x) or HA/MQTT (MP_FOLDER_x).
+To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, i.e. the player starts searching for music in folder *music0*. To select a different folder, select it in the Config Portal ("Settings"), through the TCD (```705x```) or HA/MQTT (```MP_FOLDER_x```).
 
 The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). 
 
@@ -296,9 +296,9 @@ Since manually renaming mp3 files is somewhat cumbersome, the firmware can do th
 
 To add files to a music folder later, just copy them to the folder and delete the file "TCD_DONE.TXT" (so that the firmware knows that something has changed). 
 
-To start and stop music playback, hold "O.O" for 2 seconds. Briefly pressing "O.O" jumps to the previous track, pressing "RESET" to the next one. (The same can be achieved by entering codes on the TCD's keypad: 7002 = previous track, 7005 = play/stop, 7008 = next track).
+To start and stop music playback, hold _O.O_ for 2 seconds. Briefly pressing _O.O_ jumps to the previous track, pressing _RESET_ to the next one. (The same can be achieved by entering codes on the TCD's keypad: ```7002``` = previous track, ```7005``` = play/stop, ```7008``` = next track).
 
-By default, the tracks are played in order, starting at 000.mp3, followed by 001.mp3 and so on. Holding "RESET" toggles Shuffle mode. Shuffle mode is saved and persistent accross reboots.
+By default, the tracks are played in order, starting at 000.mp3, followed by 001.mp3 and so on. Holding _RESET_ toggles Shuffle mode. Shuffle mode is saved and persistent across reboots.
 
 See [here](#buttons-oo-and-reset) and [here](#tcd-remote-command-reference) for a list of controls of the music player.
 
@@ -308,7 +308,7 @@ While the music player is playing music, other sound effects might be disabled/m
 
 If a suitable control board is in use, and battery warnings are enabled in the Config Portal, battery state can be monitored, and a warning is issued when the battery is low.
 
-Monitoring can be done through the [Calibration button](#calibration) and the TCD (7091/7092).
+Monitoring works through the [_Calibration_ button](#calibration) and the TCD (```7091```/```7092```).
 
 The "low battery" warning is given as follows:
 
@@ -348,152 +348,152 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
 - the TCD's speed control is done by the Remote,
 - the Remote can switch [Fake-Power on the TCD](#controlling-tcd-fake-power),
 - both play an alarm-sequence when the TCD's alarm occurs (if so configured),
-- the Remote can be remote controlled through the TCD's keypad (command codes 7xxx; see below),
+- the Remote can be remote controlled through the TCD's keypad (command codes ```7xxx```; see below),
 - the Remote can - while fake powered off - display the TCD's speed (eg from GPS).
 
 ### TCD remote command reference
 
 <table>
-   <tr><td>Function</td><td>Code on TCD</td></tr>
+   <tr><td align="center">Function</td><td align="center">Code on TCD</td></tr>
     <tr>
      <td align="left">Toggle "<a href="#-movie-like-acceleration">movie mode</a>"</td>
-     <td align="left"<td>7060&#9166;</td>
+     <td align="left"<td><code>7060</code></td>
     </tr>
    <tr>
      <td align="left">Toggle <a href="#-display-tcd-speed-when-fake-off">display of TCD speed while off</a></td>
-     <td align="left"<td>7061&#9166;</td>
+     <td align="left"<td><code>7061</code></td>
     </tr>
    <tr>
      <td align="left">Toggle <a href="#-auto-throttle">auto-throttle</a></td>
-     <td align="left"<td>7062&#9166;</td>
+     <td align="left"<td><code>7062</code></td>
     </tr>
   <tr>
      <td align="left">Toggle <a href="#-coasting-when-throttle-in-neutral">coasting</a></td>
-     <td align="left"<td>7063&#9166;</td>
+     <td align="left"<td><code>7063</code></td>
     </tr>
     <tr>
      <td align="left">Set volume level (00-20)</td>
-     <td align="left">7300&#9166; - 7320&#9166;</td>
+     <td align="left"><code>7300</code> - <code>7320</code></td>
     </tr>
   <tr>
      <td align="left">Enable / disable click sound</td>
-     <td align="left">7350&#9166; / 7351&#9166;</td>
+     <td align="left"><code>7350</code> / <code>7351</code></td>
     </tr>
     <tr>
      <td align="left">Set brightness level (00-15)</td>
-     <td align="left"<td>7400&#9166; - 7415&#9166;</td>
+     <td align="left"<td><code>7400</code> - <code>7415</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Play/Stop</td>
-     <td align="left">7005&#9166;</td>
+     <td align="left"><code>7005</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Previous track</td>
-     <td align="left">7002&#9166;</td>
+     <td align="left"><code>7002</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Next track</td>
-     <td align="left">7008&#9166;</td>
+     <td align="left"><code>7008</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Select music folder (0-9)</td>
-     <td align="left">7050&#9166; - 7059&#9166;</td>
+     <td align="left"><code>7050</code> - <code>7059</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Shuffle off</td>
-     <td align="left">7222&#9166;</td>
+     <td align="left"><code>7222</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Shuffle on</td>
-     <td align="left">7555&#9166;</td>
+     <td align="left"><code>7555</code></td>
     </tr> 
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Go to track 0</td>
-     <td align="left">7888&#9166;</td>
+     <td align="left"><code>7888</code></td>
     </tr>
     <tr>
      <td align="left"><a href="#the-music-player">Music Player</a>: Go to track xxx</td>
-     <td align="left">7888xxx&#9166;</td>
+     <td align="left"><code>7888xxx</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key1.mp3</a>"</td>
-     <td align="left">7001&#9166; / 7501&#9166;</td>
+     <td align="left"><code>7501</code> / <code>7001</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key2.mp3</a>"</td>
-     <td align="left">7502&#9166;</td>
+     <td align="left"><code>7502</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key3.mp3</a>"</td>
-     <td align="left">7003&#9166; / 7503&#9166;</td>
+     <td align="left"><code>7503</code> / <code>7003</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key4.mp3</a>"</td>
-     <td align="left">7004&#9166; / 7504&#9166;</td>
+     <td align="left"><code>7504</code> / <code>7004</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key5.mp3</a>"</td>
-     <td align="left">7505&#9166;</td>
+     <td align="left"><code>7505</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key6.mp3</a>"</td>
-     <td align="left">7006&#9166; / 7506&#9166;</td>
+     <td align="left"><code>7506</code> / <code>7006</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key7.mp3</a>"</td>
-     <td align="left">7007&#9166; / 7507&#9166;</td>
+     <td align="left"><code>7507</code> / <code>7007</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key8.mp3</a>"</td>
-     <td align="left">7502&#9166;</td>
+     <td align="left"><code>7508</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key9.mp3</a>"</td>
-     <td align="left">7009&#9166; / 7509&#9166;</td>
+     <td align="left"><code>7509</code> / <code>7009</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">keyXl.mp3</a>" (X=1-9)</td>
-     <td align="left">7511&#9166; - 7519&#9166;</td>
+     <td align="left"><code>7511</code> - <code>7519</code></td>
     </tr>
     <tr>
      <td align="left">Display current IP address</td>
-     <td align="left">7090&#9166;</td>
+     <td align="left"><code>7090</code></td>
     </tr>   
   <tr>
      <td align="left">Display battery charge percentage<sup>1</sup></td>
-     <td align="left">7091&#9166;</td>
+     <td align="left"><code>7091</code></td>
     </tr>   
   <tr>
      <td align="left">Display battery "Time to empty"<sup>1</sup></td>
-     <td align="left">7092&#9166;</td>
+     <td align="left"><code>7092</code></td>
     </tr>   
   <tr>
      <td align="left">Display battery voltage<sup>1</sup></td>
-     <td align="left">7093&#9166;</td>
+     <td align="left"><code>7093</code></td>
     </tr> 
    <tr>
      <td align="left">Toggle <a href="#controlling-tcd-fake-power">Fake-Power control</a></td>
-     <td align="left">7096&#9166;</td>
+     <td align="left"><code>7096</code></td>
     </tr>
     <tr>
      <td align="left">Disable <a href="#car-setup">Car mode</a><sup>2</sup></td>
-     <td align="left">7990&#9166;</td>
+     <td align="left"><code>7990</code></td>
     </tr>
     <tr>
      <td align="left">Enable <a href="#car-setup">Car mode</a><sup>2</sup></td>
-     <td align="left">7991&#9166;</td>
+     <td align="left"><code>7991</code></td>
     </tr>
     <tr>
      <td align="left">Reboot the device<sup>2</sup></td>
-     <td align="left">7064738&#9166;</td>
+     <td align="left"><code>7064738</code></td>
     </tr>
     <tr>
      <td align="left">Toggle firmware update signals at power-up</td>
-     <td align="left">7053281&#9166;</td>
+     <td align="left"><code>7053281</code></td>
     </tr>
      <tr>
      <td align="left">Delete static IP address<br>and WiFi-AP password<sup>2</sup></td>
-     <td align="left">7123456&#9166;</td>
+     <td align="left"><code>7123456</code></td>
     </tr>
 </table>
 
@@ -506,16 +506,16 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
 
 The Remote can, if so configured, control Fake-Power of a wirelessly connected Time Circuits Display.
 
-By holding O.O when Fake-Power on the Remote is off, the Remote takes over control of Fake-Power on the TCD. The same can be achieved by entering 7096 on the TCD keypad.
+By holding _O.O_ when Fake-Power on the Remote is off, the Remote takes over control of Fake-Power on the TCD. The same can be achieved by entering ```7096``` on the TCD keypad.
 
 From now on, whenever you flip the Fake-Power switch on the Remote, the TCD will follow. 
 
-To release Fake-Power control, hold RESET when Fake-Power on the Remote is off.
+To release Fake-Power control, hold _RESET_ when Fake-Power on the Remote is off.
 
-If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Portal, the Remote will take over Fake-Power control from the TCD at its startup, ie there is no need to initially press O.O.
+If the option "Fake-Power controls TCD Fake-Power" is checked in the Config Portal, the Remote will take over Fake-Power control from the TCD at its startup, ie there is no need to initially press _O.O_.
 
 Remarks:
-- Buttons O.O/RESET need to configured for this function, see [here](#-holding-ooreset-when-fake-power-off).
+- Buttons _O.O_/_RESET_ need to configured for this function, see [here](#-holding-ooreset-when-fake-power-off).
 - The Remote has the highest Fake-Power priority. The TCD's TFC switch and Fake-Power control through HA/MQTT have lower priority; state changes are tracked but do not become effective until the Remote releases Fake-Power control.
 
 ## Home Assistant / MQTT
@@ -528,56 +528,56 @@ The Remote supports MQTT protocol versions 3.1.1 and 5.0.
 
 ### Send messages through User Buttons
 
-In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight User buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm. You could switch HA-integrated lights on or off or send TIMETRAVEL to your [Time Circuits Display](https://tcd.out-a-ti.me) (bttf/tcd/cmd) or REFILL to your [Dash Gauges](https://dg.out-a-ti.me) (bttf/dg/cmd).
+In the Config Portal, you can configure MQTT topics and messages for "on" and/or "off" for each of the eight User buttons/switches. This allows for arbitrary functions in your Home Assistant/MQTT realm. You could switch HA-integrated lights on or off or send ```TIMETRAVEL``` to your [Time Circuits Display](https://tcd.out-a-ti.me) (bttf/tcd/cmd) or ```REFILL``` to your [Dash Gauges](https://dg.out-a-ti.me) (bttf/dg/cmd).
 
-The ON message will be sent when a button has been pressed, the OFF message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the ON message will be sent when the switch is closed, the OFF message when it is opened.
+The "on" message will be sent when a button has been pressed, the "off" message when it has been released. In case of a button being configured as a maintained switch in the Config Portal, the "on" message will be sent when the switch is closed, the "off" message when it is opened.
 
 For a video how this works, see [here](https://youtu.be/SbuL2Bv5uqA?si=R54H7ocUr2Q1ZDAc).
 
 ### Control the Remote via MQTT
 
 The Remote can be controlled through messages sent to topic **bttf/remote/cmd**. Supported commands are
-- AUTOTHROTTLE_ON, AUTOTHROTTLE_OFF: Enable/disable [auto-throttle](#-auto-throttle)
-- COASTING_ON, COASTING_OFF: Enable/disable [coasting](#-coasting-when-throttle-in-neutral)
-- MOVIEACCEL_ON, MOVIEACCEL_OFF: Switch between movie and linear [acceleration](#-movie-like-acceleration)
-- DISPTCDSPD_ON, DISPTCDSPD_OFF: Enable/disable [speed display while fake-off](#-display-tcd-speed-when-fake-off)
-- MP_PLAY: Starts the [Music Player](#the-music-player)
-- MP_STOP: Stops the [Music Player](#the-music-player)
-- MP_NEXT: Jump to next track
-- MP_PREV: Jump to previous track
-- MP_SHUFFLE_ON: Enables shuffle mode in [Music Player](#the-music-player)
-- MP_SHUFFLE_OFF: Disables shuffle mode in [Music Player](#the-music-player)
-- MP_FOLDER_x: x being 0-9, set folder number for [Music Player](#the-music-player)
-- VOLUME_UP, VOLUME_DOWN: Increase/decrease volume by a notch
-- VOLUME_SET_x: Set volume to x% (x=0-100)
-- PLAYKEY_x: Play keyX.mp3 (from SD card), X being in the range from 1 to 9.
-- PLAYKEY_xL: Play keyXl.mp3 (from SD card), X being in the range from 1 to 9.
-- STOPKEY: Stop playback of keyX file. Does nothing if no keyX file is currently played back.
-- INJECT_x: See immediately below.
+- ```AUTOTHROTTLE_ON```, ```AUTOTHROTTLE_OFF```: Enable/disable [auto-throttle](#-auto-throttle)
+- ```COASTING_ON```, ```COASTING_OFF```: Enable/disable [coasting](#-coasting-when-throttle-in-neutral)
+- ```MOVIEACCEL_ON```, ```MOVIEACCEL_OFF```: Switch between movie and linear [acceleration](#-movie-like-acceleration)
+- ```DISPTCDSPD_ON```, ```DISPTCDSPD_OFF```: Enable/disable [speed display while fake-off](#-display-tcd-speed-when-fake-off)
+- ```MP_PLAY```: Starts the [Music Player](#the-music-player)
+- ```MP_STOP```: Stops the [Music Player](#the-music-player)
+- ```MP_NEXT```: Jump to next track
+- ```MP_PREV```: Jump to previous track
+- ```MP_SHUFFLE_ON```: Enables shuffle mode in [Music Player](#the-music-player)
+- ```MP_SHUFFLE_OFF```: Disables shuffle mode in [Music Player](#the-music-player)
+- ```MP_FOLDER_x```: x being 0-9, set folder number for [Music Player](#the-music-player)
+- ```VOLUME_UP```, ```VOLUME_DOWN```: Increase/decrease volume by a notch
+- ```VOLUME_SET_x```: Set volume to x% (x=0-100)
+- ```PLAYKEY_x```: Play keyX.mp3 (from SD card), X being in the range from 1 to 9.
+- ```PLAYKEY_xL```: Play keyXl.mp3 (from SD card), X being in the range from 1 to 9.
+- ```STOPKEY```: Stop playback of keyX file. Does nothing if no keyX file is currently played back.
+- ```INJECT_x```: See immediately below.
 
 #### The INJECT_x command
 
 This command allows remote control of the Remote through HA/MQTT in the same way as through the TCD keypad by injecting commands in the Remote's command queue (hence the name). Commands are listed [here](#tcd-remote-command-reference); nearly all are supported. 
 
-To toggle movie/linear mode (7060), issue the following command: **INJECT_7060**
+To toggle movie/linear mode (```7060```), issue the following command: ```INJECT_7060```
 
-To play "key2.mp3" (7502), issue **INJECT_7502**
+To play "key2.mp3" (```7502```), issue ```INJECT_7502```
 
-To select the 'music1' folder (7051), issue **INJECT_7051**
+To select the 'music1' folder (```7051```), issue ```INJECT_7051```
 
 ### Setup
 
-MQTT requires a "broker" (such as [mosquitto](https://mosquitto.org/), [EMQ X](https://www.emqx.io/), [Cassandana](https://github.com/mtsoleimani/cassandana), [RabbitMQ](https://www.rabbitmq.com/), [Ejjaberd](https://www.ejabberd.im/), [HiveMQ](https://www.hivemq.com/) to name a few).
+MQTT requires a "broker" such as [mosquitto](https://mosquitto.org/), [Cassandana](https://github.com/mtsoleimani/cassandana), [RabbitMQ](https://www.rabbitmq.com/), [Ejjaberd](https://www.ejabberd.im/), [HiveMQ](https://www.hivemq.com/) or [EMQX](https://www.emqx.com/), to name a few. For proper operation with low latency, running the broker on your local network is recommended.
 
 ![STAmode-mqtt](img/stamode-mqtt.png)
 
-The broker's address needs to be configured in the Config Portal. It can be specified either by domain or IP (IP preferred, spares us a DNS call). The default port is 1883. If a different port is to be used, append a ":" followed by the port number to the domain/IP, such as "192.168.1.5:1884". 
+The broker's address needs to be configured in the Config Portal. It can be specified by either domain or IP (IP preferred). The default port is 1883. If a different port is to be used, append a ":" followed by the port number to the domain/IP, such as "192.168.1.5:1884". 
 
 If your broker supports protocol version 3.1.1, stick with 3.1.1. Version 5.0 has no advantages, but more overhead.
 
 If your broker does not allow anonymous logins, a username and password can be specified.
 
-Limitations: TLS/SSL not supported; ".local" domains (MDNS) not supported; server/broker must respond to PING (ICMP) echo requests. For proper operation with low latency, it is recommended that the broker is on your local network. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
+Limitations: TLS/SSL not supported; ".local" domains (MDNS, Bonjour) not supported; the machine running the broker must respond to PING (ICMP) echo requests. MQTT is disabled when the Remote is operated in AP-mode or when connected to the TCD run in AP-Mode (TCD-AP).
 
 ## Car Setup
 
@@ -585,12 +585,12 @@ If your [Time Circuits Display](https://tcd.out-a-ti.me/) is mounted in a car or
 
 ![STAmode-car](img/stamode-car2.png)
 
-This configuration can easily achieved by putting both the TCD and the Remote in *Car Mode*:
+This configuration can easily be achieved by putting both the TCD and the Remote in *Car Mode*:
 
 #### TCD
 
 - Set **_Power save timer_** to 0 (zero) in the "AP-mode settings" section on the *WiFi Configuration* page
-- Put your TCD in [*Car Mode*](https://tcd.out-a-ti.me/#car-mode) by issuing keypad command 991.
+- Put your TCD in [*Car Mode*](https://tcd.out-a-ti.me/#car-mode) by issuing keypad command ```991```.
 
 #### Remote
 
@@ -598,9 +598,9 @@ One-time configuration steps:
 - Enter the Config Portal on the Remote, click on *Settings* and check that the hostname of the TCD (usually "timecircuits") is present in the  **_Hostname or IP address of TCD_** under *Wireless communication (BTTF-Network)* settings; do _not_ use an IP address.
 - Furthermore, on the *WiFi Configuration* page, check that the TCD's WiFi network name (SSID; usually "TCD-AP") and password (if the TCD is configured with a password) are present under *Car mode settings*.
 
-If everything is in place, you can enable Car mode on the Remote by holding the Calibration button for 6 seconds (until a triple-beep is emitted). The Remote will reboot and attempt to connect to the TCD's AP.
+If everything is in place, you can enable Car mode on the Remote by holding the _Calibration_ button for 6 seconds (until a triple-beep is emitted). The Remote will reboot and attempt to connect to the TCD's AP.
 
-You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the Calibration button for 6 seconds, regardless of Fake Power.
+You can switch between your "normal" (home, iPhone, ..) WiFi connection and Car mode by holding the _Calibration_ button for 6 seconds. This works in both fake-power on and off states.
 
 To access the Remote's Config Portal in Car mode, connect your handheld or computer to the TCD's WiFi network ("TCD-AP"), and direct your browser to http://dtmremote.local.
 
@@ -646,12 +646,16 @@ Next, head to the [Config Portal](#the-config-portal), click on "Update & Upload
 
 <details>
 <summary>Alternative way</summary>
+<br>
 Alternatively, you can install the sound-pack the following way:
-- Using a computer, copy "REMA.bin" to the root directory of a FAT32 formatted SD card;
-- power down the Remote,
-- insert this SD card into the slot and 
-- power up the Remote; the sound-pack will be installed automatically.
+<ul>
+<li>Using a computer, copy "REMA.bin" to the root directory of a FAT32 formatted SD card;</li>
+<li>power down the Remote,</li>
+<li>insert this SD card into the slot and</li>
+<li>power up the Remote; the sound-pack will be installed automatically.</li>
+</ul>
 </details>
+
 
 ---
 
@@ -713,9 +717,9 @@ In Car mode, the device connects to the TCD-AP as configured here instead of the
 
 Enter your TCD's network name (usually "TCD-AP") in **_Network name (SSID) of TCD-AP_** and the TCD's AP password (if configured on the TCD) in **_Password for TCD-AP_**. 
 
->In the unlikely case that multiple TCD's are in range, you can single out your TCD by its BSSID. The TCD displays its BSSID on its *WiFi Configuration* page (starting version 3.23).
+>In the unlikely case that multiple TCD's are in range, you can single out your TCD by its BSSID. The TCD displays its BSSID on its *WiFi Configuration* page.
 
-If you want to enter Car mode immediately, check **_Enable car mode_**. You can also later toggle between Car mode and normal WiFi connection by holding the Calibration button for 6 seconds (until a triple-beep is emitted).
+If you want to enter Car mode immediately after saving your settings, check **_Enable car mode now_**. You can also later toggle between Car mode and normal WiFi connection by holding the _Calibration_ button for 6 seconds (until a triple-beep is emitted).
 
 ##### &#9193; Hostname
 
@@ -745,12 +749,12 @@ By default, and if this field is empty, the Remote's own WiFi network ("REM-AP")
 
 If you forget this password and are thereby locked out of your Remote, 
 - power-down the device,
-- hold the Calibration button,
-- power-up the device (while still holding the Calibration button)
+- hold the _Calibration_ button,
+- power-up the device (while still holding the _Calibration_ button)
 - wait until the display shows a counter-clockwise circle animation,
-- press Button "O.O" twice within 10 seconds,
+- press Button _O.O_ twice within 10 seconds,
 - wait until the display shows "RST",
-- then release the Calibration button.
+- then release the _Calibration_ button.
 
 This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP address data; the device will return to using DHCP after a reboot.)
 
@@ -785,7 +789,7 @@ If a power save timer is configured and has expired, and this option is checked,
 
 If this is checked, acceleration is, after being started by pushing the throttle stick up, continued even if the stick is released into neutral. Acceleration is stopped when pulling down the throttle stick or when 88mph is reached.
 
-This setting can quickly be toggled by holding the RESET button, if [so configured](#-holding-reset-when-fake-power-on).
+This setting can quickly be toggled by holding the _RESET_ button, if [so configured](#-holding-reset-when-fake-power-on).
 
 ##### &#9193; Coasting when throttle in neutral
 
@@ -817,7 +821,7 @@ When this is checked, the Remote (when fake-powered off) shows whatever the TCD 
 
 Selects the current music folder, can be 0 through 9. 
 
-This can also be set/changed through a TCD keypad via BTTFN (7050 - 7059). Such a change will be saved immediately.
+This can also be set/changed through a TCD keypad via BTTFN (```7050``` - ```7059```). Such a change will be saved immediately.
 
 #### <ins>Settings for BTTFN communication</ins>
 
@@ -831,11 +835,11 @@ This selects the power-up behavior of Fake-Power control over the TCD.
 
 If this option is checked, the Remote takes over Fake-Power control from the TCD when booting. If the TCD is powered-up after the Remote, it will recognize the Remote's state and stay silent and dark until the Remote is fake-powered up.
 
-If this option is unchecked, you need to hold O.O to gain Fake-Power control on the TCD, as described [here](#controlling-tcd-fake-power).
+If this option is unchecked, you need to hold _O.O_ to gain Fake-Power control on the TCD, as described [here](#controlling-tcd-fake-power).
 
 ##### &#9193; Button to refill Plutonium
 
-Here you can select a user button/switch which, when activated, sends a "REFILL" command to the [Dash Gauges](https://dg.out-a-ti.me) through the TCD. This is useful for quickly silencing the Dash Gauges after a Time Travel.
+Here you can select a user button/switch which, when activated, sends a ```REFILL``` command to the [Dash Gauges](https://dg.out-a-ti.me) through the TCD. This is useful for quickly silencing the Dash Gauges after a Time Travel.
 
 #### <ins>Other settings</ins>
 
@@ -858,24 +862,24 @@ This procedure ensures that all your settings are copied from the old to the new
 
 ##### &#9193; Holding O.O/RESET when Fake-Power off
 
-This selects what happens when you hold the O.O or RESET button for 2 seconds when Fake-Power is off:
+This selects what happens when you hold the _O.O_ or _RESET_ button for 2 seconds when Fake-Power is off:
 
-- _adjusts display brightness_: O.O increases display brightness, RESET decreases it.
-- _takes/releases control of TCD Fake Power_: O.O takes over [TCD Fake-Power control](#controlling-tcd-fake-power), RESET releases it.
+- _adjusts display brightness_: _O.O_ increases display brightness, _RESET_ decreases it.
+- _takes/releases control of TCD Fake Power_: _O.O_ takes over [TCD Fake-Power control](#controlling-tcd-fake-power), _RESET_ releases it.
 
 ##### &#9193; Pressing O.O when Fake-Power on
 
-This selects what happens when you (briefly) press the O.O button when Fake-Power is on:
+This selects what happens when you (briefly) press the _O.O_ button when Fake-Power is on:
 
-- _Plays previous track in Music Player_: As it says, as part of Music Player control, O.O jumps to the previous track.
-- _Makes throttle-up trigger a time travel_: Briefly pressing O.O prepares a Time Travel, which is then triggered when pushing the throttle stick upward.
+- _Plays previous track in Music Player_: As it says, as part of Music Player control, _O.O_ jumps to the previous track.
+- _Makes throttle-up trigger a time travel_: Briefly pressing _O.O_ prepares a Time Travel, which is then triggered when pushing the throttle stick upward.
 
 ##### &#9193; Holding RESET when Fake-Power on
 
-This selects what happens when you hold the RESET button when Fake-Power is on:
+This selects what happens when you hold the _RESET_ button when Fake-Power is on:
 
 - _toggles shuffle in Music Player_: As it says, as part of Music Player control, it toggles the shuffle setting.
-- _toggles auto-throttle_: Holding RESET toggles the [auto-throttle](#-auto-throttle) setting.
+- _toggles auto-throttle_: Holding _RESET_ toggles the [auto-throttle](#-auto-throttle) setting.
 
 #### <ins>Hardware configuration settings</ins>
 
@@ -885,7 +889,7 @@ You might want use one or more switches of the Futaba remote for sound effects a
 
 ##### &#9193; Maintained: Play audio on ON only
 
-If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "ON" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
+If this is unchecked, audio is played on every flip (OFF->ON, ON->OFF) of the maintained switch. If checked, keyX is only played when the switch is brought into "on" position. Check this if using three-position switches where both ON positions are wired to different "Buttons" on the Control Board.
 
 ##### &#9193; Use Futaba Power LED
 
@@ -901,7 +905,7 @@ If unchecked, the power LED lights up on real power. If checked, it does so on f
 
 This setting is for using the Futaba's original battery level meter. If this meter isn't connected to the control board, this setting has no effect.
 
-If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictious battery level of around 75%.
+If unchecked, the level meter stays at zero, which is the default. If checked, the level meter shows a fictitious battery level of around 75%.
 
 Please note that the meter does not show actual battery level; the built-in battery monitor, as described below, only works through the Stanley display.
 
