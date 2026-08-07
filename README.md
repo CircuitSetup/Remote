@@ -417,7 +417,7 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key1.mp3</a>"</td>
-     <td align="left"><code>7001</code> / <code>7501</code></td>
+     <td align="left"><code>7501</code> / <code>7001</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key2.mp3</a>"</td>
@@ -425,11 +425,11 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key3.mp3</a>"</td>
-     <td align="left"><code>7003</code> / <code>7503</code></td>
+     <td align="left"><code>7503</code> / <code>7003</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key4.mp3</a>"</td>
-     <td align="left"><code>7004</code> / <code>7504</code></td>
+     <td align="left"><code>7504</code> / <code>7004</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key5.mp3</a>"</td>
@@ -437,19 +437,19 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key6.mp3</a>"</td>
-     <td align="left"><code>7006</code> / <code>7506</code></td>
+     <td align="left"><code>7506</code> / <code>7006</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key7.mp3</a>"</td>
-     <td align="left"><code>7007</code> / <code>7507</code></td>
+     <td align="left"><code>7507</code> / <code>7007</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key8.mp3</a>"</td>
-     <td align="left"><code>7502</code></td>
+     <td align="left"><code>7508</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">key9.mp3</a>"</td>
-     <td align="left"><code>7009</code> / <code>7509</code></td>
+     <td align="left"><code>7509</code> / <code>7009</code></td>
     </tr>
     <tr>
      <td align="left">Play "<a href="#additional-custom-sounds">keyXl.mp3</a>" (X=1-9)</td>
