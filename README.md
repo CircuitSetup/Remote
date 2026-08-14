@@ -37,6 +37,7 @@ Firmware features:
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
 - Built-in OTA installer for firmware updates and audio files
+- &#128007; &#129370;
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
 
