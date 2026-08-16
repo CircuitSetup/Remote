@@ -800,6 +800,10 @@ In movie mode, acceleration changes with speed. At lower speeds, it is faster, a
 
 In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
 
+##### &#9193; Play throttle-up sound on throttle-up
+
+This option selects whether the "throttle up" sound is played only at speed 0, or whenever the throttle lever is moved up from neutral, regardless of current speed.
+
 ##### &#9193; Play acceleration 'click' sound
 
 Check this to play a click sound for each "mph" while accelerating. Uncheck to stay mute. Note that the click is only played when accelerating, not with reducing speed.
