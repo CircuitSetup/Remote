@@ -37,6 +37,7 @@ Firmware features:
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
 - Built-in OTA installer for firmware updates and audio files
+- &#128007; &#129370;
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
 
@@ -288,7 +289,7 @@ The firmware contains a simple music player to play mp3 files located on the SD 
 
 *The maximum bitrate is __128kpbs__. The free [Adapter](https://macroplant.com/adapter/audio-converter) tool can re-encode your mp3 files in batches.*
 
-To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, i.e. the player starts searching for music in folder *music0*. To select a different folder, select it in the Config Portal ("Settings"), through the TCD (```705x```) or HA/MQTT (```MP_FOLDER_x```).
+To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, i.e. the player starts searching for music in folder *music0*. The folder number can be changed in the Config Portal ("Settings") or through the TCD keypad (```705x```) or HA/MQTT (```MP_FOLDER_x```).
 
 The names of the audio files must only consist of three-digit numbers, starting at 000.mp3, in consecutive order. No numbers should be left out. Each folder can hold up to 1000 files (000.mp3-999.mp3). 
 
@@ -802,6 +803,10 @@ The Remote knows to modes of acceleration: "Movie mode" and "linear".
 In movie mode, acceleration changes with speed. At lower speeds, it is faster, and will gradually become slower as speed increases. The pace matches the movie mostly; unfortunately, the remote is only shown for a very few seconds and timing is inconsistent (to say the least), so some interpolations were required.
 
 In linear mode, the acceleration curve is a straight line, ie the time between each mph is the same.
+
+##### &#9193; Play throttle-up sound on throttle-up
+
+This option selects whether the "throttle up" sound is played only at speed 0, or whenever the throttle lever is moved up from neutral, regardless of current speed.
 
 ##### &#9193; Play acceleration 'click' sound
 
