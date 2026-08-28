@@ -41,7 +41,7 @@ Firmware features:
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
 
-For a CRSF/ELRS-enabled version of this firmware, please see the CRSF branch.
+For a CRSF/ELRS-enabled version of this firmware, please see the [CRSF branch](https://github.com/realA10001986/Remote/tree/CRSF).
 
 For information on updating the firmware of your Remote, see [here](#firmware-installation--firmware-update).
 
