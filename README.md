@@ -2,6 +2,8 @@
 
 This [repository](https://remote.out-a-ti.me) holds the most current <!-- **CRSF/ELRS-enabled**  -->firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a connected speedo. Of course, the Remote can also be used stand-alone.
 
+<!-- CRSF @ 4 places: In paragraph above, and twice in Appendix A. The reference to the CRSF-enabled fw needs to be commented in the CRSF version. -->
+
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
 ![My Futaba1](img/myfutaba1.jpg)
