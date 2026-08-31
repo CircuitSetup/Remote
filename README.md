@@ -1,6 +1,8 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://remote.out-a-ti.me) holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a connected speedo. Of course, the Remote can also be used stand-alone.
+This [repository](https://remote.out-a-ti.me) holds the most current <!-- **CRSF/ELRS-enabled**  -->firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a connected speedo. Of course, the Remote can also be used stand-alone.
+
+<!-- CRSF @ 4 places: In paragraph above, and twice in Appendix A. The reference to the CRSF-enabled fw needs to be commented in the CRSF version. -->
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
@@ -40,6 +42,8 @@ Firmware features:
 - &#128007; &#129370;
 
 >This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
+
+For a CRSF/ELRS-enabled version of this firmware, please see the [CRSF branch](https://github.com/realA10001986/Remote/tree/CRSF).
 
 For information on updating the firmware of your Remote, see [here](#firmware-installation--firmware-update).
 
@@ -680,6 +684,10 @@ This leads to the [ELRS/CRSF Settings page](#elrscrsf-settings).
 
 This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
+<!--##### &#9193; ELRS/CRSF Settings
+
+This leads to the [ELRS/CRSF Settings page](#elrscrsf-settings).
+-->
 ##### &#9193; Update & Upload
 
 This leads to the firmware update and audio upload page.
@@ -1028,6 +1036,72 @@ The MQTT topic for on/off messages. Nothing is published/sent if the topic is em
 ##### &#9193; Button x message on ON/OFF
 
 The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
+
+---
+
+<!--### ELRS/CRSF Settings
+
+This page is only shown when the firmware is built with ELRS/CRSF support.
+
+The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF-only gimbal routing model. The four gimbals are calibrated and shaped inside the ELRS/CRSF runtime, then transmitted over CRSF with RC-style semantics: low is `1000`, center is `1500`, and high is `2000` before conversion to CRSF wire ticks.
+
+Calibration for these gimbals can now be done directly in the portal. The page shows live raw ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture raw `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
+
+Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
+
+##### &#9193; Connect to WiFi in ELRS/CRSF mode
+
+If checked, the Remote will join the configured WiFi network while operating in ELRS/CRSF mode. If unchecked, it remains in AP mode during ELRS/CRSF operation.
+
+##### &#9193; ELRS Packet rate
+
+Selects the RC packet rate sent to the external ELRS module. The module must be configured to the same packet rate.
+
+##### &#9193; Speed units
+
+Selects whether the Remote display prefers km/h or mph when telemetry provides speed information.
+
+##### &#9193; Telemetry Ratio
+
+Selects the requested ELRS telemetry ratio.
+
+##### &#9193; Max Power
+
+Selects the requested ELRS maximum transmit power.
+
+##### &#9193; Dynamic Power
+
+Enables or disables ELRS dynamic power.
+
+##### &#9193; Aileron/Elevator/Throttle/Rudder target channel
+
+These selectors choose which outgoing CRSF channel carries each gimbal.
+
+By default the mapping is:
+
+- Aileron -> CH1
+- Elevator -> CH2
+- Throttle -> CH3
+- Rudder -> CH4
+
+Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
+
+##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
+
+Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
+
+##### &#9193; ELRS/CRSF Gimbal Calibration
+
+This section shows live raw ADC readings for the four gimbals. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those raw values are stored and used as the real three-point calibration for CRSF output:
+
+- saved low -> `1000`
+- saved center -> `1500`
+- saved high -> `2000`
+
+Values between the saved points are interpolated, and anything outside the saved range is clamped.
+
+--- 
+-->
 
 ## Appendix B: Display messages
 
