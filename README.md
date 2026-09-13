@@ -1046,7 +1046,7 @@ Values between the saved points are interpolated, and anything outside the saved
 - "FUL": Battery is full, ie 100% charged
 - "IP": IP address is going to be shown.
 - "RST": WiFi password temporarily cleared; static IP permanently deleted
-- "UPD": Firmware update available; shown briefly at power-up (optional).
+- "UPD": Firmware update available. Shown briefly at power-up.
 
 ---
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ [Source](https://remote.out-a-ti.me)  
