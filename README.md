@@ -291,7 +291,8 @@ The uploaded files are stored to the root folder of the SD card, so this way of 
 
 The firmware contains a simple music player to play mp3 files located on the SD card. 
 
-*The maximum bitrate is __128kpbs__. The free [Adapter](https://macroplant.com/adapter/audio-converter) tool can re-encode your mp3 files in batches.*
+> [!NOTE]
+> The maximum mp3 bitrate is __128kpbs__. The free [Adapter](https://macroplant.com/adapter/audio-converter) tool can re-encode your mp3 files in batches.
 
 To be recognized, your mp3 files need to be organized in music folders named *music0* through *music9*. The folder number is 0 by default, i.e. the player starts searching for music in folder *music0*. The folder number can be changed in the Config Portal ("Settings") or through the TCD keypad (```705x```) or HA/MQTT (```MP_FOLDER_x```).
 
@@ -1112,7 +1113,7 @@ Values between the saved points are interpolated, and anything outside the saved
 - "FUL": Battery is full, ie 100% charged
 - "IP": IP address is going to be shown.
 - "RST": WiFi password temporarily cleared; static IP permanently deleted
-- "UPD": Firmware update available; shown briefly at power-up (optional).
+- "UPD": Firmware update available. Shown briefly at power-up.
 
 ---
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ [Source](https://remote.out-a-ti.me)  
