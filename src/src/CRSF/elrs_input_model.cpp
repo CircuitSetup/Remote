@@ -97,6 +97,20 @@ int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
     return mapped;
 }
 
+int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband)
+{
+    if(!idleDeadband || !elrsIsValidInputAxisProfile(profile)) {
+        return elrsInputModelAxisToUs(profile, raw);
+    }
+    ELRSInputAxisProfile adjusted = profile;
+    int16_t &idle = adjusted.reverse ? adjusted.maximum : adjusted.minimum;
+    int span = (int)idle - adjusted.center;
+    if(span < 0) span = -span;
+    uint16_t amount = (idleDeadband < span) ? idleDeadband : (uint16_t)(span - 1);
+    idle = moveToward(idle, adjusted.center, amount);
+    return elrsInputModelAxisToUs(adjusted, raw);
+}
+
 uint16_t elrsInputUsToCrsfTicks(int16_t us)
 {
     long clampedUs = clampLong(us, ELRS_INPUT_US_MIN, ELRS_INPUT_US_MAX);

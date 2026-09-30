@@ -83,6 +83,8 @@ struct ELRSCrsfCoreConfig {
     uint8_t telemetryRatio = ELRS_TLM_RATIO_DEFAULT;
     uint8_t maxPower = ELRS_MAX_POWER_DEFAULT;
     uint8_t dynamicPower = ELRS_DYNAMIC_POWER_DEFAULT;
+    uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
+    uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT] = {};
     ELRSGimbalRouting inputRouting = {};
     ELRSCrsfTransportConfig transport;
@@ -224,6 +226,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ELRSCrsfTransport _transport;
 
         bool _haveAds = false;
+        bool _haveStableAxes = false;
         bool _fakePowerOn = false;
         bool _selfTestActive = false;
 
@@ -246,6 +249,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         uint16_t _channels[16];
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT];
+        int16_t _stableAxes[ELRS_GIMBAL_AXIS_COUNT];
         ELRSAxisCalibrationData _axisCal[ELRS_GIMBAL_AXIS_COUNT];
         ELRSInputAxisProfile _axisProfiles[ELRS_GIMBAL_AXIS_COUNT];
         ELRSGimbalRouting _inputRouting;

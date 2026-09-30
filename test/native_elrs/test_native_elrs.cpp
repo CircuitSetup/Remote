@@ -2366,12 +2366,145 @@ static void test_oversized_parameter_restarts_from_chunk_zero_and_recovers()
     TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
 }
 
+static void test_hysteresis_holds_jitter_and_tracks_slow_motion()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0);
+    unsigned long now = 0;
+    for(int offset = -4; offset <= 5; offset++) {
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1024 + offset;
+        now += 20;
+        core.loop(host, now, 0);
+        for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+    }
+    for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1030;
+    core.loop(host, now + 20, 0);
+    for(int channel = 0; channel < 4; channel++) TEST_ASSERT_NOT_EQUAL(992, core.channelAt(channel));
+}
+
+static void test_hysteresis_reaches_endpoints_and_reseeds_after_error()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    host.axes[0] = 2;
+    core.begin(host, defaultConfig(), 0);
+    host.axes[0] = 0;
+    core.loop(host, 20, 0);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
+    host.axes[0] = 2045;
+    core.loop(host, 40, 0);
+    host.axes[0] = 2047;
+    core.loop(host, 60, 0);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
+    host.axesAvailable = false;
+    core.loop(host, 80, 0);
+    host.axesAvailable = true;
+    host.axes[0] = 2043;
+    core.loop(host, 100, 0);
+    TEST_ASSERT_EQUAL_UINT16(1808, core.channelAt(0));
+}
+
+static void test_throttle_idle_band_handles_all_profile_directions()
+{
+    for(int descending = 0; descending <= 1; descending++) {
+        for(int reverse = 0; reverse <= 1; reverse++) {
+            ELRSCrsfCoreConfig config = defaultConfig();
+            ELRSInputAxisProfile &profile = config.axisProfiles[AXIS_THROTTLE];
+            profile = elrsDefaultInputAxisProfile();
+            profile.minimum = descending ? 1500 : 300;
+            profile.center = 900;
+            profile.maximum = descending ? 300 : 1500;
+            profile.reverse = reverse;
+            int idle = reverse ? profile.maximum : profile.minimum;
+            int full = reverse ? profile.minimum : profile.maximum;
+            int direction = (full > idle) ? 1 : -1;
+            for(int offset = 0; offset <= 5; offset++) {
+                FakeHost host;
+                ELRSCrsfCore core;
+                host.axes[AXIS_THROTTLE] = idle + direction * offset;
+                core.begin(host, config, 0);
+                TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+            }
+            FakeHost host;
+            ELRSCrsfCore core;
+            host.axes[AXIS_THROTTLE] = profile.center;
+            core.begin(host, config, 0);
+            TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+            host.axes[AXIS_THROTTLE] = full;
+            core.loop(host, 20, 0);
+            TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
+            host.axes[AXIS_THROTTLE] = idle + direction * 20;
+            core.loop(host, 40, 0);
+            TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+        }
+    }
+}
+
+static void test_input_tolerances_are_adjustable_and_can_be_disabled()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.adcHysteresis = 8;
+    core.begin(host, config, 0);
+    host.axes[0] = 1032;
+    core.loop(host, 20, 0);
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+    host.axes[0] = 1033;
+    core.loop(host, 40, 0);
+    TEST_ASSERT_EQUAL_UINT16(998, core.channelAt(0));
+    config.adcHysteresis = 0;
+    host.axes[0] = 1024;
+    core.begin(host, config, 60);
+    host.axes[0] = 1028;
+    core.loop(host, 80, 0);
+    TEST_ASSERT_EQUAL_UINT16(995, core.channelAt(0));
+    config.throttleIdleDeadband = 0;
+    config.axisProfiles[AXIS_THROTTLE] = elrsDefaultInputAxisProfile();
+    config.axisProfiles[AXIS_THROTTLE].minimum = 300;
+    config.axisProfiles[AXIS_THROTTLE].center = 900;
+    config.axisProfiles[AXIS_THROTTLE].maximum = 1500;
+    host.axes[AXIS_THROTTLE] = 305;
+    core.begin(host, config, 100);
+    TEST_ASSERT_EQUAL_UINT16(179, core.channelAt(2));
+}
+
+static void test_throttle_idle_band_preserves_narrow_profiles()
+{
+    for(int descending = 0; descending <= 1; descending++) {
+        for(int reverse = 0; reverse <= 1; reverse++) {
+            ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
+            profile.minimum = descending ? 1002 : 1000;
+            profile.center = 1001;
+            profile.maximum = descending ? 1000 : 1002;
+            profile.reverse = reverse;
+            TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, reverse ? profile.maximum : profile.minimum, 32));
+            TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1001, 32));
+            TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, reverse ? profile.minimum : profile.maximum, 32));
+        }
+    }
+    ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
+    profile.minimum = 1000;
+    profile.center = 1010;
+    profile.maximum = 1020;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1009, 32));
+    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1010, 32));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1020, 32));
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
+    // The production changes these catch are lost hysteresis, stale held state, and missing idle mapping.
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_input_tolerances_are_adjustable_and_can_be_disabled);
+    RUN_TEST(test_throttle_idle_band_preserves_narrow_profiles);
+    RUN_TEST(test_hysteresis_holds_jitter_and_tracks_slow_motion);
+    RUN_TEST(test_hysteresis_reaches_endpoints_and_reseeds_after_error);
+    RUN_TEST(test_throttle_idle_band_handles_all_profile_directions);
     RUN_TEST(test_invalid_button_calibration_preserves_minimum_throttle);
     RUN_TEST(test_failed_button_capture_does_not_advance_calibration);
     RUN_TEST(test_valid_descending_button_calibration_is_saved);

@@ -62,6 +62,7 @@ ELRSCrsfCore::ELRSCrsfCore()
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = 1024;
+        _stableAxes[i] = 1024;
         _axisCal[i].minimum = 0;
         _axisCal[i].center = 1024;
         _axisCal[i].maximum = 2047;
@@ -82,6 +83,8 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
 {
     _config = config;
+    if(_config.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) _config.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
+    if(_config.throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) _config.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_MAX;
     _logHost = &host;
     _config.transport.packetRateHz = elrsPacketRateOrDefault(_config.transport.packetRateHz);
     _config.speedDisplayUnits = elrsSpeedUnitsOrDefault(_config.speedDisplayUnits);
@@ -119,6 +122,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _airspeed10 = 0;
     _activeSpeedSource = SPEED_SOURCE_NONE;
     _haveAds = false;
+    _haveStableAxes = false;
     _fakePowerOn = false;
     _selfTestActive = false;
     _hasValidPackState = false;
@@ -381,12 +385,22 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
 
     _lastAxisAttemptAt = now;
     if(!host.sampleAxes(axes)) {
+        _haveStableAxes = false;
         return false;
     }
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = axes[i];
+        const ELRSInputAxisProfile &profile = _axisProfiles[i];
+        int16_t low = (profile.minimum < profile.maximum) ? profile.minimum : profile.maximum;
+        int16_t high = (profile.minimum > profile.maximum) ? profile.minimum : profile.maximum;
+        int delta = (int)axes[i] - _stableAxes[i];
+        if(!_haveStableAxes || axes[i] <= low || axes[i] >= high ||
+           delta > (int)_config.adcHysteresis || delta < -(int)_config.adcHysteresis) {
+            _stableAxes[i] = axes[i];
+        }
     }
+    _haveStableAxes = true;
     _haveAds = true;
     _lastGoodAxesAt = now;
 
@@ -564,6 +578,7 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
             _axisProfiles[i].minimum = _axisCal[i].minimum;
             _axisProfiles[i].center = _axisCal[i].center;
             _axisProfiles[i].maximum = _axisCal[i].maximum;
+            _stableAxes[i] = _rawAxes[i];
         }
         host.saveCalibration(_axisCal, ELRS_GIMBAL_AXIS_COUNT);
         showOverlay("CAL", now, 1000);
@@ -688,7 +703,10 @@ uint16_t ELRSCrsfCore::axisToTicks(uint8_t axis) const
         return CRSF_CHANNEL_MID;
     }
 
-    return elrsInputUsToCrsfTicks(elrsInputModelAxisToUs(profile, _rawAxes[axis]));
+    int16_t us = (axis == AXIS_THROTTLE)
+        ? elrsInputModelThrottleToUs(profile, _stableAxes[axis], _config.throttleIdleDeadband)
+        : elrsInputModelAxisToUs(profile, _stableAxes[axis]);
+    return elrsInputUsToCrsfTicks(us);
 }
 
 void ELRSCrsfCore::applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn)

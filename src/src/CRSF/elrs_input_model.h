@@ -28,7 +28,11 @@ struct ELRSGimbalRouting {
     uint8_t rudderChannel;
 };
 
+constexpr uint16_t ELRS_INPUT_TOLERANCE_DEFAULT = 5;
+constexpr uint16_t ELRS_INPUT_TOLERANCE_MAX = 32;
+
 int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw);
+int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband);
 uint16_t elrsInputUsToCrsfTicks(int16_t us);
 ELRSInputAxisProfile elrsDefaultInputAxisProfile();
 ELRSGimbalRouting elrsDefaultGimbalRouting();

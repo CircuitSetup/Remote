@@ -45,7 +45,9 @@ bool ELRSCrsfMode::begin(
     bool useLevelMeter,
     bool powerLedOnFakePower,
     bool levelMeterOnFakePower,
-    void (*fpOnWifiHandler)(bool))
+    void (*fpOnWifiHandler)(bool),
+    uint16_t adcHysteresis,
+    uint16_t throttleIdleDeadband)
 {
     ELRSCrsfCoreConfig config;
 
@@ -92,6 +94,8 @@ bool ELRSCrsfMode::begin(
     config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
     config.maxPower = elrsMaxPowerOrDefault(maxPower);
     config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
+    config.adcHysteresis = adcHysteresis;
+    config.throttleIdleDeadband = throttleIdleDeadband;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         if(axisProfiles) {
             config.axisProfiles[i] = elrsSanitizeInputAxisProfile(axisProfiles[i]);
