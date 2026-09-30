@@ -2470,6 +2470,22 @@ static void test_input_tolerances_are_adjustable_and_can_be_disabled()
     TEST_ASSERT_EQUAL_UINT16(179, core.channelAt(2));
 }
 
+static void test_throttle_idle_band_preserves_center_deadband_endpoints()
+{
+    ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
+    profile.minimum = 1000;
+    profile.center = 1010;
+    profile.maximum = 1020;
+    profile.deadband = 9;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1000, 5));
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1005, 5));
+    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1010, 5));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1020, 5));
+    profile.reverse = 1;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1020, 5));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1000, 5));
+}
+
 static void test_throttle_idle_band_preserves_narrow_profiles()
 {
     for(int descending = 0; descending <= 1; descending++) {
@@ -2500,6 +2516,7 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_throttle_idle_band_preserves_center_deadband_endpoints);
     RUN_TEST(test_input_tolerances_are_adjustable_and_can_be_disabled);
     RUN_TEST(test_throttle_idle_band_preserves_narrow_profiles);
     RUN_TEST(test_hysteresis_holds_jitter_and_tracks_slow_motion);

@@ -239,6 +239,8 @@ static void crsf_wifi_saveParamsCallback()
     getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 4, DEF_ELRSTHRCH);
     getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 4, DEF_ELRSYAWCH);
     if(opModeCRSF) {
+        getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
+        getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
         getServerParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
         getServerParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 1024);
         getServerParam("crrhi", settings.elrsRollHigh, 5, 0, 2047, 2047);
@@ -294,12 +296,15 @@ static void syncCRSFPortalBuffers()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
+    uint16_t adcHysteresis, throttleIdleDeadband;
 
     if(!haveNewBoard) {
         return;
     }
 
-    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
+    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband);
+    snprintf(settings.elrsAdcHysteresis, sizeof(settings.elrsAdcHysteresis), "%u", (unsigned)adcHysteresis);
+    snprintf(settings.elrsThrIdleDeadband, sizeof(settings.elrsThrIdleDeadband), "%u", (unsigned)throttleIdleDeadband);
 
     for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
         const CRSFAxisSettings &axis = crsfAxisSettings[i];
@@ -336,7 +341,9 @@ static bool saveCRSFPortalInputSettings()
         profile.maximum = (int16_t)atoi(axis.high);
     }
 
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
+    const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
+    const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
+    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband);
 }
 
 /*
@@ -545,6 +552,26 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
     html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + 1600);
     html += crsfCalIntro;
     html += crsfCalStyle;
+
+    CRSFGimbalCalField tolerances[] = {
+        { "Jitter tolerance (ADC counts)", "chyst", settings.elrsAdcHysteresis },
+        { "Throttle idle deadband (ADC counts)", "cthid", settings.elrsThrIdleDeadband }
+    };
+    for(const CRSFGimbalCalField &field : tolerances) {
+        html += "<div class='elrscal-row'><label for='";
+        html += field.inputId;
+        html += "'>";
+        html += field.label;
+        html += "</label><div class='elrscal-ctl'><input id='";
+        html += field.inputId;
+        html += "' name='";
+        html += field.inputId;
+        html += "' maxlength='2' type='number' min='0' max='32' value='";
+        html += field.value;
+        html += "'></div></div>";
+    }
+    html += "<p>Both settings default to 5 counts; 0 disables the setting. Higher jitter tolerance ignores more small movements. "
+            "Live readings and captures show the filtered ADC before these output adjustments.</p>";
 
     CRSFGimbalCalAxis axes[] = {
         { "Rudder", "elrs_yaw_live", {

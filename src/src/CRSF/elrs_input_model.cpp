@@ -108,6 +108,11 @@ int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t 
     if(span < 0) span = -span;
     uint16_t amount = (idleDeadband < span) ? idleDeadband : (uint16_t)(span - 1);
     idle = moveToward(idle, adjusted.center, amount);
+    int otherSpan = (int)(adjusted.reverse ? adjusted.minimum : adjusted.maximum) - adjusted.center;
+    if(otherSpan < 0) otherSpan = -otherSpan;
+    int smallerSpan = (span - amount < otherSpan) ? span - amount : otherSpan;
+    // A center deadband must leave a nonzero mapping segment at both endpoints.
+    adjusted.deadband = (uint16_t)clampLong(adjusted.deadband, 0, smallerSpan - 1);
     return elrsInputModelAxisToUs(adjusted, raw);
 }
 

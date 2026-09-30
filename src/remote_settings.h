@@ -286,6 +286,8 @@ struct Settings {
     char elrsDynPower[2]    = MS(DEF_ELRSDYNPWR);
 
     // Kludges. Saved as "profile".
+    char elrsAdcHysteresis[3] = "5";
+    char elrsThrIdleDeadband[3] = "5";
     char elrsRollCh[3]      = MS(DEF_ELRSROLLCH);
     char elrsPitchCh[3]     = MS(DEF_ELRSPITCHCH);
     char elrsThrCh[3]       = MS(DEF_ELRSTHRCH);
