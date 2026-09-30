@@ -485,7 +485,7 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 {
     html += "<div class='elrscal-axis'><div class='elrscal-head'><span class='elrscal-name'>";
     html += axis.name;
-    html += "</span><span class='elrscal-live'>Live <span id='";
+    html += "</span><span class='elrscal-live'>Filtered ADC <span id='";
     html += axis.liveId;
     html += "'>--</span></span></div>";
     for(int i = 0; i < 3; i++) {
@@ -496,10 +496,10 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 
 static const char crsfCalIntro[] =
     "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
-    "Capture each gimbal's raw ADC low, center, and high points here, then save this page. "
+    "Capture each gimbal's filtered ADC low, center, and high points here, then save this page. "
     "Those saved points become the real CRSF gimbal output mapping: low=1000, center=1500, high=2000."
     "</p>"
-    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Live ADC: waiting for samples...</div>";
+    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>";
 
 static const char crsfCalStyle[] =
     "<style>"
@@ -522,12 +522,12 @@ static const char crsfCalScript[] =
     "function setStatus(msg){var el=ge('elrscalstat');if(el)el.textContent=msg;}"
     "window.elrsCapture=function(liveId,targetId){var live=ge(liveId),target=ge(targetId);if(!live||!target)return;"
     "if(live.textContent==='--')return;target.value=live.textContent;};"
-    "function fail(){setStatus('Live ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
+    "function fail(){setStatus('Filtered ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
     "setLive('elrs_roll_live','--');setLive('elrs_pitch_live','--');setLive('elrs_throttle_live','--');setLive('elrs_yaw_live','--');}"
     "function poll(){fetch('/elrsraw',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
     "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
     "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
-    "setStatus('Live ADC connected.');"
+    "setStatus('Filtered ADC connected.');"
     "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>";
 
 static const char *wmBuildCRSFCAL(const char *dest, int op)

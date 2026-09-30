@@ -956,7 +956,7 @@ This page is only shown when the firmware is built with ELRS/CRSF support.
 
 The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF-only gimbal routing model. The four gimbals are calibrated and shaped inside the ELRS/CRSF runtime, then transmitted over CRSF with RC-style semantics: low is `1000`, center is `1500`, and high is `2000` before conversion to CRSF wire ticks.
 
-Calibration for these gimbals can now be done directly in the portal. The page shows live raw ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture raw `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
+Calibration for these gimbals can now be done directly in the portal. The page shows live filtered ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture filtered `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
 
 Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
 
@@ -1003,7 +1003,7 @@ Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF fr
 
 ##### &#9193; ELRS/CRSF Gimbal Calibration
 
-This section shows live raw ADC readings for the four gimbals. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those raw values are stored and used as the real three-point calibration for CRSF output:
+This section shows live filtered ADC readings for the four gimbals, using the same readings as the CRSF control loop. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those filtered ADC counts are stored and used as the real three-point calibration for CRSF output:
 
 - saved low -> `1000`
 - saved center -> `1500`
@@ -1047,7 +1047,7 @@ This page is only shown when the firmware is built with ELRS/CRSF support.
 
 The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF-only gimbal routing model. The four gimbals are calibrated and shaped inside the ELRS/CRSF runtime, then transmitted over CRSF with RC-style semantics: low is `1000`, center is `1500`, and high is `2000` before conversion to CRSF wire ticks.
 
-Calibration for these gimbals can now be done directly in the portal. The page shows live raw ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture raw `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
+Calibration for these gimbals can now be done directly in the portal. The page shows live filtered ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture filtered `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
 
 Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
 
@@ -1094,7 +1094,7 @@ Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF fr
 
 ##### &#9193; ELRS/CRSF Gimbal Calibration
 
-This section shows live raw ADC readings for the four gimbals. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those raw values are stored and used as the real three-point calibration for CRSF output:
+This section shows live filtered ADC readings for the four gimbals, using the same readings as the CRSF control loop. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those filtered ADC counts are stored and used as the real three-point calibration for CRSF output:
 
 - saved low -> `1000`
 - saved center -> `1500`

@@ -156,13 +156,12 @@ bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
     if(!_haveAds) {
         _haveAds = initAds1015();
     }
-    if(!_haveAds) {
+    if(!_haveAds || !_haveFilteredAxes) {
         return false;
     }
 
-    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        axes[i] = readAdsChannel(i);
-    }
+    // ADC counts before calibration mapping, filtered by the normal control loop.
+    memcpy(axes, _filteredAxes, sizeof(_filteredAxes));
 
     return true;
 }
