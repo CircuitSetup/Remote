@@ -395,7 +395,9 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
         int16_t low = (profile.minimum < profile.maximum) ? profile.minimum : profile.maximum;
         int16_t high = (profile.minimum > profile.maximum) ? profile.minimum : profile.maximum;
         int delta = (int)axes[i] - _stableAxes[i];
-        if(!_haveStableAxes || axes[i] <= low || axes[i] >= high ||
+        bool throttleIdle = i == AXIS_THROTTLE &&
+            elrsInputModelThrottleToUs(profile, axes[i], _config.throttleIdleDeadband) == ELRS_INPUT_US_MIN;
+        if(!_haveStableAxes || axes[i] <= low || axes[i] >= high || throttleIdle ||
            delta > (int)_config.adcHysteresis || delta < -(int)_config.adcHysteresis) {
             _stableAxes[i] = axes[i];
         }

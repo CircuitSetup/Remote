@@ -2441,6 +2441,44 @@ static void test_throttle_idle_band_handles_all_profile_directions()
     }
 }
 
+static void test_throttle_idle_entry_bypasses_hysteresis()
+{
+    for(int narrow = 0; narrow <= 1; narrow++) {
+        for(int descending = 0; descending <= 1; descending++) {
+            for(int reverse = 0; reverse <= 1; reverse++) {
+                ELRSCrsfCoreConfig config = defaultConfig();
+                config.throttleIdleDeadband = narrow ? 32 : 5;
+                ELRSInputAxisProfile &profile = config.axisProfiles[AXIS_THROTTLE];
+                profile.minimum = descending ? (narrow ? 1020 : 1500) : (narrow ? 1000 : 300);
+                profile.center = narrow ? 1010 : 900;
+                profile.maximum = descending ? (narrow ? 1000 : 300) : (narrow ? 1020 : 1500);
+                profile.reverse = reverse;
+                int idle = reverse ? profile.maximum : profile.minimum;
+                int full = reverse ? profile.minimum : profile.maximum;
+                int direction = (full > idle) ? 1 : -1;
+                FakeHost host;
+                ELRSCrsfCore core;
+                host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                core.begin(host, config, 0);
+                TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+                host.axes[AXIS_THROTTLE] = idle + direction * (narrow ? 9 : 5);
+                for(unsigned long now = 20; now <= 60; now += 20) {
+                    core.loop(host, now, 0);
+                    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+                }
+                if(!narrow) {
+                    host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                    core.loop(host, 80, 0);
+                    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+                    host.axes[AXIS_THROTTLE] = idle + direction * 11;
+                    core.loop(host, 100, 0);
+                    TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+                }
+            }
+        }
+    }
+}
+
 static void test_input_tolerances_are_adjustable_and_can_be_disabled()
 {
     FakeHost host;
@@ -2516,6 +2554,7 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_throttle_idle_entry_bypasses_hysteresis);
     RUN_TEST(test_throttle_idle_band_preserves_center_deadband_endpoints);
     RUN_TEST(test_input_tolerances_are_adjustable_and_can_be_disabled);
     RUN_TEST(test_throttle_idle_band_preserves_narrow_profiles);

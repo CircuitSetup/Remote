@@ -14,7 +14,7 @@
 
 - Continue `fix/crsf-filtered-calibration` from `dd4f564`; preserve the user's unrelated `platformio.ini` edits.
 - Default hysteresis and throttle idle deadband: 5 ADC counts each; portal adjustment: 0-32 counts, where 0 disables that feature.
-- Update a held axis only when its accumulated difference exceeds the configured hysteresis. Calibrated endpoints bypass the hold, including reversed and descending profiles.
+- Update a held axis only when its accumulated difference exceeds the configured hysteresis. Calibrated endpoints and entry into the throttle idle band bypass the hold, including reversed and descending profiles.
 - First valid sample and recovery reseed held axes; failed ADC scans still enter the existing failsafe.
 - Throttle deadband applies to the endpoint that maps to 1000 us, honors reversal, and remaps the remaining half-travel continuously to center. Limit it below the idle-to-center span so narrow valid profiles stay usable.
 - Portal live readings and button captures remain the existing filtered ADC counts, without output hysteresis or idle clamping. Saving calibration preserves the new settings.
@@ -53,4 +53,12 @@
 - [x] Append and migrate the two blob fields, thread them into `crsf_begin`, and expose `chyst` and `cthid` number fields in the calibration portal (0-32, default 5). Validate using the existing parameter parser; refresh their displayed values from the persisted config.
 - [x] Document the knobs, small-motion tradeoff, preserved endpoint semantics, and the portal's filtered calibration readings.
 - [x] Run `.pio/review/check-inputs.ps1`, `python test/check_crsf_adc.py`, and `python test/check_crsf_settings.py`. Expected: all checks pass. Run `rtk pio run -e esp32dev`; expected: SUCCESS within the existing partition.
-- [ ] Use one independent Superpowers code reviewer on the complete patch, emphasizing Review Focus. Fix actionable findings with a failing regression first, then verify and commit the intended changes.
+- [x] Use one independent Superpowers code reviewer on the complete patch, emphasizing Review Focus. Fix actionable findings with a failing regression first, then verify and commit the intended changes.
+
+## Completion Evidence
+
+- Independent review found one P1: hysteresis could retain throttle above idle when the filtered sample entered the idle band. Reproduced in the actual core (expected 172 ticks, got 179), then fixed by letting a current sample mapped to minimum throttle bypass the hold.
+- `test_throttle_idle_entry_bypasses_hysteresis` covers movement into idle for ascending/descending, reversed, and narrow profiles, plus release from idle. Verified RED then GREEN; all 87 native tests pass.
+- Both Python ADC/settings checks and the ESP32 build pass. Legacy calibration/routing and the portal's filtered readings are preserved.
+- Final ruling: physical ADC noise, timing, and RF behavior require a hardware check of this revision. Host checks establish mapping and persistence only; leaving upload out of this task follows the authorized scope. Cost if wrong: tuning or a hardware-dependent defect may remain undetected until bench testing.
+- Changes remain on the existing feature branch; this revision has not been uploaded to COM4.
