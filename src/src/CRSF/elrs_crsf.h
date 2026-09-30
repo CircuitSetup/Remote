@@ -47,7 +47,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
     private:
         bool initAds1015();
-        int16_t readAdsChannel(uint8_t channel);
+        bool readAdsChannel(uint8_t channel, int16_t &value);
 
         void logMessage(const char *message) override;
 

@@ -206,6 +206,10 @@ WiFiManagerParameter *crsfParmArray[] = {
 static bool crsf_wifi_loop_settings()
 {
     evalCB(settings.crsfap, &custom_crsfap);
+    evalCB(settings.elrsRollRev, &custom_crsfrr);
+    evalCB(settings.elrsPitchRev, &custom_crsfprv);
+    evalCB(settings.elrsThrRev, &custom_crsftrv);
+    evalCB(settings.elrsYawRev, &custom_crsfyrv);
     if(saveCRSFPortalInputSettings()) {
         if(opModeCRSF) {
             requestELRSModuleConfigUpdate((uint8_t)atoi(settings.elrsTlmRatio),
@@ -234,10 +238,6 @@ static void crsf_wifi_saveParamsCallback()
     getServerParamOneBased("cptch", settings.elrsPitchCh, 2, 1, 4, DEF_ELRSPITCHCH);
     getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 4, DEF_ELRSTHRCH);
     getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 4, DEF_ELRSYAWCH);
-    getServerParam("crrv", settings.elrsRollRev, 1, 0, 1, 0);
-    getServerParam("cprv", settings.elrsPitchRev, 1, 0, 1, 0);
-    getServerParam("ctrv", settings.elrsThrRev, 1, 0, 1, 0);
-    getServerParam("cyrv", settings.elrsYawRev, 1, 0, 1, 0);
     if(opModeCRSF) {
         getServerParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
         getServerParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 1024);

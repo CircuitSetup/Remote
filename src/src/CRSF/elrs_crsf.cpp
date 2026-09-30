@@ -176,14 +176,12 @@ bool ELRSCrsfMode::initAds1015()
     return ok;
 }
 
-int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
+bool ELRSCrsfMode::readAdsChannel(uint8_t channel, int16_t &value)
 {
     uint8_t cfg[3];
     uint8_t raw[2];
-    int value = 0;
-
     if(channel >= ELRS_GIMBAL_AXIS_COUNT) {
-        return 1024;
+        return false;
     }
 
     cfg[0] = ADS_REG_CONFIG;
@@ -195,7 +193,7 @@ int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
     Wire.write(cfg[1]);
     Wire.write(cfg[2]);
     if(Wire.endTransmission(true)) {
-        return _rawAxes[channel];
+        return false;
     }
 
     delayMicroseconds(500);
@@ -203,11 +201,11 @@ int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
     Wire.beginTransmission(ADS1015_ADDR);
     Wire.write(ADS_REG_CONVERT);
     if(Wire.endTransmission(false)) {
-        return _rawAxes[channel];
+        return false;
     }
 
     if(Wire.requestFrom((uint8_t)ADS1015_ADDR, (uint8_t)2) != 2) {
-        return _rawAxes[channel];
+        return false;
     }
 
     raw[0] = Wire.read();
@@ -218,7 +216,7 @@ int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
         value = 0;
     }
 
-    return (int16_t)value;
+    return true;
 }
 
 void ELRSCrsfMode::logMessage(const char *message)
@@ -284,18 +282,27 @@ unsigned long ELRSCrsfMode::microsNow()
 
 bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
-    int16_t sample;
+    int16_t samples[ELRS_GIMBAL_AXIS_COUNT];
 
+    if(!_haveAds) {
+        _haveAds = initAds1015();
+    }
     if(!_haveAds) {
         return false;
     }
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        sample = readAdsChannel(i);
+        if(!readAdsChannel(i, samples[i])) {
+            _haveAds = false;
+            _haveFilteredAxes = false;
+            return false;
+        }
+    }
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         if(!_haveFilteredAxes) {
-            _filteredAxes[i] = sample;
+            _filteredAxes[i] = samples[i];
         } else {
-            _filteredAxes[i] = elrsIirFilterStep(_filteredAxes[i], sample, ADS_FILTER_SHIFT);
+            _filteredAxes[i] = elrsIirFilterStep(_filteredAxes[i], samples[i], ADS_FILTER_SHIFT);
         }
         _rawAxes[i] = _filteredAxes[i];
         axes[i] = _filteredAxes[i];

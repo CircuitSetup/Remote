@@ -507,7 +507,10 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
         return;
     }
 
-    sampleAxes(host, now, true);
+    if(!sampleAxes(host, now, true)) {
+        showOverlay("ADC", now, 1000);
+        return;
+    }
 
     switch(_calStage) {
     case CAL_CENTER:
@@ -548,6 +551,16 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
         _axisCal[AXIS_AILERON].maximum = _rawAxes[AXIS_AILERON];
         _calStage = CAL_IDLE;
         for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+            ELRSInputAxisProfile profile = _axisProfiles[i];
+            profile.minimum = _axisCal[i].minimum;
+            profile.center = _axisCal[i].center;
+            profile.maximum = _axisCal[i].maximum;
+            if(!elrsIsValidInputAxisProfile(profile)) {
+                showOverlay("ERR", now, 1000);
+                return;
+            }
+        }
+        for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
             _axisProfiles[i].minimum = _axisCal[i].minimum;
             _axisProfiles[i].center = _axisCal[i].center;
             _axisProfiles[i].maximum = _axisCal[i].maximum;
@@ -573,7 +586,10 @@ void ELRSCrsfCore::handleCalibrationLong(ELRSCrsfHost &host, unsigned long now, 
     }
 
     if(_calStage == CAL_IDLE) {
-        sampleAxes(host, now, true);
+        if(!sampleAxes(host, now, true)) {
+            showOverlay("ADC", now, 1000);
+            return;
+        }
         _calStage = CAL_CENTER;
     } else {
         _calStage = CAL_IDLE;
@@ -1080,9 +1096,9 @@ void ELRSCrsfCore::handleParameterSettingsEntry(const uint8_t *payload, size_t p
         return;
     }
 
-    noteModuleConfigResponse();
-    _moduleParameterRetryCount = 0;
-
+    if(_moduleConfigState != MODULECFG_WAIT_PARAMETER || fieldId != _moduleFieldIndex) {
+        return;
+    }
     if(!_moduleChunkActive || _moduleChunkFieldId != fieldId) {
         _moduleChunkActive = true;
         _moduleChunkFieldId = fieldId;
@@ -1105,6 +1121,7 @@ void ELRSCrsfCore::handleParameterSettingsEntry(const uint8_t *payload, size_t p
            !_transport.hasPendingServiceFrame() &&
            queueParameterRead(fieldId, _moduleChunkNextIndex)) {
             _moduleChunkNextIndex++;
+            _moduleParameterRetryCount = 0;
             _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
         }
     } else {
