@@ -166,10 +166,8 @@ bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
         return false;
     }
 
-    // ADC counts before calibration mapping, filtered by the normal control loop.
-    memcpy(axes, _filteredAxes, sizeof(_filteredAxes));
-
-    return true;
+    // Share the control loop's filtering and jitter hold with portal captures.
+    return _core.readFilteredAxes(axes);
 }
 
 bool ELRSCrsfMode::initAds1015()

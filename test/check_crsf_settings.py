@@ -108,6 +108,18 @@ portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for s
 ])
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
 switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchParams()')
+wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
+select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
+select_page += wifi_source[wifi_source.index('static const char custHTMLSelFmt[]'):wifi_source.index('\n', wifi_source.index('static const char custHTMLSelFmt[]'))] + '\n'
+select_page += portal[portal.index('static const char *cChannelCustHTMLSrc['):portal.index('enum CRSFSelectFieldId')]
+select_page += '#define STRLEN(s) (sizeof(s)-1)\n'
+select_page += ''.join(function('src/remote_wifi.cpp', signature) for signature in [
+    'static unsigned int calcSelectMenu(const char **theHTML, int cnt, char *setting, bool indent = false)',
+    'static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting, bool indent = false)',
+    'static const char *wmBuildSelect(const char *dest, int op, const char **src, int count, char *setting, bool indent)',
+])
+select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildSelectOneBased(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)')
+select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)')
 storage_fixture = r'''
 #include <cassert>
 #include <cstring>
@@ -323,6 +335,13 @@ int main() {
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches);
     assert(switches.channels[0] == 15 && switches.channels[1] == 16 && switches.channels[2] == 14);
     puts("CRSF switch selector rendering, POST validation and portal save check passed");
+    char gimbalChannel[] = "4";
+    const char *gimbalPage = wmBuildCRSFGimbalChannelSelect(nullptr, 2, "'>Rudder target channel", "cywch", gimbalChannel);
+    assert(strstr(gimbalPage, "value='3' selected>CH4</option></select></div>"));
+    assert(strlen(gimbalPage) >= 6 && !strcmp(gimbalPage + strlen(gimbalPage) - 6, "</div>"));
+    assert(!strstr(gimbalPage, ">CH5"));
+    assert(wmBuildCRSFGimbalChannelSelect(gimbalPage, WM_CP_DESTROY, "'>Rudder target channel", "cywch", gimbalChannel) == nullptr);
+    puts("CRSF gimbal selector has four valid options and no trailing option fragment");
     auto beforeCalibration = stored;
     ELRSAxisCalibrationData retryCalibration[4];
     memcpy(retryCalibration, calibration, sizeof(retryCalibration));
@@ -341,7 +360,7 @@ int main() {
     puts("CRSF calibration write failure and retry check passed");
 }
 '''
-compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + switch_post + switch_page + calibration_page + storage_cases, ['elrs_input_model.cpp'])
+compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + switch_post + switch_page + select_page + calibration_page + storage_cases, ['elrs_input_model.cpp'])
 
 # Exercise the actual HTTP handler and the application's reboot scheduling callback.
 save_signature = 'static bool saveParamsCallback(int paramspage)'

@@ -14,6 +14,7 @@ constexpr uint8_t CRSF_FRAME_RC_CHANNELS_PACKED = 0x16;
 constexpr uint8_t CRSF_SYNC_BYTE = 0xC8;
 constexpr uint8_t CRSF_SYNC_BROADCAST = 0x00;
 constexpr uint8_t CRSF_ADDR_RADIO_TRANSMITTER = 0xEA;
+constexpr uint8_t CRSF_ADDR_HANDSET = 0xEF;
 constexpr uint8_t CRSF_ADDR_CRSF_TRANSMITTER = 0xEE;
 constexpr uint8_t CRSF_ADDR_CRSF_RECEIVER = 0xEC;
 constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
@@ -151,10 +152,10 @@ void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsig
             _haveServiceFrame = false;
             _serviceFrameLen = 0;
             _lastServiceTxAt = now;
-        } else if(!_waitingForReply) {
-            sendChannels(hal, now, nowUs);
         } else {
-            return;
+            // Keep RC cadence while a settings reply is pending. Each scheduled
+            // frame still releases the half-duplex bus for the rest of its slot.
+            sendChannels(hal, now, nowUs);
         }
     }
 }
@@ -356,6 +357,14 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
                 }
 
                 if(crcValid) {
+                    // These are handset-to-module frames, including delayed
+                    // local echo from an earlier TX slot, not module replies.
+                    if(_rxFrame[2] == CRSF_FRAME_RC_CHANNELS_PACKED ||
+                       (_rxFrame[2] >= 0x28 && expectLen >= 6 &&
+                        (_rxFrame[4] == CRSF_ADDR_RADIO_TRANSMITTER || _rxFrame[4] == CRSF_ADDR_HANDSET))) {
+                        _rxFrameLen = 0;
+                        continue;
+                    }
                     if(_lastTxFrameLen == expectLen &&
                        (int32_t)(now - _echoSuppressUntil) <= 0 &&
                        !memcmp(_lastTxFrame, _rxFrame, expectLen)) {

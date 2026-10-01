@@ -114,6 +114,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         uint32_t baudRate() const;
         uint16_t channelAt(uint8_t index) const;
+        bool readFilteredAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) const;
         uint8_t linkQuality() const;
         uint8_t remoteBatteryPercent() const;
         float remoteBatteryVoltage() const;
@@ -179,7 +180,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool queueParameterRead(uint8_t fieldId, uint8_t chunkIndex = 0);
         bool queueParameterWrite(uint8_t fieldId, uint8_t value);
         void startModuleConfigSession(unsigned long now);
-        void setModuleConfigBackoff(unsigned long now, unsigned long delayMs);
+        void pauseModuleConfigSession();
         void noteModuleConfigResponse();
         void handleDeviceInfo(const uint8_t *payload, size_t payloadLen, unsigned long now);
         void handleParameterSettingsEntry(const uint8_t *payload, size_t payloadLen, unsigned long now);
@@ -212,8 +213,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
             MODULECFG_WAIT_PARAMETER,
             MODULECFG_APPLY_SETTING,
             MODULECFG_WAIT_WRITE,
-            MODULECFG_DONE,
-            MODULECFG_BACKOFF
+            MODULECFG_DONE
         };
 
         struct ModuleParameterInfo {

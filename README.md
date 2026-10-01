@@ -1007,7 +1007,7 @@ Older settings files keep these default switch assignments. Saving gimbal calibr
 
 Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
 
-##### &#9193; ELRS/CRSF Gimbal Calibration
+##### &#9193; Gimbal Calibration
 
 *Jitter tolerance* holds each transmitted gimbal value until its filtered ADC reading moves by more than the chosen
 number of counts. Small movements accumulate, and calibrated endpoints remain reachable. *Throttle idle deadband*
@@ -1016,7 +1016,7 @@ travel is mapped continuously to center. Both settings default to `5` ADC counts
 disables that adjustment. Larger values suppress more small movements. Save the page to apply the settings after
 restart. Existing calibration files retain their points and receive the `5`-count defaults.
 
-This section shows live filtered ADC readings for the four gimbals before output hysteresis and throttle idle adjustments. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those filtered ADC counts are stored and used as the real three-point calibration for CRSF output:
+This section shows live ADC readings after filtering and jitter tolerance, before throttle idle adjustments and calibration mapping. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those stabilized ADC counts are stored and used as the real three-point calibration for CRSF output:
 
 - saved low -> `1000`
 - saved center -> `1500`
@@ -1111,7 +1111,7 @@ Older settings files keep these default switch assignments. Saving gimbal calibr
 
 Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
 
-##### &#9193; ELRS/CRSF Gimbal Calibration
+##### &#9193; Gimbal Calibration
 
 *Jitter tolerance* holds each transmitted gimbal value until its filtered ADC reading moves by more than the chosen
 number of counts. Small movements accumulate, and calibrated endpoints remain reachable. *Throttle idle deadband*
@@ -1120,7 +1120,7 @@ travel is mapped continuously to center. Both settings default to `5` ADC counts
 disables that adjustment. Larger values suppress more small movements. Save the page to apply the settings after
 restart. Existing calibration files retain their points and receive the `5`-count defaults.
 
-This section shows live filtered ADC readings for the four gimbals before output hysteresis and throttle idle adjustments. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those filtered ADC counts are stored and used as the real three-point calibration for CRSF output:
+This section shows live ADC readings after filtering and jitter tolerance, before throttle idle adjustments and calibration mapping. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those stabilized ADC counts are stored and used as the real three-point calibration for CRSF output:
 
 - saved low -> `1000`
 - saved center -> `1500`

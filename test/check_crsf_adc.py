@@ -89,8 +89,30 @@ int main() {
     assert(mode.begin(250, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
                       nullptr, false, nullptr, nullptr, nullptr, nullptr,
                       false, false, false, false, nullptr));
-    for (int i = 0; i < 4; ++i) Wire.values[i] += 400;
+    const int16_t atRest[4] = {1000, 800, 600, 400};
+    for (int i = 0; i < 4; ++i) Wire.values[i] += 20;
     testNow = 20;
+    mode.loop(0); // IIR moves five counts, inside the configured jitter tolerance.
+    assert(mode.readCurrentRawAxes(axes));
+    for (int i = 0; i < 4; ++i) assert(axes[i] == atRest[i]);
+    for (int i = 0; i < 4; ++i) Wire.values[i] -= 20;
+    profiles[0].minimum = 1000; profiles[0].center = 1200; profiles[0].maximum = 1400;
+    profiles[3].minimum = 400; profiles[3].center = 800; profiles[3].maximum = 1200;
+    assert(mode.begin(250, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
+                      nullptr, false, nullptr, nullptr, nullptr, nullptr,
+                      false, false, false, false, nullptr));
+    Wire.values[0] -= 20; Wire.values[3] += 20;
+    testNow += 20;
+    mode.loop(0); // Endpoint and idle noise must also hold inside the tolerance.
+    assert(mode.readCurrentRawAxes(axes));
+    for (int i = 0; i < 4; ++i) assert(axes[i] == atRest[i]);
+    Wire.values[0] += 20; Wire.values[3] -= 20;
+    for (int i = 0; i < 4; ++i) profiles[i] = elrsDefaultInputAxisProfile();
+    assert(mode.begin(250, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
+                      nullptr, false, nullptr, nullptr, nullptr, nullptr,
+                      false, false, false, false, nullptr));
+    for (int i = 0; i < 4; ++i) Wire.values[i] += 400;
+    testNow += 20;
     mode.loop(0);
     assert(mode.readCurrentRawAxes(axes));
     const int16_t expected[4] = {1100, 900, 700, 500};

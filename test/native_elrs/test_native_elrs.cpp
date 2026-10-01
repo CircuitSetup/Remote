@@ -1808,6 +1808,33 @@ static void test_module_settings_retry_without_blocking_rc_output()
     TEST_ASSERT_GREATER_THAN_INT(2, countWrittenFrameType(host, 0x16));
 }
 
+static void test_unanswered_module_probes_stop_until_reconnect_or_save()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0, 0);
+    for(unsigned long now = 0; now <= 60000; now += 20) loopAt(core, host, now, now * 1000UL);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x28));
+    TEST_ASSERT_GREATER_THAN_INT(2900, countWrittenFrameType(host, 0x16));
+    host.queueFrame(makeFrame(0x3A, std::vector<uint8_t>{0xEA, 0xEE}));
+    loopAt(core, host, 61000, 61000000);
+    loopAt(core, host, 61200, 61200000);
+    loopAt(core, host, 61220, 61220000);
+    TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x28));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 0));
+    loopAt(core, host, 61240, 61240000);
+    loopAt(core, host, 64000, 64000000); // Completed session must still notice link loss.
+    host.queueFrame(makeFrame(0x3A, std::vector<uint8_t>{0xEA, 0xEE}));
+    loopAt(core, host, 65000, 65000000);
+    loopAt(core, host, 65200, 65200000);
+    loopAt(core, host, 65220, 65220000);
+    TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x28));
+    core.requestModuleConfigUpdate(0, 0, 0, 66000);
+    loopAt(core, host, 67000, 67000000);
+    loopAt(core, host, 67020, 67020000);
+    TEST_ASSERT_EQUAL_INT(6, countWrittenFrameType(host, 0x28));
+}
+
 static void test_module_settings_request_remaining_chunks_before_advancing_field()
 {
     FakeHost host;
@@ -1995,7 +2022,7 @@ static void test_bootstrap_probe_waits_long_enough_for_late_first_module_reply()
 
     loopAt(core, host, 1055, 1055000);
     TEST_ASSERT_EQUAL_UINT32(0, statusOf(core).lastReplyTimeoutAt);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
 
     host.queueFrame(makeFrame(0x3A, std::vector<uint8_t>{ 0xEA, 0xEE, 0x10, 0x00, 0x00, 0x9C, 0x40, 0xFF, 0xFF, 0xFC, 0x18 }));
     loopAt(core, host, 1060, 1060000);
@@ -2129,36 +2156,27 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     TEST_ASSERT_EQUAL_UINT16(500, statusOf(core).packetRateHz);
 }
 
-static void test_module_ping_holds_rc_until_reply_timeout_on_half_duplex_link()
+static void test_module_ping_keeps_rc_running_while_waiting_for_settings()
 {
-    FakeHost host;
-    ELRSCrsfCore core;
-    ELRSCrsfCoreConfig config = defaultConfig();
-
-    config.transport.packetRateHz = 500;
-    config.transport.replyTimeoutMs = 20;
-
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
-
-    loopAt(core, host, 0, 0);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x16));
-
-    loopAt(core, host, 1000, 1000000);
-    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x16));
-
-    loopAt(core, host, 1002, 1002000);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
-    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x16));
-
-    loopAt(core, host, 1010, 1010000);
-    loopAt(core, host, 1018, 1018000);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
-
-    loopAt(core, host, 1021, 1021000);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
-
-    loopAt(core, host, 1253, 1253000);
-    TEST_ASSERT_TRUE(countWrittenFrameType(host, 0x16) >= 3);
+    for(uint16_t rate : {50, 250, 500}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.transport.packetRateHz = rate;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+        const unsigned long interval = 1000 / rate;
+        loopAt(core, host, 1000, 1000000);
+        loopAt(core, host, 1000 + interval, (1000 + interval) * 1000UL);
+        TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+        int rcCount = countWrittenFrameType(host, 0x16);
+        for(unsigned long now = 1000 + 2 * interval; now < 1250; now += interval) {
+            host.axes[AXIS_THROTTLE] = 1500;
+            loopAt(core, host, now, now * 1000UL);
+            TEST_ASSERT_EQUAL_INT(++rcCount, countWrittenFrameType(host, 0x16));
+            TEST_ASSERT_FALSE(host.driverEnabled);
+        }
+        TEST_ASSERT_NOT_EQUAL(992, core.channelAt(2));
+    }
 }
 
 static void test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer()
@@ -2354,12 +2372,39 @@ static void test_service_reply_window_and_echo_cross_millis_rollover()
     host.queueFrame(ping); // Delayed local echo must not release the reply window.
     transport.loop(host, before + 10, 11000);
     TEST_ASSERT_FALSE(transport.status().everReplied);
-    TEST_ASSERT_EQUAL_INT(1, host.writes.size());
-    transport.loop(host, 0xFFFFFFFFUL, 250000);
-    TEST_ASSERT_EQUAL_INT(1, host.writes.size());
-    transport.loop(host, 0, 251000);
     TEST_ASSERT_EQUAL_INT(2, host.writes.size());
+    transport.loop(host, 0xFFFFFFFFUL, 250000);
+    TEST_ASSERT_EQUAL_INT(3, host.writes.size());
+    transport.loop(host, 0, 251000);
+    TEST_ASSERT_EQUAL_INT(3, host.writes.size());
+    TEST_ASSERT_EQUAL_UINT32(0, transport.status().lastReplyTimeoutAt);
     TEST_ASSERT_EQUAL_HEX8(0x16, host.writes.back()[2]);
+}
+
+static void test_delayed_outbound_frames_do_not_count_as_module_replies()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    transport.begin(host, config, 0, 0);
+    const std::vector<uint8_t> ping = makeFrame(0x28, std::vector<uint8_t>{0, 0xEA});
+    transport.queueServiceFrame(ping.data(), ping.size());
+    transport.loop(host, 0, 0);
+    transport.loop(host, 4, 4000);
+    const std::vector<uint8_t> oldRc = host.writes.back();
+    uint16_t channels[16] = {};
+    channels[0] = 1200;
+    transport.setChannels(channels);
+    transport.loop(host, 8, 8000);
+    host.queueFrame(ping);
+    host.queueFrame(oldRc);
+    host.queueFrame(makeFrame(0x2C, std::vector<uint8_t>{0xEE, 0xEF, 1, 0}));
+    transport.loop(host, 12, 12000);
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 0));
+    transport.loop(host, 16, 16000);
+    TEST_ASSERT_TRUE(transport.status().everReplied);
 }
 
 static void test_oversized_parameter_restarts_from_chunk_zero_and_recovers()
@@ -2661,6 +2706,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_transport_sends_across_micros_rollover);
     RUN_TEST(test_malformed_parameter_reply_keeps_retries_active);
     RUN_TEST(test_service_reply_window_and_echo_cross_millis_rollover);
+    RUN_TEST(test_delayed_outbound_frames_do_not_count_as_module_replies);
     RUN_TEST(test_oversized_parameter_restarts_from_chunk_zero_and_recovers);
     RUN_TEST(test_rc_frame_packing_and_driver_enable);
     RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
@@ -2725,6 +2771,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_battery_overlay_and_calibration_prompt_still_override_normal_display);
     RUN_TEST(test_module_settings_are_discovered_and_written);
     RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
+    RUN_TEST(test_unanswered_module_probes_stop_until_reconnect_or_save);
     RUN_TEST(test_module_settings_request_remaining_chunks_before_advancing_field);
     RUN_TEST(test_module_settings_retry_timed_out_chunk_before_scan_backoff);
     RUN_TEST(test_module_settings_retry_probe_before_long_backoff);
@@ -2732,7 +2779,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_bootstrap_probe_waits_long_enough_for_late_first_module_reply);
     RUN_TEST(test_module_settings_apply_after_targets_are_found_without_full_scan);
     RUN_TEST(test_module_settings_do_not_write_packet_rate_target_or_change_transport_rate);
-    RUN_TEST(test_module_ping_holds_rc_until_reply_timeout_on_half_duplex_link);
+    RUN_TEST(test_module_ping_keeps_rc_running_while_waiting_for_settings);
     RUN_TEST(test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer);
     RUN_TEST(test_service_probe_drain_preserves_following_module_reply_bytes);
     return UNITY_END();

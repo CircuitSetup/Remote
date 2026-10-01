@@ -72,23 +72,11 @@ static const char *cDynPowerCustHTMLSrc[4] = {
     ">Off%s1'",
     ">Dyn%s"
 };
-static const char *cChannelCustHTMLSrc[16] = {
+static const char *cChannelCustHTMLSrc[4] = {
     ">CH1%s1'",
     ">CH2%s2'",
     ">CH3%s3'",
-    ">CH4%s4'",
-    ">CH5%s5'",
-    ">CH6%s6'",
-    ">CH7%s7'",
-    ">CH8%s8'",
-    ">CH9%s9'",
-    ">CH10%s10'",
-    ">CH11%s11'",
-    ">CH12%s12'",
-    ">CH13%s13'",
-    ">CH14%s14'",
-    ">CH15%s15'",
-    ">CH16%s"
+    ">CH4%s"
 };
 
 enum CRSFSelectFieldId : uint8_t {
@@ -156,7 +144,7 @@ CRSF_SELECT_BUILDER(wmBuildCRSFMP, CRSF_SELECT_MAXPOWER)
 CRSF_SELECT_BUILDER(wmBuildCRSFDP, CRSF_SELECT_DYNPOWER)
 
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
-WiFiManagerParameter custom_ss_crsf("ELRS/CRSF Settings", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_ss_crsf("<h3>ELRS/CRSF Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfstatus(wmBuildCRSFStatus);
 WiFiManagerParameter custom_crsfap("Connect to WiFi in ELRS/CRSF mode<br><span>If unchecked, device will remain in AP mode.</span>", settings.crsfap, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
@@ -164,6 +152,7 @@ WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
 WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
 WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
 WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP);
+WiFiManagerParameter custom_ss_crsfmap("<h3>Channel Mappings</h3><p style='margin:0 0 10px'><small>Changes apply after saving and restarting.</small></p>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfrc(wmBuildCRSFRC);
 WiFiManagerParameter custom_crsfrr("Reverse Aileron", settings.elrsRollRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpc(wmBuildCRSFPC);
@@ -173,7 +162,7 @@ WiFiManagerParameter custom_crsftrv("Reverse Throttle", settings.elrsThrRev, "cl
 WiFiManagerParameter custom_crsfyc(wmBuildCRSFYC);
 WiFiManagerParameter custom_crsfyrv("Reverse Rudder", settings.elrsYawRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
-WiFiManagerParameter custom_ss_crsfcal("ELRS/CRSF Gimbal Calibration", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Calibration</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
 WiFiManagerParameter *crsfParmArray[] = {
@@ -186,6 +175,7 @@ WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsftr,
       &custom_crsfmp,
       &custom_crsfdp,
+      &custom_ss_crsfmap,
       &custom_crsfrc,
       &custom_crsfrr,
       &custom_crsfpc,
@@ -484,11 +474,11 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
     };
     String html;
     html.reserve(8000);
-    html += "<div class='cmp0'><h3>Switch channels</h3><p>Choose a different channel for each input. CH1-CH4 are reserved for gimbals. Changes apply after saving and restarting.</p>";
+    html += "<div class='cmp0'><h4 style='margin:12px 0 5px'>Switch Channels</h4><p style='margin:0 0 10px;white-space:normal'><small>Choose a different channel for each input. CH1-CH4 are reserved for gimbals.</small></p>";
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         char name[6];
         snprintf(name, sizeof(name), "csw%d", i);
-        html += "<label for='"; html += name; html += "'>"; html += labels[i]; html += " target channel</label><select data-elrs-switch id='";
+        html += "<div class='cmp0'><label class='mp0' for='"; html += name; html += "'>"; html += labels[i]; html += " target channel</label><select class='sel0' data-elrs-switch id='";
         html += name; html += "' name='"; html += name; html += "'>";
         for(int channel = 5; channel <= 16; channel++) {
             char value[3];
@@ -497,7 +487,7 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
             if(channel == atoi(settings.elrsSwitchCh[i])) html += " selected";
             html += ">CH"; html += value; html += "</option>";
         }
-        html += "</select>";
+        html += "</select></div>";
     }
     html += "</div><script>(function(){var s=document.querySelectorAll('[data-elrs-switch]');function v(){var n={};for(var i=0;i<s.length;i++)n[s[i].value]=(n[s[i].value]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[s[i].value]>1?'Choose a different channel for each switch.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
     if(op == WM_CP_LEN) {
@@ -582,15 +572,16 @@ static const char crsfCalStyle[] =
     "<style>"
     ".elrscal-wrap{box-sizing:border-box;width:100%;max-width:100%;padding:0;margin:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden}"
     ".elrscal-wrap p,.elrscal-wrap #elrscalstat{white-space:normal;overflow-wrap:anywhere;max-width:100%}"
+    ".elrscal-wrap p{font-size:.85em;line-height:1.35em}"
     ".elrscal-axis{box-sizing:border-box;width:100%;max-width:100%;margin:12px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;overflow:hidden;white-space:normal}"
     ".elrscal-head{display:block;line-height:1.3em;max-width:100%;overflow-wrap:anywhere;white-space:normal}"
     ".elrscal-name{font-weight:bold}"
     ".elrscal-live{display:block;font-size:.85em;color:#333}"
     ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:8px 0;overflow:hidden;padding:0}"
     ".elrscal-row label{display:block;font-size:.82em;margin:0 0 2px 0}"
-    ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) minmax(4.8em,1fr);gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
+    ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) max-content;gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
     ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
-    ".elrscal-row button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:0;font-size:.95em;line-height:2rem}"
+    ".elrscal-row button{box-sizing:border-box;width:auto;max-width:100%;min-width:0;margin:0;padding:0 6px;font-size:.95em;line-height:2rem}"
     "</style>";
 
 static const char crsfCalScript[] =
@@ -641,7 +632,7 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
         html += "'></div></div>";
     }
     html += "<p>Both settings default to 5 counts; 0 disables the setting. Higher jitter tolerance ignores more small movements. "
-            "Live readings and captures show the filtered ADC before these output adjustments.</p>";
+            "Live readings and captures include filtering and jitter tolerance, before throttle idle and calibration mapping.</p>";
 
     CRSFGimbalCalAxis axes[] = {
         { "Rudder", "elrs_yaw_live", {

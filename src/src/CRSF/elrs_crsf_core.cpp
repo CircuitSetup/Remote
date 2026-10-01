@@ -38,7 +38,6 @@ constexpr unsigned long CRSF_MODULE_CONFIG_START_DELAY_MS = 1000;
 constexpr unsigned long CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS = 500;
 constexpr unsigned long CRSF_MODULE_CONFIG_WRITE_DELAY_MS = 300;
 constexpr unsigned long CRSF_MODULE_CONFIG_PROBE_RETRY_DELAY_MS = 1000;
-constexpr unsigned long CRSF_MODULE_CONFIG_RETRY_DELAY_MS = 10000;
 constexpr uint8_t CRSF_MODULE_CONFIG_MAX_PROBE_RETRIES = 2;
 constexpr uint8_t CRSF_MODULE_CONFIG_MAX_PARAMETER_RETRIES = 2;
 constexpr unsigned long BATTERY_BANNER_INTERVAL = 30000;
@@ -164,6 +163,14 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
          (unsigned)_inputRouting.throttleChannel,
          (unsigned)_inputRouting.rudderChannel);
     log(host, "ELRS/CRSF: display GPS, airspeed, then LQ");
+#ifdef REMOTE_DBG
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        logf(host, "ELRS/CRSF A%d calibration: low=%d center=%d high=%d reverse=%u", i,
+             _axisProfiles[i].minimum, _axisProfiles[i].center, _axisProfiles[i].maximum,
+             (unsigned)_axisProfiles[i].reverse);
+    }
+    logf(host, "ELRS/CRSF ADC tolerance=%u throttle idle=%u", (unsigned)_config.adcHysteresis, (unsigned)_config.throttleIdleDeadband);
+#endif
 
     sampleAxes(host, now, true);
 
@@ -226,8 +233,9 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     if(now - lastMapLogAt >= 200) {
         lastMapLogAt = now;
         logf(host,
-             "ELRS/CRSF map: raw=[%d,%d,%d,%d] ch1=%u ch2=%u ch3=%u ch4=%u faults=0x%02X",
+             "ELRS/CRSF map: raw=[%d,%d,%d,%d] adc=[%d,%d,%d,%d] ch1=%u ch2=%u ch3=%u ch4=%u faults=0x%02X",
              _rawAxes[0], _rawAxes[1], _rawAxes[2], _rawAxes[3],
+             _stableAxes[0], _stableAxes[1], _stableAxes[2], _stableAxes[3],
              (unsigned)_channels[0], (unsigned)_channels[1],
              (unsigned)_channels[2], (unsigned)_channels[3],
              (unsigned)_faultFlags);
@@ -238,9 +246,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
 
     // Module config runs after the transport loop; service frames queued here
     // are transmitted on the next scheduler pass.
-    if(_moduleConfigPending || _moduleConfigState == MODULECFG_BACKOFF) {
-        updateModuleConfig(host, now);
-    }
+    updateModuleConfig(host, now);
 
     updateBatteryWarning(host, now, battWarn, fakePower);
     updateBenchState(host, now);
@@ -282,6 +288,13 @@ uint32_t ELRSCrsfCore::baudRate() const
 uint16_t ELRSCrsfCore::channelAt(uint8_t index) const
 {
     return (index < 16) ? _channels[index] : 0;
+}
+
+bool ELRSCrsfCore::readFilteredAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) const
+{
+    if(!axes || !_haveStableAxes) return false;
+    memcpy(axes, _stableAxes, sizeof(_stableAxes));
+    return true;
 }
 
 uint8_t ELRSCrsfCore::linkQuality() const
@@ -398,7 +411,17 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
         int delta = (int)axes[i] - _stableAxes[i];
         bool throttleIdle = i == AXIS_THROTTLE &&
             elrsInputModelThrottleToUs(profile, axes[i], _config.throttleIdleDeadband) == ELRS_INPUT_US_MIN;
-        if(!_haveStableAxes || axes[i] <= low || axes[i] >= high || throttleIdle ||
+        bool endpointChanged = axes[i] <= low || axes[i] >= high || throttleIdle;
+        if(_haveStableAxes && endpointChanged) {
+            const int16_t heldUs = (i == AXIS_THROTTLE)
+                ? elrsInputModelThrottleToUs(profile, _stableAxes[i], _config.throttleIdleDeadband)
+                : elrsInputModelAxisToUs(profile, _stableAxes[i]);
+            const int16_t incomingUs = (i == AXIS_THROTTLE)
+                ? elrsInputModelThrottleToUs(profile, axes[i], _config.throttleIdleDeadband)
+                : elrsInputModelAxisToUs(profile, axes[i]);
+            endpointChanged = heldUs != incomingUs;
+        }
+        if(!_haveStableAxes || endpointChanged ||
            delta > (int)_config.adcHysteresis || delta < -(int)_config.adcHysteresis) {
             _stableAxes[i] = axes[i];
         }
@@ -1035,12 +1058,12 @@ void ELRSCrsfCore::startModuleConfigSession(unsigned long now)
     _moduleConfigDeadlineAt = 0;
 }
 
-void ELRSCrsfCore::setModuleConfigBackoff(unsigned long now, unsigned long delayMs)
+void ELRSCrsfCore::pauseModuleConfigSession()
 {
     _moduleChunkActive = false;
     _moduleChunkLen = 0;
-    _moduleConfigState = MODULECFG_BACKOFF;
-    _moduleConfigNextAt = now + delayMs;
+    // Leave desired settings pending, but retry only on reconnect or a save.
+    _moduleConfigState = MODULECFG_IDLE;
     _moduleConfigDeadlineAt = 0;
 }
 
@@ -1302,14 +1325,14 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         if(!replyActive) {
             _moduleConfigPending = true;
         } else if(_moduleConfigPending &&
-                  (_moduleConfigState == MODULECFG_DONE || _moduleConfigState == MODULECFG_BACKOFF || _moduleConfigState == MODULECFG_IDLE)) {
+                  (_moduleConfigState == MODULECFG_DONE || _moduleConfigState == MODULECFG_IDLE)) {
             startModuleConfigSession(now);
             _moduleConfigNextAt = now + 200;
         }
         _lastReplyActive = replyActive;
     }
 
-    if(!_moduleConfigPending && _moduleConfigState != MODULECFG_BACKOFF) {
+    if(!_moduleConfigPending) {
         return;
     }
 
@@ -1333,8 +1356,8 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
                 _moduleConfigNextAt = now + CRSF_MODULE_CONFIG_PROBE_RETRY_DELAY_MS;
                 _moduleConfigDeadlineAt = 0;
             } else {
-                log(host, "ELRS/CRSF: module settings probe timed out");
-                setModuleConfigBackoff(now, CRSF_MODULE_CONFIG_RETRY_DELAY_MS);
+                log(host, "ELRS/CRSF: module settings probe timed out; RC continues, retry on reconnect or save");
+                pauseModuleConfigSession();
             }
         }
         break;
@@ -1369,7 +1392,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
                 _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
             } else {
                 logf(host, "ELRS/CRSF: parameter scan timed out at field %u", (unsigned)_moduleFieldIndex);
-                setModuleConfigBackoff(now, CRSF_MODULE_CONFIG_RETRY_DELAY_MS);
+                pauseModuleConfigSession();
             }
         }
         break;
@@ -1427,12 +1450,6 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
             _moduleTargetIndex++;
             _moduleConfigState = MODULECFG_APPLY_SETTING;
             _moduleConfigNextAt = now;
-        }
-        break;
-
-    case MODULECFG_BACKOFF:
-        if(now >= _moduleConfigNextAt) {
-            _moduleConfigState = MODULECFG_WAIT_START;
         }
         break;
 
