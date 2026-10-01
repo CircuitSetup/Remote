@@ -28,6 +28,11 @@ struct ELRSGimbalRouting {
     uint8_t rudderChannel;
 };
 
+struct ELRSOutputLimits {
+    uint16_t minimumUs;
+    uint16_t maximumUs;
+};
+
 constexpr uint8_t ELRS_SWITCH_INPUT_COUNT = 12;
 struct ELRSSwitchRouting {
     uint8_t channels[ELRS_SWITCH_INPUT_COUNT]; // Stop, FakePower, O.O, RESET, ButtonPack 1-8.
@@ -38,6 +43,10 @@ constexpr uint16_t ELRS_INPUT_TOLERANCE_MAX = 32;
 
 int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw);
 int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband);
+ELRSOutputLimits elrsDefaultOutputLimits();
+bool elrsIsValidOutputLimits(const ELRSOutputLimits &limits);
+ELRSOutputLimits elrsSanitizeOutputLimits(const ELRSOutputLimits &limits);
+int16_t elrsApplyOutputLimits(const ELRSOutputLimits &limits, int16_t us);
 uint16_t elrsInputUsToCrsfTicks(int16_t us);
 ELRSInputAxisProfile elrsDefaultInputAxisProfile();
 ELRSGimbalRouting elrsDefaultGimbalRouting();

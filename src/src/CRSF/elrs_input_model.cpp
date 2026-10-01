@@ -116,6 +116,31 @@ int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t 
     return elrsInputModelAxisToUs(adjusted, raw);
 }
 
+ELRSOutputLimits elrsDefaultOutputLimits()
+{
+    return {ELRS_INPUT_US_MIN, ELRS_INPUT_US_MAX};
+}
+
+bool elrsIsValidOutputLimits(const ELRSOutputLimits &limits)
+{
+    return limits.minimumUs >= ELRS_INPUT_US_MIN && limits.minimumUs <= ELRS_INPUT_US_MID &&
+           limits.maximumUs >= ELRS_INPUT_US_MID && limits.maximumUs <= ELRS_INPUT_US_MAX;
+}
+
+ELRSOutputLimits elrsSanitizeOutputLimits(const ELRSOutputLimits &limits)
+{
+    return elrsIsValidOutputLimits(limits) ? limits : elrsDefaultOutputLimits();
+}
+
+int16_t elrsApplyOutputLimits(const ELRSOutputLimits &limits, int16_t us)
+{
+    const ELRSOutputLimits bounds = elrsSanitizeOutputLimits(limits);
+    us = (int16_t)clampLong(us, ELRS_INPUT_US_MIN, ELRS_INPUT_US_MAX);
+    return (us <= ELRS_INPUT_US_MID)
+        ? mapAxisSegment(us, ELRS_INPUT_US_MIN, ELRS_INPUT_US_MID, bounds.minimumUs, ELRS_INPUT_US_MID)
+        : mapAxisSegment(us, ELRS_INPUT_US_MID, ELRS_INPUT_US_MAX, ELRS_INPUT_US_MID, bounds.maximumUs);
+}
+
 uint16_t elrsInputUsToCrsfTicks(int16_t us)
 {
     long clampedUs = clampLong(us, ELRS_INPUT_US_MIN, ELRS_INPUT_US_MAX);

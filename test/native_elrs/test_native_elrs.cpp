@@ -625,6 +625,124 @@ static void test_light_iir_filter_converges_on_small_stable_changes()
     }
 }
 
+static void test_output_limits_scale_each_side_of_neutral()
+{
+    const ELRSOutputLimits limits = {1200, 1800};
+    const int16_t inputs[] = {1000, 1250, 1500, 1750, 2000};
+    const int16_t expected[] = {1200, 1350, 1500, 1650, 1800};
+    for(int i = 0; i < 5; i++) {
+        TEST_ASSERT_EQUAL_INT16(expected[i], elrsApplyOutputLimits(limits, inputs[i]));
+    }
+    const ELRSOutputLimits asymmetric = {1100, 1800};
+    TEST_ASSERT_EQUAL_INT16(1300, elrsApplyOutputLimits(asymmetric, 1250));
+    TEST_ASSERT_EQUAL_INT16(1650, elrsApplyOutputLimits(asymmetric, 1750));
+    const ELRSOutputLimits defaults = elrsDefaultOutputLimits();
+    for(int16_t us = 1000; us <= 2000; us++) {
+        TEST_ASSERT_EQUAL_INT16(us, elrsApplyOutputLimits(defaults, us));
+    }
+}
+
+static void test_output_limits_validate_and_clamp()
+{
+    const ELRSOutputLimits limits = {1200, 1800};
+    TEST_ASSERT_TRUE(elrsIsValidOutputLimits(limits));
+    TEST_ASSERT_EQUAL_INT16(1200, elrsApplyOutputLimits(limits, -32768));
+    TEST_ASSERT_EQUAL_INT16(1800, elrsApplyOutputLimits(limits, 32767));
+    const ELRSOutputLimits neutral = {1500, 1500};
+    TEST_ASSERT_TRUE(elrsIsValidOutputLimits(neutral));
+    TEST_ASSERT_EQUAL_INT16(1500, elrsApplyOutputLimits(neutral, 1000));
+    TEST_ASSERT_EQUAL_INT16(1500, elrsApplyOutputLimits(neutral, 2000));
+    const ELRSOutputLimits oneSided[] = {{1500, 1800}, {1200, 1500}};
+    for(const auto &value : oneSided) TEST_ASSERT_TRUE(elrsIsValidOutputLimits(value));
+    const ELRSOutputLimits invalid[] = {{999, 2000}, {1000, 2001}, {1501, 1800}, {1200, 1499}, {0, 0}, {65535, 65535}};
+    for(const auto &value : invalid) {
+        TEST_ASSERT_FALSE(elrsIsValidOutputLimits(value));
+        const ELRSOutputLimits sanitized = elrsSanitizeOutputLimits(value);
+        TEST_ASSERT_EQUAL_UINT16(1000, sanitized.minimumUs);
+        TEST_ASSERT_EQUAL_UINT16(2000, sanitized.maximumUs);
+    }
+}
+
+static void test_output_limits_follow_axes_through_reverse_and_routing()
+{
+    const ELRSOutputLimits limits[] = {{1100,1700}, {1200,1800}, {1300,1900}, {1400,1600}};
+    const uint16_t lowTicks[] = {336, 500, 664, 828};
+    const uint16_t highTicks[] = {1319, 1483, 1647, 1155};
+    const uint8_t channels[] = {4, 3, 1, 2};
+    for(int descending = 0; descending < 2; descending++) {
+        for(int reverse = 0; reverse < 2; reverse++) {
+            FakeHost host;
+            ELRSCrsfCore core;
+            ELRSCrsfCoreConfig config = defaultConfig();
+            config.inputRouting = {4, 3, 2, 1};
+            config.throttleIdleDeadband = 0;
+            for(int axis = 0; axis < 4; axis++) {
+                config.outputLimits[axis] = limits[axis];
+                config.axisProfiles[axis] = elrsDefaultInputAxisProfile();
+                config.axisProfiles[axis].minimum = descending ? 1800 : 300;
+                config.axisProfiles[axis].center = 900;
+                config.axisProfiles[axis].maximum = descending ? 300 : 1800;
+                config.axisProfiles[axis].reverse = reverse;
+                host.axes[axis] = 900;
+            }
+            TEST_ASSERT_TRUE(core.begin(host, config, 0));
+            for(int point = 0; point < 3; point++) {
+                uint16_t expectedChannels[16];
+                for(int i = 0; i < 16; i++) expectedChannels[i] = 172;
+                for(int axis = 0; axis < 4; axis++) {
+                    const auto &profile = config.axisProfiles[axis];
+                    host.axes[axis] = point == 0 ? profile.minimum : point == 1 ? profile.center : profile.maximum;
+                    expectedChannels[channels[axis] - 1] = point == 1 ? 992 : (point == reverse * 2 ? lowTicks[axis] : highTicks[axis]);
+                }
+                host.writes.clear();
+                core.loop(host, 20 * (point + 1), 0);
+                for(int axis = 0; axis < 4; axis++) {
+                    TEST_ASSERT_EQUAL_UINT16(expectedChannels[channels[axis] - 1], core.channelAt(channels[axis] - 1));
+                }
+                uint8_t expectedFrame[26];
+                ELRSCrsfCore::packRcChannelsFrame(expectedChannels, expectedFrame, sizeof(expectedFrame));
+                TEST_ASSERT_FALSE(host.writes.empty());
+                TEST_ASSERT_EQUAL_UINT8_ARRAY(expectedFrame, host.writes[0].data(), 26);
+            }
+        }
+    }
+}
+
+static void test_output_limits_preserve_safe_neutral_and_idle()
+{
+    for(int scenario = 0; scenario < 3; scenario++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.inputRouting = {4, 3, 2, 1};
+        for(auto &limits : config.outputLimits) limits = {1200, 1800};
+        host.axes[AXIS_THROTTLE] = 0;
+        host.axesAvailable = scenario != 0;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        if(scenario) {
+            TEST_ASSERT_EQUAL_UINT16(500, core.channelAt(1));
+            if(scenario == 1) host.axesAvailable = false;
+            else core.startSelfTest(0);
+            core.loop(host, 150, 0);
+        }
+        for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+    }
+}
+
+static void test_output_limits_runtime_invalid_pairs_use_defaults()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.outputLimits[0] = {1600, 1700};
+    host.axes[0] = 0;
+    core.begin(host, config, 0);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
+    host.axes[0] = 2047;
+    core.loop(host, 20, 0);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
+}
+
 static void test_input_model_center_maps_to_1500_us()
 {
     const ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
@@ -2811,6 +2929,11 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_debug_log_only_emits_on_axis_change);
     RUN_TEST(test_light_iir_filter_moves_quarter_step_toward_sample);
     RUN_TEST(test_light_iir_filter_converges_on_small_stable_changes);
+    RUN_TEST(test_output_limits_scale_each_side_of_neutral);
+    RUN_TEST(test_output_limits_validate_and_clamp);
+    RUN_TEST(test_output_limits_follow_axes_through_reverse_and_routing);
+    RUN_TEST(test_output_limits_preserve_safe_neutral_and_idle);
+    RUN_TEST(test_output_limits_runtime_invalid_pairs_use_defaults);
     RUN_TEST(test_input_model_center_maps_to_1500_us);
     RUN_TEST(test_input_model_min_max_map_to_1000_and_2000_us);
     RUN_TEST(test_input_model_reverse_flips_output);
