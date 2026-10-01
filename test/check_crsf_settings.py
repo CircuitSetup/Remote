@@ -323,6 +323,103 @@ int main() {
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches);
     assert(switches.channels[0] == 15 && switches.channels[1] == 16 && switches.channels[2] == 14);
     puts("CRSF switch selector rendering, POST validation and portal save check passed");
+    auto beforeCalibration = stored;
+    ELRSAxisCalibrationData retryCalibration[4];
+    memcpy(retryCalibration, calibration, sizeof(retryCalibration));
+    retryCalibration[0].minimum = 350;
+    storageWriteOk = false;
+    assert(!saveELRSCalibration(retryCalibration, 4));
+    assert(stored == beforeCalibration);
+    loadELRSInputConfig(profiles, 4, nullptr, nullptr, nullptr, nullptr);
+    assert(profiles[0].minimum == 300);
+    storageWriteOk = true;
+    assert(saveELRSCalibration(retryCalibration, 4));
+    crsf_load_settings();
+    loadELRSInputConfig(profiles, 4, nullptr, nullptr, nullptr, &switches);
+    assert(profiles[0].minimum == 350);
+    assert(switches.channels[0] == 15 && switches.channels[1] == 16);
+    puts("CRSF calibration write failure and retry check passed");
 }
 '''
 compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + switch_post + switch_page + calibration_page + storage_cases, ['elrs_input_model.cpp'])
+
+# Exercise the actual HTTP handler and the application's reboot scheduling callback.
+save_signature = 'static bool saveParamsCallback(int paramspage)'
+http_fixture = r'''
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#define WLA_SET1_B 3
+#define DEF_TUT 0
+#define DEF_REF_BUT 0
+#define DEF_OORST 0
+#define DEF_OO_TT 0
+#define DEF_RES_AT 0
+#define STRLEN strlen
+#define FPSTR(value) value
+using String = std::string;
+constexpr int WM_LP_PREHTTPSEND = 1, WM_LP_POSTHTTPSEND = 2;
+const char *HTTP_PARAMSAVED = "Settings saved.", *HTTP_PARAMSAVED_END = " Rebooting.", *HTTP_END = "</html>";
+struct TestServer {
+    int status = 0;
+    String body;
+    void send(int code, const char *, const char *content) { status = code; body = content; }
+} httpServer;
+class WiFiManager {
+public:
+    TestServer *server = &httpServer;
+    int _params[4] = {}, _paramsCount[4] = {};
+    bool incGFXMSG = false;
+    bool (*_saveparamscallback)(int) = nullptr;
+    void (*_gpcallback)(int) = nullptr;
+    void doParamSave(int, int) {}
+    int getHTTPHeadLength(const char *, bool) { return 6; }
+    void getHTTPHeadNew(String &page, const char *, bool) { page += "<html>"; }
+    void HTTPSend(const String &page, bool) { server->send(200, "text/html", page.c_str()); }
+    void _handleParamSave(int aidx, const char *title);
+};
+struct {
+    char playTUT[2], musicFolder[2], refBut[2], oorst[2], ooTT[2], resAT[2];
+} settings;
+unsigned int wifiLoopSaveAction = 0;
+bool inputWriteOk = false;
+int inputSaveAttempts = 0, inputReads = 0;
+void getServerParam(const char *, char *, int, int, int, int) {}
+void crsf_wifi_saveParamsCallback() { inputReads++; }
+bool crsf_wifi_loop_settings() { inputSaveAttempts++; return inputWriteOk; }
+'''
+http_callbacks = function('src/remote_wifi.cpp', save_signature)
+http_callbacks += function('src/src/WiFiManager/WiFiManager.cpp', 'void WiFiManager::_handleParamSave(int aidx, const char *title)')
+http_cases = r'''
+bool inputSaveResult(int) { return inputWriteOk; }
+int main() {
+    WiFiManager manager;
+    manager._saveparamscallback = inputSaveResult;
+    manager._handleParamSave(3, "ELRS");
+    assert(httpServer.status == 400);
+    assert(httpServer.body.find("Settings saved.") == String::npos);
+    inputWriteOk = true;
+    manager._handleParamSave(3, "ELRS");
+    assert(httpServer.status == 200 && httpServer.body.find("Settings saved.") != String::npos);
+    inputWriteOk = false;
+    saveParamsCallback(3);
+    assert(inputReads == 1 && inputSaveAttempts == 1 && wifiLoopSaveAction == 0);
+    inputWriteOk = true;
+    saveParamsCallback(3);
+    assert(inputReads == 2 && inputSaveAttempts == 2 && wifiLoopSaveAction == 32);
+    wifiLoopSaveAction = 0;
+    saveParamsCallback(1);
+    assert(wifiLoopSaveAction == 8 && inputSaveAttempts == 2);
+    manager._saveparamscallback = saveParamsCallback;
+    wifiLoopSaveAction = 0;
+    inputWriteOk = false;
+    manager._handleParamSave(3, "ELRS");
+    assert(httpServer.status == 400 && wifiLoopSaveAction == 0);
+    inputWriteOk = true;
+    manager._handleParamSave(3, "ELRS");
+    assert(httpServer.status == 200 && wifiLoopSaveAction == 32);
+    puts("CRSF HTTP save response and reboot scheduling check passed");
+}
+'''
+compile_and_run(http_fixture + http_callbacks + http_cases, [])

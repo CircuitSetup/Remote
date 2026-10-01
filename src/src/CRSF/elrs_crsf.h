@@ -84,7 +84,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         void setStopLed(bool state) override;
 
         void loadCalibration(ELRSAxisCalibrationData *cal, int count) override;
-        void saveCalibration(const ELRSAxisCalibrationData *cal, int count) override;
+        bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) override;
 
         ELRSCrsfCore _core;
         HardwareSerial _serial;

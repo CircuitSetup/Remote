@@ -215,12 +215,14 @@ class FakeHost : public ELRSCrsfHost {
             }
         }
 
-        void saveCalibration(const ELRSAxisCalibrationData *cal, int count) override
+        bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) override
         {
             savedCalibrationCount = count;
+            if(!calibrationWriteOk) return false;
             for(int i = 0; i < count && i < ELRS_GIMBAL_AXIS_COUNT; i++) {
                 calibration[i] = cal[i];
             }
+            return true;
         }
 
         void queueFrame(const std::vector<uint8_t> &frame)
@@ -251,6 +253,7 @@ class FakeHost : public ELRSCrsfHost {
         int displaySpeed = -1;
         int displayShows = 0;
         int savedCalibrationCount = 0;
+        bool calibrationWriteOk = true;
         int discardSerialCount = 0;
         int stopSerialCount = 0;
         int flushCount = 0;
@@ -2280,6 +2283,24 @@ static void test_valid_descending_button_calibration_is_saved()
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
 }
 
+static void test_failed_button_calibration_save_reports_error()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    host.calibrationWriteOk = false;
+    core.begin(host, defaultConfig(), 0, 0);
+    unsigned long now = 0;
+    calibrationPress(core, host, now, true);
+    for(int point = 0; point < 9; point++) {
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = !point ? 1024 : ((point & 1) ? 2047 : 0);
+        calibrationPress(core, host, now);
+    }
+    TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
+    TEST_ASSERT_FALSE(core.isCalibrating());
+    TEST_ASSERT_EQUAL_STRING("ERR", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+}
+
 static void test_transport_sends_across_micros_rollover()
 {
     const uint16_t rates[] = {50, 100, 150, 250, 500};
@@ -2636,6 +2657,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_invalid_button_calibration_preserves_minimum_throttle);
     RUN_TEST(test_failed_button_capture_does_not_advance_calibration);
     RUN_TEST(test_valid_descending_button_calibration_is_saved);
+    RUN_TEST(test_failed_button_calibration_save_reports_error);
     RUN_TEST(test_transport_sends_across_micros_rollover);
     RUN_TEST(test_malformed_parameter_reply_keeps_retries_active);
     RUN_TEST(test_service_reply_window_and_echo_cross_millis_rollover);

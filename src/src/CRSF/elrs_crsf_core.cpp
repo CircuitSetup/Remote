@@ -577,13 +577,16 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
                 return;
             }
         }
+        if(!host.saveCalibration(_axisCal, ELRS_GIMBAL_AXIS_COUNT)) {
+            showOverlay("ERR", now, 1000);
+            return;
+        }
         for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
             _axisProfiles[i].minimum = _axisCal[i].minimum;
             _axisProfiles[i].center = _axisCal[i].center;
             _axisProfiles[i].maximum = _axisCal[i].maximum;
             _stableAxes[i] = _rawAxes[i];
         }
-        host.saveCalibration(_axisCal, ELRS_GIMBAL_AXIS_COUNT);
         showOverlay("CAL", now, 1000);
         break;
     default:

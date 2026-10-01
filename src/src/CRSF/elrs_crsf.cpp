@@ -426,9 +426,9 @@ void ELRSCrsfMode::loadCalibration(ELRSAxisCalibrationData *cal, int count)
     loadELRSCalibration(cal, count);
 }
 
-void ELRSCrsfMode::saveCalibration(const ELRSAxisCalibrationData *cal, int count)
+bool ELRSCrsfMode::saveCalibration(const ELRSAxisCalibrationData *cal, int count)
 {
-    saveELRSCalibration(cal, count);
+    return saveELRSCalibration(cal, count);
 }
 
 #endif

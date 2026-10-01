@@ -78,7 +78,7 @@ bool ButtonPack::sampleStates(uint8_t &) { return false; }
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count) {
     for (int i = 0; i < count; ++i) cal[i] = {0, 1024, 2047};
 }
-void saveELRSCalibration(const ELRSAxisCalibrationData *, int) {}
+bool saveELRSCalibration(const ELRSAxisCalibrationData *, int) { return true; }
 int main() {
     ELRSCrsfMode mode;
     int16_t axes[4];

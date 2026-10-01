@@ -70,7 +70,7 @@ class ELRSCrsfHost : public ELRSCrsfTransportHal {
         virtual void setStopLed(bool state) = 0;
 
         virtual void loadCalibration(ELRSAxisCalibrationData *cal, int count) = 0;
-        virtual void saveCalibration(const ELRSAxisCalibrationData *cal, int count) = 0;
+        virtual bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) = 0;
 };
 
 struct ELRSCrsfCoreConfig {

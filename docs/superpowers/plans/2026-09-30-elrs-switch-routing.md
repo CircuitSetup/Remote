@@ -44,17 +44,28 @@
 
 **Files:** Modify `src/src/CRSF/crsf_kludge.cpp`, `crsf_settings.h`, `crsf_wifi.h`, `src/remote_settings.h`, `README.md`; extend `test/check_crsf_settings.py`.
 
+**Review fixes:** Also update `src/remote_wifi.cpp`, `src/src/WiFiManager/WiFiManager.{h,cpp}`, and the calibration host/adapter interface. ELRS input validation and persistence must precede the HTTP success response, and physical calibration must receive the persistence result.
+
 **Interfaces:** Consume Task 1's type, helpers, and adapter argument. Extend `loadELRSInputConfig` with an optional trailing `ELRSSwitchRouting *switchRouting = NULL`, and `saveELRSInputConfig` with optional `const ELRSSwitchRouting *switchRouting = NULL`. Existing callers preserve mappings. Append routing to the binary blob and add `settings.elrsSwitchCh[12][3]` portal buffers.
 
 - [x] Add failing behavioral tests using actual persistence/callback/builder code: old 56-byte blob defaults, all partial mappings, custom routing round trip, calibration preservation, duplicate/range/malformed save rejection, failed write/retry, and rendered labels/names/selected values/CH5-CH16 limits. Adjust the existing malformed-tolerance case to target its field offset rather than the new blob end.
 - [x] Run `python test/check_crsf_settings.py`. Expected: tests fail because mappings are absent.
 - [x] Append/migrate the mapping, validate before writes, load it into `crsf_begin`, and implement the twelve selectors inside the existing ELRS section with client and server validation. Refresh saved values on portal open; document defaults, unique assignments, restart behavior, and actual gimbal limits.
 - [x] Run `.pio/review/check-inputs.ps1`, `python test/check_crsf_adc.py`, `python test/check_crsf_settings.py`, and `git diff --check`. Expected: all pass. Run `rtk pio run -e esp32dev`; expected: SUCCESS and `firmware.bin` below 1,310,720 bytes. Record exact size delta.
-- [ ] Commit the portal/persistence change and plan. Run one independent whole-branch Superpowers review; address actionable P0-P2 findings with RED-to-GREEN regressions, rerun checks, and commit fixes.
+- [x] Commit the portal/persistence change and plan. Run one independent whole-branch Superpowers review; address actionable P0-P2 findings with RED-to-GREEN regressions, rerun checks, and commit fixes.
 
 ## Verification Record
 
-- 90 native tests and both Python ADC/settings harnesses pass. Migration covers legacy calibration-only blobs, previous full blobs, all partial switch mappings, and corrupt mapping fields. Failed writes retain the previous input configuration and remain retryable.
+- 91 native tests and both Python ADC/settings harnesses pass. Migration covers legacy calibration-only blobs, previous full blobs, all partial switch mappings, and corrupt mapping fields. Failed input or calibration writes retain the previous configuration and remain retryable.
 - Actual generated selectors were checked in Chrome: twelve saved assignments render correctly, selecting a duplicate gives validity errors on both affected inputs, and completing a swap clears every error.
-- ESP32 build succeeds: static RAM 73,120 bytes; firmware image 1,277,120 bytes, an increase of 2,896 bytes. The existing 1,310,720-byte application partition has 33,600 bytes (32.8 KiB) free.
+- ESP32 build succeeds: static RAM 73,120 bytes; firmware image 1,277,344 bytes, an increase of 3,120 bytes. The existing 1,310,720-byte application partition has 33,376 bytes (32.6 KiB) free.
 - No hardware upload was performed. Portal rendering and runtime host checks are verified; receiver behavior requires bench testing of this revision.
+
+## Independent Review and Decisions
+
+- One fresh review of immutable `3281b4b` found two P2 issues and no P0/P1 or minor findings. Both P2 issues were reproduced before fixing; the full suite and ESP32 build passed after the single fix pass.
+- Portal success/reboot after rejection: the actual HTTP handler regression failed because the response was 200 instead of 400. It now returns 400 on rejection or storage failure. The actual application callback validates and persists ELRS inputs before success and schedules reboot only after success.
+- Calibration save cache: the retry regression failed because a healthy retry left the old minimum on disk. The shared hash now changes only after successful persistence. Calibration failure returns false, restores the previous settings, and displays ERR while retaining the previous runtime profile. The native display regression failed with CAL before this change and now passes with ERR.
+- Final: Ruling: hardware upload, RF behavior, and heap endurance remain outside this implementation's verified scope. Host tests and the firmware build cannot certify device behavior; cost if wrong: receiver mapping or long-running portal faults may still require a bench fix.
+- Final: Ruling: torn filesystem writes and malformed outer file headers keep the existing shared-storage behavior. Migration guarantees apply to shorter blobs accepted by the existing loader; cost if wrong: a power interruption may require restoring calibration and mappings. Atomic file recovery is separate storage work.
+- No deferred minor findings. Verified changes are committed on the existing feature branch; no upload, push, or merge.

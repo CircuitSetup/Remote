@@ -248,17 +248,11 @@ void crsf_load_settings()
 
 bool crsf_save_settings(bool useCache)
 {
-    uint32_t oldHash = crsfSettingsHash;
-
-    crsfSettingsHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
-
-    if(useCache) {
-        if(oldHash == crsfSettingsHash) {
-            return true;
-        }
-    }
-
-    return saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0);
+    uint32_t newHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
+    if(useCache && newHash == crsfSettingsHash) return true;
+    if(!saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0)) return false;
+    crsfSettingsHash = newHash;
+    return true;
 }
 
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
@@ -273,12 +267,13 @@ void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
     }
 }
 
-void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
+bool saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
 {
     if(!cal) {
-        return;
+        return false;
     }
 
+    ELRSCrsfSettingsBlob previous = crsfSettings;
     count = clampProfileCount(count);
     for(int i = 0; i < count; i++) {
         crsfSettings.axisProfile[i].minimum = cal[i].minimum;
@@ -286,7 +281,9 @@ void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
         crsfSettings.axisProfile[i].maximum = cal[i].maximum;
     }
     sanitizeCrsfSettings(crsfSettings);
-    crsf_save_settings(true);
+    if(crsf_save_settings(true)) return true;
+    crsfSettings = previous;
+    return false;
 }
 
 void loadELRSInputProfiles(ELRSInputAxisProfile *profiles, int count)

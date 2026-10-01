@@ -202,7 +202,7 @@ WiFiManagerParameter *crsfParmArray[] = {
 
 
 /*
- * Callback from wifi_loop() for saving settings
+ * Save input settings before the portal reports success.
  *
  */
 static bool crsf_wifi_loop_settings()
