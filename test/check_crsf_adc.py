@@ -138,7 +138,7 @@ int main() {
         testNow += 120;
         mode.loop(0);
         assert(mode.getStatus().faultFlags & ELRS_FAULT_ADC_STALE);
-        assert((((lastRcFrame[5] >> 6) | (lastRcFrame[6] << 2) | (lastRcFrame[7] << 10)) & 0x7ff) == 172);
+        assert((((lastRcFrame[5] >> 6) | (lastRcFrame[6] << 2) | (lastRcFrame[7] << 10)) & 0x7ff) == 992);
         assert(!mode.readCurrentRawAxes(axes));
         Wire.failure = 0;
         testNow += 20;
@@ -157,6 +157,34 @@ int main() {
     mode.loop(0); // Recovery must not require a portal request.
     assert(mode.readCurrentRawAxes(axes));
     puts("CRSF portal filtered ADC check passed");
+    // Exercise neutral through the actual IIR, held output, and packed UART frame.
+    for(int descending = 0; descending < 2; descending++) {
+        for(int reverse = 0; reverse < 2; reverse++) {
+            for(int side = -1; side <= 1; side += 2) {
+                for(int i = 0; i < 4; i++) {
+                    profiles[i] = elrsDefaultInputAxisProfile();
+                    profiles[i].minimum = descending ? 1020 : 1000;
+                    profiles[i].center = 1010;
+                    profiles[i].maximum = descending ? 1000 : 1020;
+                    profiles[i].reverse = reverse;
+                    Wire.values[i] = 1010 + side * 4;
+                }
+                assert(mode.begin(250, 0, 0, 0, 0, profiles, {4,3,2,1},
+                                  nullptr, false, nullptr, nullptr, nullptr, nullptr,
+                                  false, false, false, false, nullptr, 5, 0));
+                for(int i = 0; i < 4; i++) Wire.values[i] = 1010;
+                for(int step = 0; step < 100; step++) { testNow += 20; mode.loop(0); }
+                assert(mode.readCurrentRawAxes(axes));
+                for(int i = 0; i < 4; i++) {
+                    assert(axes[i] == 1010);
+                    const int bit = i * 11, byte = 3 + bit / 8;
+                    const uint32_t packed = lastRcFrame[byte] | (lastRcFrame[byte+1] << 8) | (lastRcFrame[byte+2] << 16);
+                    assert(((packed >> (bit % 8)) & 0x7ff) == 992);
+                }
+            }
+        }
+    }
+    puts("CRSF real ADC filter return to neutral check passed");
 }
 '''
 def compile_and_run(source, sources):

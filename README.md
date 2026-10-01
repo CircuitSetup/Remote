@@ -995,11 +995,11 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Each gimbal must use a different channel from CH1 through CH4. CH5-CH16 are reserved for the switch inputs.
+Each gimbal and switch can use CH1 through CH16. Every input must use a different channel. Keep steering and throttle on CH1-CH4 in ELRS Hybrid/Wide mode; higher proportional channels require a compatible Full Resolution mode.
 
 ##### &#9193; Switch channels
 
-Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH5 through CH16. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap two inputs, change both selectors before saving. Duplicate assignments are rejected. Changes take effect after the portal saves and restarts the Remote.
+Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH1 through CH16, including CH1-CH4. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap a switch with a gimbal, move the gimbal to the switch's old channel and select the freed channel for the switch before saving. Duplicate assignments across all gimbals and switches are rejected. Changes take effect after the portal saves and restarts the Remote. ELRS RF mode controls which input channels reach the receiver; use Full Resolution 16ch for all 16 input channels.
 
 Older settings files keep these default switch assignments. Saving gimbal calibration preserves custom switch assignments. The display continues to use its existing telemetry selection.
 
@@ -1099,11 +1099,11 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Each gimbal must use a different channel from CH1 through CH4. CH5-CH16 are reserved for the switch inputs.
+Each gimbal and switch can use CH1 through CH16. Every input must use a different channel. Keep steering and throttle on CH1-CH4 in ELRS Hybrid/Wide mode; higher proportional channels require a compatible Full Resolution mode.
 
 ##### &#9193; Switch channels
 
-Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH5 through CH16. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap two inputs, change both selectors before saving. Duplicate assignments are rejected. Changes take effect after the portal saves and restarts the Remote.
+Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH1 through CH16, including CH1-CH4. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap a switch with a gimbal, move the gimbal to the switch's old channel and select the freed channel for the switch before saving. Duplicate assignments across all gimbals and switches are rejected. Changes take effect after the portal saves and restarts the Remote. ELRS RF mode controls which input channels reach the receiver; use Full Resolution 16ch for all 16 input channels.
 
 Older settings files keep these default switch assignments. Saving gimbal calibration preserves custom switch assignments. The display continues to use its existing telemetry selection.
 

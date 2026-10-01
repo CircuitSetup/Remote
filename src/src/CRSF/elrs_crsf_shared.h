@@ -213,11 +213,10 @@ static inline int16_t elrsIirFilterStep(int16_t previous, int16_t sample, uint8_
     delta = (int16_t)(sample - previous);
     divisor = (int16_t)(1U << shift);
 
-    if(delta > -divisor && delta < divisor) {
-        return previous;
-    }
-
-    return (int16_t)(previous + (delta / divisor));
+    int16_t step = delta / divisor;
+    // Steady samples must converge; the core applies the configured jitter hold.
+    if(!step && delta) step = (delta > 0) ? 1 : -1;
+    return (int16_t)(previous + step);
 }
 
 #endif

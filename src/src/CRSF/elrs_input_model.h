@@ -48,5 +48,7 @@ ELRSGimbalRouting elrsSanitizeGimbalRouting(const ELRSGimbalRouting &routing);
 ELRSSwitchRouting elrsDefaultSwitchRouting();
 bool elrsIsValidSwitchRouting(const ELRSSwitchRouting &routing);
 ELRSSwitchRouting elrsSanitizeSwitchRouting(const ELRSSwitchRouting &routing);
+bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchRouting &switches);
+void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &switches);
 
 #endif

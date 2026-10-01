@@ -82,7 +82,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
 {
     _config = config;
-    _config.switchRouting = elrsSanitizeSwitchRouting(config.switchRouting);
+    elrsSanitizeInputRouting(_config.inputRouting, _config.switchRouting);
     if(_config.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) _config.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
     if(_config.throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) _config.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_MAX;
     _logHost = &host;
@@ -95,8 +95,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
         _axisProfiles[i] = elrsSanitizeInputAxisProfile(_config.axisProfiles[i]);
         _config.axisProfiles[i] = _axisProfiles[i];
     }
-    _inputRouting = elrsSanitizeGimbalRouting(_config.inputRouting);
-    _config.inputRouting = _inputRouting;
+    _inputRouting = _config.inputRouting;
     _transport = ELRSCrsfTransport();
     _transport.setSink(this);
 
@@ -157,7 +156,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
          (unsigned)elrsMaxPowerMilliwatts(_config.maxPower),
          elrsDynamicPowerLabel(_config.dynamicPower));
     logf(host,
-         "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; switches configurable on CH5-CH16",
+         "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; all inputs configurable on CH1-CH16",
          (unsigned)_inputRouting.aileronChannel,
          (unsigned)_inputRouting.elevatorChannel,
          (unsigned)_inputRouting.throttleChannel,
@@ -409,19 +408,18 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
         int16_t low = (profile.minimum < profile.maximum) ? profile.minimum : profile.maximum;
         int16_t high = (profile.minimum > profile.maximum) ? profile.minimum : profile.maximum;
         int delta = (int)axes[i] - _stableAxes[i];
-        bool throttleIdle = i == AXIS_THROTTLE &&
-            elrsInputModelThrottleToUs(profile, axes[i], _config.throttleIdleDeadband) == ELRS_INPUT_US_MIN;
-        bool endpointChanged = axes[i] <= low || axes[i] >= high || throttleIdle;
-        if(_haveStableAxes && endpointChanged) {
+        const int16_t incomingUs = (i == AXIS_THROTTLE)
+            ? elrsInputModelThrottleToUs(profile, axes[i], _config.throttleIdleDeadband)
+            : elrsInputModelAxisToUs(profile, axes[i]);
+        bool boundaryChanged = axes[i] <= low || axes[i] >= high || incomingUs == ELRS_INPUT_US_MID ||
+            (i == AXIS_THROTTLE && incomingUs == ELRS_INPUT_US_MIN);
+        if(_haveStableAxes && boundaryChanged) {
             const int16_t heldUs = (i == AXIS_THROTTLE)
                 ? elrsInputModelThrottleToUs(profile, _stableAxes[i], _config.throttleIdleDeadband)
                 : elrsInputModelAxisToUs(profile, _stableAxes[i]);
-            const int16_t incomingUs = (i == AXIS_THROTTLE)
-                ? elrsInputModelThrottleToUs(profile, axes[i], _config.throttleIdleDeadband)
-                : elrsInputModelAxisToUs(profile, axes[i]);
-            endpointChanged = heldUs != incomingUs;
+            boundaryChanged = heldUs != incomingUs;
         }
-        if(!_haveStableAxes || endpointChanged ||
+        if(!_haveStableAxes || boundaryChanged ||
            delta > (int)_config.adcHysteresis || delta < -(int)_config.adcHysteresis) {
             _stableAxes[i] = axes[i];
         }
@@ -691,10 +689,10 @@ void ELRSCrsfCore::resetChannels(uint16_t defaultTicks)
 
 void ELRSCrsfCore::writeGimbalChannels(bool safeOutputs)
 {
-    writeGimbalChannel(_inputRouting.aileronChannel, safeOutputs ? safeAxisTicks(AXIS_AILERON) : axisToTicks(AXIS_AILERON));
-    writeGimbalChannel(_inputRouting.elevatorChannel, safeOutputs ? safeAxisTicks(AXIS_ELEVATOR) : axisToTicks(AXIS_ELEVATOR));
-    writeGimbalChannel(_inputRouting.throttleChannel, safeOutputs ? safeAxisTicks(AXIS_THROTTLE) : axisToTicks(AXIS_THROTTLE));
-    writeGimbalChannel(_inputRouting.rudderChannel, safeOutputs ? safeAxisTicks(AXIS_RUDDER) : axisToTicks(AXIS_RUDDER));
+    writeGimbalChannel(_inputRouting.aileronChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_AILERON));
+    writeGimbalChannel(_inputRouting.elevatorChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_ELEVATOR));
+    writeGimbalChannel(_inputRouting.throttleChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
+    writeGimbalChannel(_inputRouting.rudderChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_RUDDER));
 }
 
 void ELRSCrsfCore::writeGimbalChannel(uint8_t channel, uint16_t ticks)
@@ -717,11 +715,6 @@ bool ELRSCrsfCore::channelClaimedByGimbal(uint8_t channel) const
            _inputRouting.elevatorChannel == channel ||
            _inputRouting.throttleChannel == channel ||
            _inputRouting.rudderChannel == channel;
-}
-
-uint16_t ELRSCrsfCore::safeAxisTicks(uint8_t axis) const
-{
-    return (axis == AXIS_THROTTLE) ? CRSF_CHANNEL_MIN : CRSF_CHANNEL_MID;
 }
 
 uint16_t ELRSCrsfCore::axisToTicks(uint8_t axis) const

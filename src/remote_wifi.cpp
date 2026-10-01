@@ -1756,12 +1756,17 @@ static bool saveParamsCallback(int paramspage)
         for(int i = 0; i < 8; i++) handleMQTTTopMsg(i);
         #endif
         break;
-    case 3:
+    case 3: {
         #ifdef HAVE_CRSF
+        const auto previousSettings = settings;
         crsf_wifi_saveParamsCallback();
-        if(!crsf_wifi_loop_settings()) return false;
+        if(!crsf_wifi_loop_settings()) {
+            settings = previousSettings;
+            return false;
+        }
         #endif
         break;
+    }
     }
     wifiLoopSaveAction |= (1 << (paramspage - 1 + WLA_SET1_B));
     return true;

@@ -108,7 +108,7 @@ bool ELRSCrsfMode::begin(
             config.axisProfiles[i] = elrsDefaultInputAxisProfile();
         }
     }
-    config.inputRouting = elrsSanitizeGimbalRouting(inputRouting);
+    config.inputRouting = inputRouting;
     config.transport.baudRate = elrsCrsfRecommendedBaudRate(packetRateHz);
     config.transport.invertLine = false;
     config.transport.packetRateHz = packetRateHz;

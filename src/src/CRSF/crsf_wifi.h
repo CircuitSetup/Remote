@@ -20,7 +20,7 @@ static void crsfReadSwitchParams();
 
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
-static void getServerParamOneBased(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal);
+static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset);
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
 static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel);
 
@@ -72,11 +72,23 @@ static const char *cDynPowerCustHTMLSrc[4] = {
     ">Off%s1'",
     ">Dyn%s"
 };
-static const char *cChannelCustHTMLSrc[4] = {
+static const char *cChannelCustHTMLSrc[16] = {
     ">CH1%s1'",
     ">CH2%s2'",
     ">CH3%s3'",
-    ">CH4%s"
+    ">CH4%s4'",
+    ">CH5%s5'",
+    ">CH6%s6'",
+    ">CH7%s7'",
+    ">CH8%s8'",
+    ">CH9%s9'",
+    ">CH10%s10'",
+    ">CH11%s11'",
+    ">CH12%s12'",
+    ">CH13%s13'",
+    ">CH14%s14'",
+    ">CH15%s15'",
+    ">CH16%s"
 };
 
 enum CRSFSelectFieldId : uint8_t {
@@ -226,26 +238,26 @@ static void crsf_wifi_saveParamsCallback()
     getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
     getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
     getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
-    getServerParamOneBased("crlch", settings.elrsRollCh, 2, 1, 4, DEF_ELRSROLLCH);
-    getServerParamOneBased("cptch", settings.elrsPitchCh, 2, 1, 4, DEF_ELRSPITCHCH);
-    getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 4, DEF_ELRSTHRCH);
-    getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 4, DEF_ELRSYAWCH);
+    crsfReadInputParam("crlch", settings.elrsRollCh, 2, 1, 16, 1);
+    crsfReadInputParam("cptch", settings.elrsPitchCh, 2, 1, 16, 1);
+    crsfReadInputParam("cthch", settings.elrsThrCh, 2, 1, 16, 1);
+    crsfReadInputParam("cywch", settings.elrsYawCh, 2, 1, 16, 1);
     crsfReadSwitchParams();
     if(opModeCRSF) {
         getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
         getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
-        getServerParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
-        getServerParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 1024);
-        getServerParam("crrhi", settings.elrsRollHigh, 5, 0, 2047, 2047);
-        getServerParam("cptlo", settings.elrsPitchLow, 5, 0, 2047, 0);
-        getServerParam("cptct", settings.elrsPitchCtr, 5, 0, 2047, 1024);
-        getServerParam("cpthi", settings.elrsPitchHigh, 5, 0, 2047, 2047);
-        getServerParam("cthlo", settings.elrsThrLow, 5, 0, 2047, 0);
-        getServerParam("cthct", settings.elrsThrCtr, 5, 0, 2047, 1024);
-        getServerParam("cthhi", settings.elrsThrHigh, 5, 0, 2047, 2047);
-        getServerParam("cywlo", settings.elrsYawLow, 5, 0, 2047, 0);
-        getServerParam("cywct", settings.elrsYawCtr, 5, 0, 2047, 1024);
-        getServerParam("cywhi", settings.elrsYawHigh, 5, 0, 2047, 2047);
+        crsfReadInputParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
+        crsfReadInputParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("crrhi", settings.elrsRollHigh, 5, 0, 2047, 0);
+        crsfReadInputParam("cptlo", settings.elrsPitchLow, 5, 0, 2047, 0);
+        crsfReadInputParam("cptct", settings.elrsPitchCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("cpthi", settings.elrsPitchHigh, 5, 0, 2047, 0);
+        crsfReadInputParam("cthlo", settings.elrsThrLow, 5, 0, 2047, 0);
+        crsfReadInputParam("cthct", settings.elrsThrCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("cthhi", settings.elrsThrHigh, 5, 0, 2047, 0);
+        crsfReadInputParam("cywlo", settings.elrsYawLow, 5, 0, 2047, 0);
+        crsfReadInputParam("cywct", settings.elrsYawCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("cywhi", settings.elrsYawHigh, 5, 0, 2047, 0);
     }
 }
 
@@ -330,7 +342,7 @@ static bool saveCRSFPortalInputSettings()
         const char *value = settings.elrsSwitchCh[i];
         char *end;
         long channel = strtol(value, &end, 10);
-        if(!*value || *end || channel < 5 || channel > 16) return false;
+        if(!*value || *end || channel < 1 || channel > 16) return false;
         switches.channels[i] = (uint8_t)channel;
     }
     if(!elrsIsValidSwitchRouting(switches)) return false;
@@ -473,14 +485,14 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
         "ButtonPack 5", "ButtonPack 6", "ButtonPack 7", "ButtonPack 8"
     };
     String html;
-    html.reserve(8000);
-    html += "<div class='cmp0'><h4 style='margin:12px 0 5px'>Switch Channels</h4><p style='margin:0 0 10px;white-space:normal'><small>Choose a different channel for each input. CH1-CH4 are reserved for gimbals.</small></p>";
+    html.reserve(10000);
+    html += "<div class='cmp0'><h4 style='margin:12px 0 5px'>Switch Channels</h4><p style='margin:0 0 10px;white-space:normal'><small>All inputs can use CH1-CH16. Choose a different channel for each gimbal and switch. ELRS RF mode determines receiver channel availability and resolution. Keep steering and throttle on CH1-CH4 in Hybrid/Wide; use Full Resolution 16ch for all 16 input channels.</small></p>";
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         char name[6];
         snprintf(name, sizeof(name), "csw%d", i);
         html += "<div class='cmp0'><label class='mp0' for='"; html += name; html += "'>"; html += labels[i]; html += " target channel</label><select class='sel0' data-elrs-switch id='";
         html += name; html += "' name='"; html += name; html += "'>";
-        for(int channel = 5; channel <= 16; channel++) {
+        for(int channel = 1; channel <= 16; channel++) {
             char value[3];
             snprintf(value, sizeof(value), "%d", channel);
             html += "<option value='"; html += value; html += "'";
@@ -489,7 +501,7 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
         }
         html += "</select></div>";
     }
-    html += "</div><script>(function(){var s=document.querySelectorAll('[data-elrs-switch]');function v(){var n={};for(var i=0;i<s.length;i++)n[s[i].value]=(n[s[i].value]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[s[i].value]>1?'Choose a different channel for each switch.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
+    html += "</div><script>(function(){var s=document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]');function c(e){return Number(e.value)+(e.hasAttribute('data-elrs-switch')?0:1);}function v(){var n={};for(var i=0;i<s.length;i++)n[c(s[i])]=(n[c(s[i])]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[c(s[i])]>1?'Choose a different channel for each input.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
     if(op == WM_CP_LEN) {
         wmLenBuf = html.length() + 1;
         return (const char *)&wmLenBuf;
@@ -502,15 +514,15 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
 
 static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
 {
-    const char *html[6];
+    const char *html[18];
 
     html[0] = label;
     html[1] = id;
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < 16; i++) {
         html[i + 2] = cChannelCustHTMLSrc[i];
     }
 
-    return wmBuildSelectOneBased(dest, op, html, 6, setting, false);
+    return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
 }
 
 struct CRSFGimbalCalField {
@@ -541,7 +553,7 @@ static void wmAppendCRSFCALPoint(String &html,
     html += inputId;
     html += "' maxlength='4' value='";
     html += value;
-    html += "' type='number' min='0' max='2047'><button type='button' onclick=\"elrsCapture('";
+    html += "' type='number' min='0' max='2047' required><button type='button' onclick=\"elrsCapture('";
     html += liveId;
     html += "','";
     html += inputId;
@@ -712,12 +724,16 @@ static void handleELRSRawRead()
     wm.server->send(200, "application/json", buf);
 }
 
-static void getServerParamOneBased(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal)
+static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset)
 {
-    char tempBuf[4];
-
-    getServerParam(name, tempBuf, sizeof(tempBuf) - 1, minval - 1, maxval - 1, defaultVal - 1);
-    snprintf(destBuf, length + 1, "%d", atoi(tempBuf) + 1);
+    String value = wm.server->arg(name);
+    const char *text = value.c_str();
+    char *end;
+    long parsed = strtol(text, &end, 10);
+    bool valid = *text && !*end && value.length() == strlen(text) &&
+        parsed >= minval - offset && parsed <= maxval - offset;
+    // Keep invalid submissions invalid until the atomic input validator rejects them.
+    snprintf(destBuf, length + 1, "%ld", valid ? parsed + offset : -1L);
 }
 
 #endif

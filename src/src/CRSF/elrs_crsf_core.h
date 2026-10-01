@@ -86,7 +86,7 @@ struct ELRSCrsfCoreConfig {
     uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
     uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT] = {};
-    ELRSGimbalRouting inputRouting = {};
+    ELRSGimbalRouting inputRouting = elrsDefaultGimbalRouting();
     ELRSSwitchRouting switchRouting = elrsDefaultSwitchRouting();
     ELRSCrsfTransportConfig transport;
 };
@@ -159,7 +159,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void writeGimbalChannel(uint8_t channel, uint16_t ticks);
         void writeFixedChannelIfUnclaimed(uint8_t channel, uint16_t ticks);
         bool channelClaimedByGimbal(uint8_t channel) const;
-        uint16_t safeAxisTicks(uint8_t axis) const;
         uint16_t axisToTicks(uint8_t axis) const;
 
         void applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn);

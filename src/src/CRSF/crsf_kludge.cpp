@@ -125,8 +125,7 @@ static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         settings.axisProfile[i] = elrsSanitizeInputAxisProfile(settings.axisProfile[i]);
     }
-    settings.gimbalRouting = elrsSanitizeGimbalRouting(settings.gimbalRouting);
-    settings.switchRouting = elrsSanitizeSwitchRouting(settings.switchRouting);
+    elrsSanitizeInputRouting(settings.gimbalRouting, settings.switchRouting);
     if(settings.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) settings.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
     if(settings.throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) settings.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_MAX;
 }
@@ -300,16 +299,7 @@ void loadELRSInputProfiles(ELRSInputAxisProfile *profiles, int count)
 
 void saveELRSInputProfiles(const ELRSInputAxisProfile *profiles, int count)
 {
-    if(!profiles) {
-        return;
-    }
-
-    count = clampProfileCount(count);
-    for(int i = 0; i < count; i++) {
-        crsfSettings.axisProfile[i] = elrsSanitizeInputAxisProfile(profiles[i]);
-    }
-    sanitizeCrsfSettings(crsfSettings);
-    crsf_save_settings(true);
+    if(profiles) saveELRSInputConfig(profiles, count);
 }
 
 ELRSGimbalRouting loadELRSGimbalRouting()
@@ -335,27 +325,31 @@ void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRo
 
 void saveELRSGimbalRouting(const ELRSGimbalRouting &routing)
 {
-    crsfSettings.gimbalRouting = elrsSanitizeGimbalRouting(routing);
-    sanitizeCrsfSettings(crsfSettings);
-    crsf_save_settings(true);
+    saveELRSInputConfig(nullptr, 0, &routing);
 }
 
 bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing,
                          const uint16_t *adcHysteresis, const uint16_t *throttleIdleDeadband,
                          const ELRSSwitchRouting *switchRouting)
 {
-    if(switchRouting && !elrsIsValidSwitchRouting(*switchRouting)) return false;
+    count = clampProfileCount(count);
+    if(profiles) {
+        for(int i = 0; i < count; i++) {
+            if(!elrsIsValidInputAxisProfile(profiles[i])) return false;
+        }
+    }
+    if(!elrsIsValidInputRouting(routing ? *routing : crsfSettings.gimbalRouting,
+                               switchRouting ? *switchRouting : crsfSettings.switchRouting)) return false;
     const ELRSCrsfSettingsBlob previous = crsfSettings;
     const uint32_t previousHash = crsfSettingsHash;
     if(profiles) {
-        count = clampProfileCount(count);
         for(int i = 0; i < count; i++) {
-            crsfSettings.axisProfile[i] = elrsSanitizeInputAxisProfile(profiles[i]);
+            crsfSettings.axisProfile[i] = profiles[i];
         }
     }
 
     if(routing) {
-        crsfSettings.gimbalRouting = elrsSanitizeGimbalRouting(*routing);
+        crsfSettings.gimbalRouting = *routing;
     }
     if(adcHysteresis) crsfSettings.adcHysteresis = *adcHysteresis;
     if(throttleIdleDeadband) crsfSettings.throttleIdleDeadband = *throttleIdleDeadband;
