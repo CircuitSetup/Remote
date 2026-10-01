@@ -1001,9 +1001,15 @@ Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a c
 
 Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
 
+##### &#9193; Travel Limits
+
+Each gimbal has a **Lower limit** (`1000` through `1500`) and an **Upper limit** (`1500` through `2000`), in the existing RC-equivalent microsecond convention. Center stays at `1500`. Defaults of `1000`/`2000` preserve full travel. The firmware scales each half of the stick movement to the selected limits, then clamps the output before conversion to CRSF ticks; `1200`/`1800`, for example, maps the full stick range to `1200`/`1500`/`1800`. Both limits at `1500` hold the axis at neutral.
+
+Limits follow the physical input when channels are remapped. Reversal changes which stick direction reaches the lower or upper output; the numeric limits stay the same. ADC calibration and live readings remain separate. Fault and self-test outputs stay at neutral, including throttle. Save the page to apply changes after restart. Older settings receive the full-travel defaults, and saving calibration preserves the selected limits. Check receiver travel with the actual servo/linkage to choose safe endpoints.
+
 ##### &#9193; ELRS/CRSF Gimbal Calibration
 
-This section shows live raw ADC readings for the four gimbals. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those raw values are stored and used as the real three-point calibration for CRSF output:
+This section shows live ADC readings after filtering and jitter tolerance, before throttle idle adjustments, calibration mapping, and output travel limits. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those stabilized ADC counts are stored and used as the three-point calibration before Travel Limits:
 
 - saved low -> `1000`
 - saved center -> `1500`

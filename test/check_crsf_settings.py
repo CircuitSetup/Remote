@@ -107,6 +107,7 @@ portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for s
     'static bool saveCRSFPortalInputSettings()',
 ])
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
+limits_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFOutputLimits(const char *dest, int op)')
 switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchParams()')
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
 select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
@@ -124,7 +125,17 @@ post_parser = '\n'.join(line for line in (ROOT / 'src/remote_settings.h').read_t
 post_parser += function('src/remote_wifi.cpp', 'static bool isNumString(char *s)')
 post_parser += function('src/remote_wifi.cpp', 'static void getServerParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal)')
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset)')
+post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadOutputLimitParams()')
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsf_wifi_saveParamsCallback()')
+portal_http = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
+portal_http += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
+portal_http += function('src/remote_wifi.cpp', 'static bool saveParamsCallback(int paramspage)')
+portal_http += function('src/src/WiFiManager/WiFiManager.cpp', 'void WiFiManager::_handleParamSave(int aidx, const char *title)')
+storage_moves = function('src/remote_settings.cpp', 'void moveSettings()')
+storage_moves += function('src/remote_settings.cpp', 'static void reInstallFlashFS()')
+style_source = (ROOT / 'src/src/WiFiManager/wm_strings_en.h').read_text()
+portal_style = '#define HTTP_BLUE "#4f529d"\n#define HTTP_RED "#be5c9c"\n#define HTTP_BUTTON_TEXT "#fff"\n'
+portal_style += style_source[style_source.index('static const char HTTP_STYLE[]'):style_source.index('\n#ifndef WM_50S_STYLE', style_source.index('static const char HTTP_STYLE[]'))].replace('PROGMEM', '')
 storage_fixture = r'''
 #include <cassert>
 #include <cstring>
@@ -140,6 +151,8 @@ using String = std::string;
 constexpr int WM_CP_DESTROY = 0, WM_CP_LEN = 1;
 size_t wmLenBuf;
 std::vector<uint8_t> stored;
+std::vector<uint8_t> media[2];
+bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
 bool loadConfigFile(const char *, uint8_t *data, size_t size, int &valid, int) {
     valid = min((int)size, (int)stored.size());
@@ -150,6 +163,7 @@ bool loadConfigFile(const char *, uint8_t *data, size_t size, int &valid, int) {
 bool saveConfigFile(const char *, uint8_t *data, size_t size, int) {
     if(!storageWriteOk) return false;
     stored.assign(data, data + size);
+    media[configOnSD] = stored;
     return true;
 }
 uint32_t calcHash(uint8_t *data, int size) {
@@ -159,6 +173,8 @@ uint32_t calcHash(uint8_t *data, int size) {
 }
 struct {
     char opMode[2] = "1", elrsPktRate[2] = "3", elrsSpdUnit[2] = "0";
+    char crsfap[2] = "0", CfgOnSD[2] = "0";
+    char playTUT[2], musicFolder[2], refBut[2], oorst[2], ooTT[2], resAT[2];
     char elrsTlmRatio[2] = "0", elrsMaxPower[2] = "3", elrsDynPower[2] = "0";
     char elrsRollCh[3] = "1", elrsPitchCh[3] = "2", elrsThrCh[3] = "3", elrsYawCh[3] = "4";
     char elrsRollRev[2] = "0", elrsPitchRev[2] = "0", elrsThrRev[2] = "0", elrsYawRev[2] = "0";
@@ -168,11 +184,16 @@ struct {
     char elrsYawLow[6], elrsYawCtr[6], elrsYawHigh[6];
     char elrsAdcHysteresis[3] = "5", elrsThrIdleDeadband[3] = "5";
     char elrsSwitchCh[12][3] = {"5","6","7","8","9","10","11","12","13","14","15","16"};
+    char elrsOutputMin[4][5] = {"1000","1000","1000","1000"};
+    char elrsOutputMax[4][5] = {"2000","2000","2000","2000"};
 } settings;
 bool haveNewBoard = true, opModeCRSF = true;
 struct TestServer {
     std::string name, value;
     std::map<std::string, std::string> args;
+    int status = 0;
+    String body;
+    void send(int code, const char *, const char *content) { status = code; body = content; }
     bool hasArg(const char *key) { return name == key || args.count(key); }
     String arg(const char *key) {
         if(name == key) return value;
@@ -180,7 +201,43 @@ struct TestServer {
         return found == args.end() ? String() : found->second;
     }
 } server;
-struct { TestServer *server; } wm = {&server};
+#define WLA_SET1_B 3
+#define DEF_TUT 0
+#define DEF_REF_BUT 0
+#define DEF_OORST 0
+#define DEF_OO_TT 0
+#define DEF_RES_AT 0
+#define FPSTR(value) value
+constexpr int WM_LP_PREHTTPSEND = 1, WM_LP_POSTHTTPSEND = 2;
+const char HTTP_PARAMSAVED[] = "Settings saved.", HTTP_PARAMSAVED_END[] = " Rebooting.", HTTP_END[] = "</html>";
+struct WiFiManager {
+    TestServer *server = &::server;
+    int _params[4] = {}, _paramsCount[4] = {};
+    bool incGFXMSG = false;
+    bool (*_saveparamscallback)(int) = nullptr;
+    void (*_gpcallback)(int) = nullptr;
+    void doParamSave(int, int) {}
+    int getHTTPHeadLength(const char *, bool) { return 6; }
+    void getHTTPHeadNew(String &page, const char *, bool) { page += "<html>"; }
+    void HTTPSend(const String &page, bool) { server->send(200, "text/html", page.c_str()); }
+    void _handleParamSave(int aidx, const char *title);
+} wm;
+struct WiFiManagerParameter { char *value; const char *getValue() { return value; } };
+WiFiManagerParameter custom_crsfap = {settings.crsfap}, custom_crsfrr = {settings.elrsRollRev},
+    custom_crsfprv = {settings.elrsPitchRev}, custom_crsftrv = {settings.elrsThrRev}, custom_crsfyrv = {settings.elrsYawRev};
+unsigned int wifiLoopSaveAction = 0;
+struct { void println(const char *) {} } Serial;
+void requestELRSModuleConfigUpdate(uint8_t, uint8_t, uint8_t) {}
+int mainConfigHash = 0, ipHash = 0;
+const char *secCfgName = "/secondary";
+struct { void remove(const char *) {} } MYNVS;
+void flushDelayedSave() {}
+void saveSecSettings(bool) {}
+void deleteFileFromSD(const char *) {}
+void saveId() {}
+void write_settings() {}
+void writeIpSettings() {}
+void formatFlashFS(bool) { media[0].clear(); }
 '''
 storage_cases = r'''
 int main() {
@@ -260,7 +317,7 @@ int main() {
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(mapped.size() == previous.size() + 12);
+    assert(previous.size() == 56 && mapped.size() == 84);
     for(int partial = 0; partial < 12; partial++) {
         stored = mapped;
         stored.resize(previous.size() + partial);
@@ -517,9 +574,206 @@ int main() {
     loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches);
     assert(routing.aileronChannel == 16 && switches.channels[1] == 1);
     puts("CRSF actual POST parser rejects blank/malformed calibration and channels, then accepts corrected CH16 swap");
+    // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
+    assert(sizeof(ELRSInputAxisProfile) == 12);
+    assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
+    assert(sizeof(ELRSCrsfSettingsBlob) == 84 && sizeof(ELRSOutputLimits) == 4);
+    const ELRSOutputLimits limits[4] = {{1100,1700},{1200,1800},{1300,1900},{1400,1600}};
+    ELRSOutputLimits loaded[4];
+    assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits));
+    const auto limitedBlob = stored;
+    for(int tail = 0; tail < 16; tail++) {
+        stored = limitedBlob;
+        stored.resize(68 + tail);
+        crsf_load_settings();
+        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+        assert(memcmp(&crsfSettings, limitedBlob.data(), 68) == 0);
+        for(int axis = 0; axis < 4; axis++) {
+            assert(loaded[axis].minimumUs == (tail >= (axis+1)*4 ? limits[axis].minimumUs : 1000));
+            assert(loaded[axis].maximumUs == (tail >= (axis+1)*4 ? limits[axis].maximumUs : 2000));
+        }
+    }
+    for(int version = 0; version < 4; version++) {
+        if(version == 0) stored.assign((const uint8_t *)calibration, (const uint8_t *)calibration + sizeof(calibration));
+        else {
+            stored = limitedBlob;
+            stored.resize(version == 1 ? 52 : version == 2 ? 56 : 68);
+        }
+        crsf_load_settings();
+        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+        for(int axis = 0; axis < 4; axis++) assert(loaded[axis].minimumUs == 1000 && loaded[axis].maximumUs == 2000);
+    }
+    for(int corrupt = 0; corrupt < 4; corrupt++) {
+        stored = limitedBlob;
+        const uint16_t invalidMinimum = 1501;
+        memcpy(stored.data() + 68 + corrupt*4, &invalidMinimum, 2);
+        crsf_load_settings();
+        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+        assert(memcmp(&crsfSettings, limitedBlob.data(), 68) == 0);
+        for(int axis = 0; axis < 4; axis++) {
+            assert(loaded[axis].minimumUs == (axis == corrupt ? 1000 : limits[axis].minimumUs));
+            assert(loaded[axis].maximumUs == (axis == corrupt ? 2000 : limits[axis].maximumUs));
+        }
+    }
+    stored = limitedBlob;
+    crsf_load_settings();
+    const auto limitedSettings = crsfSettings;
+    const auto limitedHash = crsfSettingsHash;
+    for(int axis = 0; axis < 4; axis++) {
+        ELRSOutputLimits invalidLimits[4];
+        memcpy(invalidLimits, limits, sizeof(limits));
+        invalidLimits[axis] = {1501,1700};
+        assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, invalidLimits));
+        assert(stored == limitedBlob && crsfSettingsHash == limitedHash);
+        assert(memcmp(&crsfSettings, &limitedSettings, sizeof(crsfSettings)) == 0);
+    }
+    storageWriteOk = false;
+    const ELRSOutputLimits locked[4] = {{1500,1500},{1500,1500},{1500,1500},{1500,1500}};
+    assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, locked));
+    assert(stored == limitedBlob && crsfSettingsHash == limitedHash);
+    assert(memcmp(&crsfSettings, &limitedSettings, sizeof(crsfSettings)) == 0);
+    storageWriteOk = true;
+    assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, locked));
+    crsf_load_settings();
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+    assert(memcmp(loaded, locked, sizeof(locked)) == 0);
+    stored = limitedBlob;
+    crsf_load_settings();
+    assert(saveELRSCalibration(calibration, 4));
+    loadELRSInputConfig(profiles, 4);
+    saveELRSInputProfiles(profiles, 4);
+    loadELRSInputConfig(nullptr, 0, &routing);
+    saveELRSGimbalRouting(routing);
+    crsf_load_settings();
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+    assert(memcmp(loaded, limits, sizeof(limits)) == 0);
+    assert(memcmp(&crsfSettings.switchRouting, &limitedSettings.switchRouting, sizeof(switches)) == 0);
+    assert(crsfSettings.adcHysteresis == limitedSettings.adcHysteresis && crsfSettings.throttleIdleDeadband == limitedSettings.throttleIdleDeadband);
+    puts("CRSF output limits round trip, all legacy/partial tails, validation and calibration preservation passed");
+    syncCRSFPortalBuffers();
+    const char *limitsPage = wmBuildCRSFOutputLimits(nullptr, 2);
+    assert(limitsPage && strstr(limitsPage, "Travel Limits"));
+    const char *axisNames[] = {"Aileron", "Elevator", "Rudder", "Throttle"};
+    for(int axis = 0; axis < 4; axis++) {
+        char legend[40]; snprintf(legend, sizeof(legend), "<legend>%s</legend>", axisNames[axis]);
+        const char *row = strstr(limitsPage, legend);
+        assert(row);
+        std::string block(row, strstr(row, "</fieldset>") - row);
+        for(int side = 0; side < 2; side++) {
+            char field[20], value[20];
+            snprintf(field, sizeof(field), "name='cout%d%s'", axis, side ? "hi" : "lo");
+            snprintf(value, sizeof(value), "value='%u'", side ? limits[axis].maximumUs : limits[axis].minimumUs);
+            assert(block.find(field) != std::string::npos && block.find(value) != std::string::npos);
+        }
+        assert(block.find("Lower limit") != std::string::npos && block.find("Upper limit") != std::string::npos);
+        assert(block.find("min='1000' max='1500'") != std::string::npos);
+        assert(block.find("min='1500' max='2000'") != std::string::npos);
+        assert(block.find("Center") != std::string::npos && block.find("value='1500' readonly") != std::string::npos);
+        assert(block.find("required") != std::string::npos);
+    }
+    assert(*(const size_t *)wmBuildCRSFOutputLimits(nullptr, WM_CP_LEN) == strlen(limitsPage) + 1);
+    if(const char *previewPath = getenv("CRSF_LIMITS_PREVIEW")) {
+        FILE *preview = fopen(previewPath, "w");
+        assert(preview);
+        fprintf(preview, "<!doctype html><html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>ELRS travel limits</title><script>%s.cmp0{margin:0;padding:0}</style><div id='wrap'><form>%s<button type='submit'>Save</button></form></div></html>", HTTP_STYLE, limitsPage);
+        fclose(preview);
+    }
+    assert(wmBuildCRSFOutputLimits(limitsPage, WM_CP_DESTROY) == nullptr);
+    const auto beforeLimitsPost = stored;
+    const auto beforeLimitsSettings = crsfSettings;
+    const auto beforeLimitsHash = crsfSettingsHash;
+    const std::string badLimits[] = {"", "+1200", "-1200", " 1200", "1200 ", "1200x", "1200.0", "1e03", "01200", "999", "9999", "99999999999999999999", std::string("1200\0x",6)};
+    for(int axis = 0; axis < 4; axis++) {
+        for(int side = 0; side < 2; side++) {
+            char name[8]; snprintf(name, sizeof(name), "cout%d%s", axis, side ? "hi" : "lo");
+            for(const auto &bad : badLimits) {
+                preparePost();
+                server.args[name] = bad;
+                crsf_wifi_saveParamsCallback();
+                assert(!saveCRSFPortalInputSettings());
+                assert(stored == beforeLimitsPost && crsfSettingsHash == beforeLimitsHash);
+                assert(memcmp(&crsfSettings, &beforeLimitsSettings, sizeof(crsfSettings)) == 0);
+            }
+            preparePost();
+            server.args[name] = side ? "1499" : "1501";
+            crsf_wifi_saveParamsCallback();
+            assert(!saveCRSFPortalInputSettings());
+            assert(stored == beforeLimitsPost && crsfSettingsHash == beforeLimitsHash);
+        }
+    }
+    preparePost();
+    memset(settings.elrsOutputMin, 0, sizeof(settings.elrsOutputMin));
+    memset(settings.elrsOutputMax, 0, sizeof(settings.elrsOutputMax));
+    crsf_wifi_saveParamsCallback(); // Absent fields must refresh saved limits, not stale buffers.
+    assert(saveCRSFPortalInputSettings());
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+    assert(memcmp(loaded, limits, sizeof(limits)) == 0);
+    preparePost();
+    server.args["cout2lo"] = "1500";
+    server.args["cout2hi"] = "1500";
+    crsf_wifi_saveParamsCallback();
+    storageWriteOk = false;
+    assert(!saveCRSFPortalInputSettings());
+    assert(stored == beforeLimitsPost && crsfSettingsHash == beforeLimitsHash);
+    storageWriteOk = true;
+    assert(saveCRSFPortalInputSettings());
+    crsf_load_settings();
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+    assert(loaded[2].minimumUs == 1500 && loaded[2].maximumUs == 1500);
+    for(int axis : {0,1,3}) assert(memcmp(&loaded[axis], &limits[axis], sizeof(ELRSOutputLimits)) == 0);
+    puts("CRSF travel controls, strict POST parsing, missing fields and write retry passed");
+    wm._saveparamscallback = saveParamsCallback;
+    const auto beforeHttpBlob = stored;
+    const auto beforeHttpInputs = crsfSettings;
+    const auto beforeHttpHash = crsfSettingsHash;
+    for(const auto &bad : badLimits) {
+        preparePost();
+        const auto beforeHttpSettings = settings;
+        server.args["cout0lo"] = bad;
+        wm._handleParamSave(3, "ELRS");
+        assert(server.status == 400 && server.body.find("Settings saved.") == String::npos);
+        assert(wifiLoopSaveAction == 0 && stored == beforeHttpBlob && crsfSettingsHash == beforeHttpHash);
+        assert(memcmp(&settings, &beforeHttpSettings, sizeof(settings)) == 0);
+        assert(memcmp(&crsfSettings, &beforeHttpInputs, sizeof(crsfSettings)) == 0);
+    }
+    preparePost();
+    const auto beforeHttpSettings = settings;
+    server.args["cout0lo"] = "1250";
+    storageWriteOk = false;
+    wm._handleParamSave(3, "ELRS");
+    assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == beforeHttpBlob);
+    assert(memcmp(&settings, &beforeHttpSettings, sizeof(settings)) == 0);
+    assert(memcmp(&crsfSettings, &beforeHttpInputs, sizeof(crsfSettings)) == 0 && crsfSettingsHash == beforeHttpHash);
+    storageWriteOk = true;
+    wm._handleParamSave(3, "ELRS");
+    assert(server.status == 200 && server.body.find("Settings saved.") != String::npos && wifiLoopSaveAction == 32);
+    crsf_load_settings();
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+    assert(loaded[0].minimumUs == 1250 && loaded[0].maximumUs == 1700 && loaded[2].minimumUs == 1500);
+    puts("CRSF actual travel-limit POST through HTTP response, rollback and reboot scheduling passed");
+    const auto beforeMove = stored;
+    for(int from = 0; from < 2; from++) {
+        configOnSD = from;
+        settings.CfgOnSD[0] = from ? '0' : '1';
+        media[from] = beforeMove;
+        media[!from].clear();
+        moveSettings();
+        assert(media[!from] == beforeMove && media[from] == beforeMove && configOnSD == (bool)from);
+        storageWriteOk = false;
+        media[!from].clear();
+        moveSettings();
+        assert(media[!from].empty() && media[from] == beforeMove && configOnSD == (bool)from);
+        storageWriteOk = true;
+        moveSettings();
+        assert(media[!from] == beforeMove);
+    }
+    configOnSD = false;
+    reInstallFlashFS();
+    assert(media[0] == beforeMove && stored == beforeMove);
+    puts("CRSF real 84-byte settings preserve limits, calibration, tolerances and mappings across Flash/SD migration and reinstall");
 }
 '''
-compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + switch_post + switch_page + select_page + calibration_page + post_parser + storage_cases, ['elrs_input_model.cpp'])
+compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + storage_cases, ['elrs_input_model.cpp'])
 
 # Exercise the actual HTTP handler and the application's reboot scheduling callback.
 save_signature = 'static bool saveParamsCallback(int paramspage)'
