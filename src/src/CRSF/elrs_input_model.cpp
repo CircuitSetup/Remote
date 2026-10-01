@@ -195,3 +195,27 @@ ELRSGimbalRouting elrsSanitizeGimbalRouting(const ELRSGimbalRouting &routing)
 
     return elrsDefaultGimbalRouting();
 }
+
+ELRSSwitchRouting elrsDefaultSwitchRouting()
+{
+    ELRSSwitchRouting routing;
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) routing.channels[i] = 5 + i;
+    return routing;
+}
+
+bool elrsIsValidSwitchRouting(const ELRSSwitchRouting &routing)
+{
+    uint16_t used = 0;
+    for(uint8_t channel : routing.channels) {
+        if(channel < 5 || channel > 16) return false;
+        uint16_t bit = (uint16_t)1 << (channel - 5);
+        if(used & bit) return false;
+        used |= bit;
+    }
+    return true;
+}
+
+ELRSSwitchRouting elrsSanitizeSwitchRouting(const ELRSSwitchRouting &routing)
+{
+    return elrsIsValidSwitchRouting(routing) ? routing : elrsDefaultSwitchRouting();
+}

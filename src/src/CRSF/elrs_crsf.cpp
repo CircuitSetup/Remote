@@ -47,7 +47,8 @@ bool ELRSCrsfMode::begin(
     bool levelMeterOnFakePower,
     void (*fpOnWifiHandler)(bool),
     uint16_t adcHysteresis,
-    uint16_t throttleIdleDeadband)
+    uint16_t throttleIdleDeadband,
+    const ELRSSwitchRouting *switchRouting)
 {
     ELRSCrsfCoreConfig config;
 
@@ -96,6 +97,7 @@ bool ELRSCrsfMode::begin(
     config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
     config.adcHysteresis = adcHysteresis;
     config.throttleIdleDeadband = throttleIdleDeadband;
+    if(switchRouting) config.switchRouting = *switchRouting;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         if(axisProfiles) {
             config.axisProfiles[i] = elrsSanitizeInputAxisProfile(axisProfiles[i]);

@@ -87,6 +87,7 @@ struct ELRSCrsfCoreConfig {
     uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT] = {};
     ELRSGimbalRouting inputRouting = {};
+    ELRSSwitchRouting switchRouting = elrsDefaultSwitchRouting();
     ELRSCrsfTransportConfig transport;
 };
 

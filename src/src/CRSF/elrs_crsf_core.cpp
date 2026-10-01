@@ -83,6 +83,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
 {
     _config = config;
+    _config.switchRouting = elrsSanitizeSwitchRouting(config.switchRouting);
     if(_config.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) _config.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
     if(_config.throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) _config.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_MAX;
     _logHost = &host;
@@ -157,7 +158,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
          (unsigned)elrsMaxPowerMilliwatts(_config.maxPower),
          elrsDynamicPowerLabel(_config.dynamicPower));
     logf(host,
-         "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; fixed inputs fill unclaimed channels",
+         "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; switches configurable on CH5-CH16",
          (unsigned)_inputRouting.aileronChannel,
          (unsigned)_inputRouting.elevatorChannel,
          (unsigned)_inputRouting.throttleChannel,
@@ -635,7 +636,7 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     resetChannels(CRSF_CHANNEL_MIN);
     if(_selfTestActive) {
         writeGimbalChannels(true);
-        writeFixedChannelIfUnclaimed(5, CRSF_CHANNEL_MAX);
+        writeFixedChannelIfUnclaimed(_config.switchRouting.channels[0], CRSF_CHANNEL_MAX);
         return;
     }
 
@@ -645,13 +646,13 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
         writeGimbalChannels(false);
     }
 
-    writeFixedChannelIfUnclaimed(5, stopOn ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
-    writeFixedChannelIfUnclaimed(6, fakePowerOn ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
-    writeFixedChannelIfUnclaimed(7, buttonAOn ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
-    writeFixedChannelIfUnclaimed(8, buttonBOn ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
+    const bool switches[] = {stopOn, fakePowerOn, buttonAOn, buttonBOn};
+    for(int i = 0; i < 4; i++) {
+        writeFixedChannelIfUnclaimed(_config.switchRouting.channels[i], switches[i] ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
+    }
 
     for(int i = 0; i < 8; i++) {
-        writeFixedChannelIfUnclaimed((uint8_t)(9 + i), (packStates & (1 << i)) ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
+        writeFixedChannelIfUnclaimed(_config.switchRouting.channels[4 + i], (packStates & (1 << i)) ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
     }
 }
 

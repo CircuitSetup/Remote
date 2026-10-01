@@ -2547,6 +2547,75 @@ static void test_throttle_idle_band_preserves_narrow_profiles()
     TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1020, 32));
 }
 
+static void test_switch_mapping_routes_each_input_without_leaking_old_channels()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) config.switchRouting.channels[i] = 5 + (i + 3) % 12;
+    core.begin(host, config, 0);
+    for(int input = 0; input < ELRS_SWITCH_INPUT_COUNT; input++) {
+        host.stop = input == 0;
+        host.fakePower = input == 1;
+        host.buttonA = input == 2;
+        host.buttonB = input == 3;
+        host.packStates = input >= 4 ? 1 << (input - 4) : 0;
+        core.loop(host, 20 * (input + 1), 0);
+        for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+            TEST_ASSERT_EQUAL_UINT16(i == input ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
+        }
+        for(int i = 0; i < 4; i++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(i));
+        TEST_ASSERT_EQUAL(host.stop, host.stopLed);
+        TEST_ASSERT_EQUAL(host.fakePower, core.fakePowerOn());
+    }
+    host.axesAvailable = false;
+    core.loop(host, 500, 0);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[11] - 1));
+}
+
+static void test_switch_mapping_preserves_self_test_and_buttonpack_fallback()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) config.switchRouting.channels[i] = 16 - i;
+    host.packAvailable = false;
+    core.begin(host, config, 0);
+    core.loop(host, 200, 0);
+    for(int i = 4; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(config.switchRouting.channels[i] - 1));
+    host.packAvailable = true;
+    host.packStates = 1;
+    core.loop(host, 220, 0);
+    host.packAvailable = false;
+    core.loop(host, 500, 0);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[4] - 1));
+    core.startSelfTest(500);
+    core.loop(host, 520, 0);
+    for(int i = 0; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(i == 0 ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
+}
+
+static void test_switch_mapping_rejects_duplicates_and_reserved_channels()
+{
+    ELRSSwitchRouting routing = elrsDefaultSwitchRouting();
+    TEST_ASSERT_TRUE(elrsIsValidSwitchRouting(routing));
+    for(int i = 0; i < 12; i++) TEST_ASSERT_EQUAL_UINT8(5 + i, routing.channels[i]);
+    const uint8_t invalid[] = {0, 4, 17, 255, 6};
+    for(uint8_t channel : invalid) {
+        routing = elrsDefaultSwitchRouting();
+        routing.channels[0] = channel;
+        TEST_ASSERT_FALSE(elrsIsValidSwitchRouting(routing));
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.switchRouting = routing;
+        host.stop = true;
+        core.begin(host, config, 0);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
+        TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(5));
+    }
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -2554,6 +2623,9 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_switch_mapping_routes_each_input_without_leaking_old_channels);
+    RUN_TEST(test_switch_mapping_preserves_self_test_and_buttonpack_fallback);
+    RUN_TEST(test_switch_mapping_rejects_duplicates_and_reserved_channels);
     RUN_TEST(test_throttle_idle_entry_bypasses_hysteresis);
     RUN_TEST(test_throttle_idle_band_preserves_center_deadband_endpoints);
     RUN_TEST(test_input_tolerances_are_adjustable_and_can_be_disabled);

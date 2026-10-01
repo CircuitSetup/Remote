@@ -36,7 +36,8 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             bool levelMeterOnFakePower,
             void (*fpOnWifiHandler)(bool),
             uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT,
-            uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT
+            uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT,
+            const ELRSSwitchRouting *switchRouting = NULL
         );
 
         void loop(int battWarn);
