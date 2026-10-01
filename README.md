@@ -958,7 +958,7 @@ The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF
 
 Calibration for these gimbals can now be done directly in the portal. The page shows live filtered ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture filtered `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
 
-Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
+Stop, FakePower, O.O, RESET, and ButtonPack retain their existing local behavior and switch polarity. Their outgoing channels can be assigned in the **Switch channels** section.
 
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
@@ -995,7 +995,13 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
+Each gimbal must use a different channel from CH1 through CH4. CH5-CH16 are reserved for the switch inputs.
+
+##### &#9193; Switch channels
+
+Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH5 through CH16. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap two inputs, change both selectors before saving. Duplicate assignments are rejected. Changes take effect after the portal saves and restarts the Remote.
+
+Older settings files keep these default switch assignments. Saving gimbal calibration preserves custom switch assignments. The display continues to use its existing telemetry selection.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 
@@ -1056,7 +1062,7 @@ The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF
 
 Calibration for these gimbals can now be done directly in the portal. The page shows live filtered ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture filtered `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
 
-Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
+Stop, FakePower, O.O, RESET, and ButtonPack retain their existing local behavior and switch polarity. Their outgoing channels can be assigned in the **Switch channels** section.
 
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
@@ -1093,7 +1099,13 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
+Each gimbal must use a different channel from CH1 through CH4. CH5-CH16 are reserved for the switch inputs.
+
+##### &#9193; Switch channels
+
+Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH5 through CH16. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap two inputs, change both selectors before saving. Duplicate assignments are rejected. Changes take effect after the portal saves and restarts the Remote.
+
+Older settings files keep these default switch assignments. Saving gimbal calibration preserves custom switch assignments. The display continues to use its existing telemetry selection.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 

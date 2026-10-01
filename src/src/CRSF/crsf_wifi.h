@@ -15,6 +15,8 @@ static const char *wmBuildCRSFPC(const char *dest, int op);
 static const char *wmBuildCRSFTC(const char *dest, int op);
 static const char *wmBuildCRSFYC(const char *dest, int op);
 static const char *wmBuildCRSFCAL(const char *dest, int op);
+static const char *wmBuildCRSFSwitchMap(const char *dest, int op);
+static void crsfReadSwitchParams();
 
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
@@ -170,7 +172,7 @@ WiFiManagerParameter custom_crsftc(wmBuildCRSFTC);
 WiFiManagerParameter custom_crsftrv("Reverse Throttle", settings.elrsThrRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfyc(wmBuildCRSFYC);
 WiFiManagerParameter custom_crsfyrv("Reverse Rudder", settings.elrsYawRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
-WiFiManagerParameter custom_crsfswmap("<div class='cmp0' style='font-size:0.82em;line-height:1.35em;margin:8px 0 0 0;color:#444'>Switch outputs:<ul style='margin:4px 0 0 1.2em;padding:0'><li>CH5 - Stop</li><li>CH6 - FakePower</li><li>CH7 - O.O</li><li>CH8 - RESET</li><li>CH9-CH16 - ButtonPack 1-8</li></ul></div>");
+WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
 WiFiManagerParameter custom_ss_crsfcal("ELRS/CRSF Gimbal Calibration", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
@@ -238,6 +240,7 @@ static void crsf_wifi_saveParamsCallback()
     getServerParamOneBased("cptch", settings.elrsPitchCh, 2, 1, 4, DEF_ELRSPITCHCH);
     getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 4, DEF_ELRSTHRCH);
     getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 4, DEF_ELRSYAWCH);
+    crsfReadSwitchParams();
     if(opModeCRSF) {
         getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
         getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
@@ -296,15 +299,19 @@ static void syncCRSFPortalBuffers()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
+    ELRSSwitchRouting switches;
     uint16_t adcHysteresis, throttleIdleDeadband;
 
     if(!haveNewBoard) {
         return;
     }
 
-    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband);
+    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches);
     snprintf(settings.elrsAdcHysteresis, sizeof(settings.elrsAdcHysteresis), "%u", (unsigned)adcHysteresis);
     snprintf(settings.elrsThrIdleDeadband, sizeof(settings.elrsThrIdleDeadband), "%u", (unsigned)throttleIdleDeadband);
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        snprintf(settings.elrsSwitchCh[i], sizeof(settings.elrsSwitchCh[i]), "%u", (unsigned)switches.channels[i]);
+    }
 
     for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
         const CRSFAxisSettings &axis = crsfAxisSettings[i];
@@ -323,10 +330,20 @@ static bool saveCRSFPortalInputSettings()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
+    ELRSSwitchRouting switches;
 
     if(!haveNewBoard) {
         return false;
     }
+
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        const char *value = settings.elrsSwitchCh[i];
+        char *end;
+        long channel = strtol(value, &end, 10);
+        if(!*value || *end || channel < 5 || channel > 16) return false;
+        switches.channels[i] = (uint8_t)channel;
+    }
+    if(!elrsIsValidSwitchRouting(switches)) return false;
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 
@@ -343,7 +360,22 @@ static bool saveCRSFPortalInputSettings()
 
     const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
     const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband);
+    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches);
+}
+
+static void crsfReadSwitchParams()
+{
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        char name[6];
+        snprintf(name, sizeof(name), "csw%d", i);
+        if(wm.server->hasArg(name)) {
+            String value = wm.server->arg(name);
+            settings.elrsSwitchCh[i][0] = 0;
+            if(value.length() < sizeof(settings.elrsSwitchCh[i]) && value.length() == strlen(value.c_str())) {
+                strcpy(settings.elrsSwitchCh[i], value.c_str());
+            }
+        }
+    }
 }
 
 /*
@@ -438,6 +470,44 @@ static const char *wmBuildCRSFStatus(const char *dest, int op)
     }
     strcpy(str, html.c_str());
     return str;
+}
+
+static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+    static const char *labels[ELRS_SWITCH_INPUT_COUNT] = {
+        "Stop", "FakePower", "O.O", "RESET", "ButtonPack 1", "ButtonPack 2", "ButtonPack 3", "ButtonPack 4",
+        "ButtonPack 5", "ButtonPack 6", "ButtonPack 7", "ButtonPack 8"
+    };
+    String html;
+    html.reserve(8000);
+    html += "<div class='cmp0'><h3>Switch channels</h3><p>Choose a different channel for each input. CH1-CH4 are reserved for gimbals. Changes apply after saving and restarting.</p>";
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        char name[6];
+        snprintf(name, sizeof(name), "csw%d", i);
+        html += "<label for='"; html += name; html += "'>"; html += labels[i]; html += " target channel</label><select data-elrs-switch id='";
+        html += name; html += "' name='"; html += name; html += "'>";
+        for(int channel = 5; channel <= 16; channel++) {
+            char value[3];
+            snprintf(value, sizeof(value), "%d", channel);
+            html += "<option value='"; html += value; html += "'";
+            if(channel == atoi(settings.elrsSwitchCh[i])) html += " selected";
+            html += ">CH"; html += value; html += "</option>";
+        }
+        html += "</select>";
+    }
+    html += "</div><script>(function(){var s=document.querySelectorAll('[data-elrs-switch]');function v(){var n={};for(var i=0;i<s.length;i++)n[s[i].value]=(n[s[i].value]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[s[i].value]>1?'Choose a different channel for each switch.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
+    if(op == WM_CP_LEN) {
+        wmLenBuf = html.length() + 1;
+        return (const char *)&wmLenBuf;
+    }
+    char *result = (char *)malloc(html.length() + 1);
+    if(!result) return NULL;
+    strcpy(result, html.c_str());
+    return result;
 }
 
 static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
