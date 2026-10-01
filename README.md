@@ -956,9 +956,9 @@ This page is only shown when the firmware is built with ELRS/CRSF support.
 
 The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF-only gimbal routing model. The four gimbals are calibrated and shaped inside the ELRS/CRSF runtime, then transmitted over CRSF with RC-style semantics: low is `1000`, center is `1500`, and high is `2000` before conversion to CRSF wire ticks.
 
-Calibration for these gimbals can now be done directly in the portal. The page shows live filtered ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture filtered `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
+Calibration for these gimbals can now be done directly in the portal. The page shows live raw ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture raw `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
 
-Stop, FakePower, O.O, RESET, and ButtonPack retain their existing local behavior and switch polarity. Their outgoing channels can be assigned in the **Switch channels** section.
+Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
 
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
@@ -995,28 +995,15 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Each gimbal and switch can use CH1 through CH16. Every input must use a different channel. Keep steering and throttle on CH1-CH4 in ELRS Hybrid/Wide mode; higher proportional channels require a compatible Full Resolution mode.
-
-##### &#9193; Switch channels
-
-Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH1 through CH16, including CH1-CH4. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap a switch with a gimbal, move the gimbal to the switch's old channel and select the freed channel for the switch before saving. Duplicate assignments across all gimbals and switches are rejected. Changes take effect after the portal saves and restarts the Remote. ELRS RF mode controls which input channels reach the receiver; use Full Resolution 16ch for all 16 input channels.
-
-Older settings files keep these default switch assignments. Saving gimbal calibration preserves custom switch assignments. The display continues to use its existing telemetry selection.
+Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 
 Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
 
-##### &#9193; Gimbal Calibration
+##### &#9193; ELRS/CRSF Gimbal Calibration
 
-*Jitter tolerance* holds each transmitted gimbal value until its filtered ADC reading moves by more than the chosen
-number of counts. Small movements accumulate, and calibrated endpoints remain reachable. *Throttle idle deadband*
-holds throttle at its minimum output near the calibrated idle endpoint, including reversed throttle; the remaining
-travel is mapped continuously to center. Both settings default to `5` ADC counts and accept `0` through `32`; `0`
-disables that adjustment. Larger values suppress more small movements. Save the page to apply the settings after
-restart. Existing calibration files retain their points and receive the `5`-count defaults.
-
-This section shows live ADC readings after filtering and jitter tolerance, before throttle idle adjustments and calibration mapping. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those stabilized ADC counts are stored and used as the real three-point calibration for CRSF output:
+This section shows live raw ADC readings for the four gimbals. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those raw values are stored and used as the real three-point calibration for CRSF output:
 
 - saved low -> `1000`
 - saved center -> `1500`
@@ -1060,9 +1047,9 @@ This page is only shown when the firmware is built with ELRS/CRSF support.
 
 The ELRS/CRSF page controls the radio-side transport settings plus the ELRS/CRSF-only gimbal routing model. The four gimbals are calibrated and shaped inside the ELRS/CRSF runtime, then transmitted over CRSF with RC-style semantics: low is `1000`, center is `1500`, and high is `2000` before conversion to CRSF wire ticks.
 
-Calibration for these gimbals can now be done directly in the portal. The page shows live filtered ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture filtered `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
+Calibration for these gimbals can now be done directly in the portal. The page shows live raw ADC values for Aileron, Elevator, Throttle, and Rudder, and lets you capture raw `low`, `center`, and `high` points for each gimbal before saving the page. Those saved points are the values used at runtime; the firmware does not auto-learn or auto-scale the live range afterward.
 
-Stop, FakePower, O.O, RESET, and ButtonPack retain their existing local behavior and switch polarity. Their outgoing channels can be assigned in the **Switch channels** section.
+Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
 
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
@@ -1099,28 +1086,15 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Each gimbal and switch can use CH1 through CH16. Every input must use a different channel. Keep steering and throttle on CH1-CH4 in ELRS Hybrid/Wide mode; higher proportional channels require a compatible Full Resolution mode.
-
-##### &#9193; Switch channels
-
-Assign Stop, FakePower, O.O, RESET, and ButtonPack 1-8 to unique channels from CH1 through CH16, including CH1-CH4. The defaults are Stop -> CH5, FakePower -> CH6, O.O -> CH7, RESET -> CH8, and ButtonPack 1-8 -> CH9-CH16. To swap a switch with a gimbal, move the gimbal to the switch's old channel and select the freed channel for the switch before saving. Duplicate assignments across all gimbals and switches are rejected. Changes take effect after the portal saves and restarts the Remote. ELRS RF mode controls which input channels reach the receiver; use Full Resolution 16ch for all 16 input channels.
-
-Older settings files keep these default switch assignments. Saving gimbal calibration preserves custom switch assignments. The display continues to use its existing telemetry selection.
+Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 
 Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
 
-##### &#9193; Gimbal Calibration
+##### &#9193; ELRS/CRSF Gimbal Calibration
 
-*Jitter tolerance* holds each transmitted gimbal value until its filtered ADC reading moves by more than the chosen
-number of counts. Small movements accumulate, and calibrated endpoints remain reachable. *Throttle idle deadband*
-holds throttle at its minimum output near the calibrated idle endpoint, including reversed throttle; the remaining
-travel is mapped continuously to center. Both settings default to `5` ADC counts and accept `0` through `32`; `0`
-disables that adjustment. Larger values suppress more small movements. Save the page to apply the settings after
-restart. Existing calibration files retain their points and receive the `5`-count defaults.
-
-This section shows live ADC readings after filtering and jitter tolerance, before throttle idle adjustments and calibration mapping. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those stabilized ADC counts are stored and used as the real three-point calibration for CRSF output:
+This section shows live raw ADC readings for the four gimbals. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those raw values are stored and used as the real three-point calibration for CRSF output:
 
 - saved low -> `1000`
 - saved center -> `1500`
