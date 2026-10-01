@@ -4,6 +4,9 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#ifdef REMOTE_DBG
+#include <WiFi.h>
+#endif
 
 #include "elrs_crsf.h"
 #include "crsf_settings.h"
@@ -125,6 +128,11 @@ bool ELRSCrsfMode::begin(
     #endif
     config.transport.oeActiveLow = _oeActiveLow;
 
+    #ifdef REMOTE_DBG
+    Serial.printf("ELRS/CRSF: WiFi mode=%u status=%u STA=%s AP=%s\n",
+                  (unsigned)WiFi.getMode(), (unsigned)WiFi.status(),
+                  WiFi.localIP().toString().c_str(), WiFi.softAPIP().toString().c_str());
+    #endif
     return _core.begin(*this, config, millis(), micros());
 }
 
