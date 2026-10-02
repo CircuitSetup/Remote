@@ -15,7 +15,6 @@ static const char *wmBuildCRSFPC(const char *dest, int op);
 static const char *wmBuildCRSFTC(const char *dest, int op);
 static const char *wmBuildCRSFYC(const char *dest, int op);
 static const char *wmBuildCRSFCAL(const char *dest, int op);
-static const char *wmBuildCRSFOutputLimits(const char *dest, int op);
 static void crsfReadOutputLimitParams();
 static const char *wmBuildCRSFSwitchMap(const char *dest, int op);
 static void crsfReadSwitchParams();
@@ -182,8 +181,7 @@ WiFiManagerParameter custom_crsftrv("Reverse Throttle", settings.elrsThrRev, "cl
 WiFiManagerParameter custom_crsfyc(wmBuildCRSFYC);
 WiFiManagerParameter custom_crsfyrv("Reverse Rudder", settings.elrsYawRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
-WiFiManagerParameter custom_crsflimits(wmBuildCRSFOutputLimits);
-WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Calibration</h3>", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
 WiFiManagerParameter *crsfParmArray[] = {
@@ -206,7 +204,6 @@ WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsfyc,
       &custom_crsfyrv,
       &custom_crsfswmap,
-      &custom_crsflimits,
       &custom_ss_crsfcal,
       &custom_crsfcal,
       NULL
@@ -604,50 +601,27 @@ static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, cons
     return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
 }
 
-static const char *wmBuildCRSFOutputLimits(const char *dest, int op)
+static void wmAppendCRSFOutputLimits(String &html, uint8_t axis)
 {
-    if(op == WM_CP_DESTROY) {
-        if(dest) free((void *)dest);
-        return NULL;
-    }
-    static const char *axes[] = {"Aileron", "Elevator", "Rudder", "Throttle"};
     static const char *labels[] = {"Lower limit", "Center", "Upper limit"};
     static const char *suffixes[] = {"lo", "ct", "hi"};
-    String html;
-    html.reserve(3200);
-    html += "<div class='cmp0 elrsout' style='white-space:normal'><h3>Travel Limits</h3>"
-            "<p><small>RC output in microseconds equivalent. Full stick travel scales to these limits; center stays at 1500. Changes apply after saving and restarting.</small></p>"
-            "<style>.elrsout label{display:block;font-size:.8em}.elrsout input{box-sizing:border-box;width:100%;min-width:0;max-width:100%}.elrsout .elrscenter{display:block;padding:5px;margin:5px 0}</style>";
-    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        const char *values[] = {crsfOutputMin[i], "1500", crsfOutputMax[i]};
-        html += "<fieldset style='margin:10px 0;padding:8px;min-width:0'><legend>";
-        html += axes[i];
-        html += "</legend><div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px'>";
-        for(int field = 0; field < 3; field++) {
-            if(field == 1) {
-                html += "<div><span style='display:block;font-size:.8em'>Center</span><span class='elrscenter'>1500</span></div>";
-                continue;
-            }
-            char name[8];
-            snprintf(name, sizeof(name), "cout%d%s", i, suffixes[field]);
-            html += "<div><label for='"; html += name; html += "'>"; html += labels[field];
-            html += "</label><input id='"; html += name; html += "' type='number' value='";
-            html += values[field]; html += "'";
-            html += " name='"; html += name; html += "' maxlength='4'";
-            html += field == 0 ? " min='1000' max='1500' required" : " min='1500' max='2000' required";
-            html += "></div>";
+    const char *values[] = {crsfOutputMin[axis], "1500", crsfOutputMax[axis]};
+    html += "<h4>Travel Limits</h4><div class='elrscal-points elrsout'>";
+    for(int field = 0; field < 3; field++) {
+        if(field == 1) {
+            html += "<div class='elrscal-row'><span class='elrscal-label'>Center</span><div class='elrscal-ctl'><span class='elrscenter'>1500</span></div></div>";
+            continue;
         }
-        html += "</div></fieldset>";
+        char name[8];
+        snprintf(name, sizeof(name), "cout%d%s", axis, suffixes[field]);
+        html += "<div class='elrscal-row'><label for='"; html += name; html += "'>"; html += labels[field];
+        html += "</label><div class='elrscal-ctl'><input id='"; html += name; html += "' type='number' value='";
+        html += values[field]; html += "'";
+        html += " name='"; html += name; html += "' maxlength='4'";
+        html += field == 0 ? " min='1000' max='1500' required" : " min='1500' max='2000' required";
+        html += "></div></div>";
     }
     html += "</div>";
-    if(op == WM_CP_LEN) {
-        wmLenBuf = html.length() + 1;
-        return (const char *)&wmLenBuf;
-    }
-    char *result = (char *)malloc(html.length() + 1);
-    if(!result) return NULL;
-    strcpy(result, html.c_str());
-    return result;
 }
 
 struct CRSFGimbalCalField {
@@ -688,16 +662,16 @@ static void wmAppendCRSFCALPoint(String &html,
 
 static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 {
-    html += "<div class='elrscal-axis'><div class='elrscal-head'><span class='elrscal-name'>";
+    html += "<fieldset class='elrscal-axis'><legend class='elrscal-name'>";
     html += axis.name;
-    html += "</span><span class='elrscal-live'>Filtered ADC <span id='";
+    html += "</legend><h4>Calibration (ADC counts)</h4><div class='elrscal-head'><span class='elrscal-live'>Filtered ADC <span id='";
     html += axis.liveId;
     html += "'>--</span></span></div>";
     html += "<div class='elrscal-points'>";
     for(int i = 0; i < 3; i++) {
         wmAppendCRSFCALPoint(html, axis.fields[i].label, axis.fields[i].inputId, axis.liveId, axis.fields[i].value);
     }
-    html += "</div>";
+    html += "</div><h4>Response Curve</h4>";
     for(const CRSFAxisSettings &binding : crsfAxisSettings) {
         if(binding.axis != axis.axis) continue;
         html += "<div class='elrscal-row'><label for='"; html += binding.expoId;
@@ -713,16 +687,19 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
         html += binding.expoId; html += "_curve' fill='none' stroke='#176d2f' stroke-width='12'/></svg>";
         break;
     }
-    html += "</div>";
+    wmAppendCRSFOutputLimits(html, axis.axis);
+    html += "</fieldset>";
 }
 
 static const char crsfCalIntro[] =
     "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
-    "Capture each gimbal's filtered ADC low, center, and high points here, then save this page. "
-    "Calibration maps to 1000/1500/2000 us before curves and Travel Limits. "
-    "Aileron, Elevator and Rudder preserve neutral at 1500 us. "
-    "Throttle center maps to 1500 us before its idle-based curve. Each curve follows its gimbal channel assignment. "
-    "Curve edits preview locally; save and restart to apply."
+    "Calibrate and tune each gimbal below. Changes apply after saving and restarting."
+    "</p><p>Calibration: move the stick to each labeled position and click Capture to record its filtered ADC reading. "
+    "The low, center, and high points map to 1000, 1500, and 2000 microseconds before curves and travel limits."
+    "</p><p>Response curves: 0% is linear; higher strengths soften response around center for Aileron, Elevator and Rudder, "
+    "and near idle for Throttle. The previews show response before travel limits."
+    "</p><p>Travel Limits set the final output range in microseconds. Lower limits allow 1000-1500; upper limits allow 1500-2000. "
+    "Defaults of 1000 and 2000 use full travel. The fixed 1500 center is the reference for scaling the curved output."
     "</p>"
     "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>";
 
@@ -731,12 +708,12 @@ static const char crsfCalStyle[] =
     ".elrscal-wrap{box-sizing:border-box;width:100%;max-width:100%;padding:0;margin:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden}"
     ".elrscal-wrap p,.elrscal-wrap #elrscalstat{white-space:normal;overflow-wrap:anywhere;max-width:100%}"
     ".elrscal-wrap p{font-size:.85em;line-height:1.35em}"
-    ".elrscal-axis{box-sizing:border-box;width:100%;max-width:100%;margin:12px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;overflow:hidden;white-space:normal}"
+    ".elrscal-axis{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:10px 0;padding:8px;white-space:normal}"
     ".elrscal-head{display:block;line-height:1.3em;max-width:100%;overflow-wrap:anywhere;white-space:normal}"
     ".elrscal-name{font-weight:bold}"
     ".elrscal-live{display:block;font-size:.85em;color:#333}"
     ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:8px 0;overflow:hidden;padding:0}"
-    ".elrscal-row label{display:block;font-size:.82em;margin:0 0 2px 0}"
+    ".elrscal-row label,.elrscal-label{display:block;font-size:.82em;margin:0 0 2px 0}"
     ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) max-content;gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
     ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
     ".elrscal-row button{box-sizing:border-box;width:auto;max-width:100%;min-width:0;margin:0;padding:0 6px;font-size:.95em;line-height:2rem}"
@@ -745,6 +722,8 @@ static const char crsfCalStyle[] =
     ".elrscal-points .elrscal-ctl{grid-template-columns:minmax(0,1fr);gap:4px}"
     ".elrscal-points input{max-width:5em}"
     ".elrscal-points button{width:100%;padding:0 4px;font-size:.85em}"
+    ".elrscenter{display:block;padding:5px;margin:5px 0}"
+    ".elrscal-axis h4{margin:12px 0 5px}"
     "</style>";
 
 static const char crsfExpoScript[] =
@@ -784,10 +763,11 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
 
     String html;
 
-    html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + sizeof(crsfExpoScript) + 4000);
+    html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + sizeof(crsfExpoScript) + 6500);
     html += crsfCalIntro;
     html += crsfCalStyle;
 
+    html += "<fieldset class='elrscal-axis'><legend class='elrscal-name'>Input Filtering</legend>";
     CRSFGimbalCalField tolerances[] = {
         { "Jitter tolerance (ADC counts)", "chyst", settings.elrsAdcHysteresis },
         { "Throttle idle deadband (ADC counts)", "cthid", settings.elrsThrIdleDeadband }
@@ -805,8 +785,9 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
         html += field.value;
         html += "'></div></div>";
     }
-    html += "<p>Both settings default to 5 counts; 0 disables the setting. Higher jitter tolerance ignores more small movements. "
-            "Live readings and captures include filtering and jitter tolerance, before throttle idle and calibration mapping.</p>";
+    html += "<p>Jitter tolerance ignores small changes in ADC readings. Throttle idle deadband holds throttle at its lower output "
+            "near the idle endpoint. Both default to 5 ADC counts; 0 disables the setting. "
+            "Live readings and captures include jitter filtering, before throttle idle adjustment, calibration, curves, and travel limits.</p></fieldset>";
 
     CRSFGimbalCalAxis axes[] = {
         { "Rudder", "elrs_yaw_live", {

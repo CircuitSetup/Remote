@@ -114,7 +114,7 @@ portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for s
     'static bool saveCRSFPortalInputSettings()',
 ])
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
-limits_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFOutputLimits(const char *dest, int op)')
+limits_page = function('src/src/CRSF/crsf_wifi.h', 'static void wmAppendCRSFOutputLimits(String &html, uint8_t axis)')
 expo_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadExpoParams()')
 switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchParams()')
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
@@ -759,14 +759,17 @@ int main() {
     assert(crsfSettings.adcHysteresis == limitedSettings.adcHysteresis && crsfSettings.throttleIdleDeadband == limitedSettings.throttleIdleDeadband);
     puts("CRSF output limits round trip, all legacy/partial tails, validation and calibration preservation passed");
     syncCRSFPortalBuffers();
-    const char *limitsPage = wmBuildCRSFOutputLimits(nullptr, 2);
+    const char *limitsPage = wmBuildCRSFCAL(nullptr, 2);
     assert(limitsPage && strstr(limitsPage, "Travel Limits"));
     const char *axisNames[] = {"Aileron", "Elevator", "Rudder", "Throttle"};
     for(int axis = 0; axis < 4; axis++) {
-        char legend[40]; snprintf(legend, sizeof(legend), "<legend>%s</legend>", axisNames[axis]);
+        char legend[60]; snprintf(legend, sizeof(legend), "<legend class='elrscal-name'>%s</legend>", axisNames[axis]);
         const char *row = strstr(limitsPage, legend);
         assert(row);
         std::string block(row, strstr(row, "</fieldset>") - row);
+        assert(block.find("class='elrscal-points'") < block.find("<svg"));
+        assert(block.find("</svg>") < block.find("<h4>Travel Limits</h4>"));
+        assert(block.find("class='elrscal-points elrsout'") != std::string::npos);
         for(int side = 0; side < 2; side++) {
             char field[20], value[20];
             snprintf(field, sizeof(field), "name='cout%d%s'", axis, side ? "hi" : "lo");
@@ -780,14 +783,14 @@ int main() {
         assert(block.find("readonly") == std::string::npos);
         assert(block.find("required") != std::string::npos);
     }
-    assert(*(const size_t *)wmBuildCRSFOutputLimits(nullptr, WM_CP_LEN) == strlen(limitsPage) + 1);
+    assert(*(const size_t *)wmBuildCRSFCAL(nullptr, WM_CP_LEN) == strlen(limitsPage) + 1);
     if(const char *previewPath = getenv("CRSF_LIMITS_PREVIEW")) {
         FILE *preview = fopen(previewPath, "w");
         assert(preview);
-        fprintf(preview, "<!doctype html><html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>ELRS travel limits</title><script>%s.cmp0{margin:0;padding:0}</style><div id='wrap'><form>%s<button type='submit'>Save</button></form></div></html>", HTTP_STYLE, limitsPage);
+        fprintf(preview, "<!doctype html><html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Gimbal Settings</title><script>%s.cmp0{margin:0;padding:0}</style><div id='wrap'><form><h3>Gimbal Settings</h3>%s<button type='submit'>Save</button></form></div></html>", HTTP_STYLE, limitsPage);
         fclose(preview);
     }
-    assert(wmBuildCRSFOutputLimits(limitsPage, WM_CP_DESTROY) == nullptr);
+    assert(wmBuildCRSFCAL(limitsPage, WM_CP_DESTROY) == nullptr);
     const auto beforeLimitsPost = stored;
     const auto beforeLimitsSettings = crsfSettings;
     const auto beforeLimitsHash = crsfSettingsHash;
