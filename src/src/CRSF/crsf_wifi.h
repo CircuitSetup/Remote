@@ -19,6 +19,7 @@ static const char *wmBuildCRSFOutputLimits(const char *dest, int op);
 static void crsfReadOutputLimitParams();
 static const char *wmBuildCRSFSwitchMap(const char *dest, int op);
 static void crsfReadSwitchParams();
+static void crsfReadExpoParams();
 
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
@@ -125,13 +126,15 @@ struct CRSFAxisSettings {
     char *low;
     char *center;
     char *high;
+    const char *expoId;
+    char *expo;
 };
 
 static CRSFAxisSettings crsfAxisSettings[] = {
-    { ELRS_GIMBAL_INPUT_AILERON, settings.elrsRollCh, settings.elrsRollRev, settings.elrsRollLow, settings.elrsRollCtr, settings.elrsRollHigh },
-    { ELRS_GIMBAL_INPUT_ELEVATOR, settings.elrsPitchCh, settings.elrsPitchRev, settings.elrsPitchLow, settings.elrsPitchCtr, settings.elrsPitchHigh },
-    { ELRS_GIMBAL_INPUT_THROTTLE, settings.elrsThrCh, settings.elrsThrRev, settings.elrsThrLow, settings.elrsThrCtr, settings.elrsThrHigh },
-    { ELRS_GIMBAL_INPUT_RUDDER, settings.elrsYawCh, settings.elrsYawRev, settings.elrsYawLow, settings.elrsYawCtr, settings.elrsYawHigh }
+    { ELRS_GIMBAL_INPUT_AILERON, settings.elrsRollCh, settings.elrsRollRev, settings.elrsRollLow, settings.elrsRollCtr, settings.elrsRollHigh, "crlexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_AILERON] },
+    { ELRS_GIMBAL_INPUT_ELEVATOR, settings.elrsPitchCh, settings.elrsPitchRev, settings.elrsPitchLow, settings.elrsPitchCtr, settings.elrsPitchHigh, "cptexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_ELEVATOR] },
+    { ELRS_GIMBAL_INPUT_THROTTLE, settings.elrsThrCh, settings.elrsThrRev, settings.elrsThrLow, settings.elrsThrCtr, settings.elrsThrHigh, "cthexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_THROTTLE] },
+    { ELRS_GIMBAL_INPUT_RUDDER, settings.elrsYawCh, settings.elrsYawRev, settings.elrsYawLow, settings.elrsYawCtr, settings.elrsYawHigh, "cywexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_RUDDER] }
 };
 
 static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", "1000"};
@@ -251,6 +254,7 @@ static void crsf_wifi_saveParamsCallback()
     crsfReadInputParam("cywch", settings.elrsYawCh, 2, 1, 16, 1);
     crsfReadSwitchParams();
     crsfReadOutputLimitParams();
+    crsfReadExpoParams();
     if(opModeCRSF) {
         getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
         getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
@@ -338,6 +342,7 @@ static void syncCRSFPortalBuffers()
         snprintf(axis.low, sizeof(settings.elrsRollLow), "%d", profile.minimum);
         snprintf(axis.center, sizeof(settings.elrsRollCtr), "%d", profile.center);
         snprintf(axis.high, sizeof(settings.elrsRollHigh), "%d", profile.maximum);
+        snprintf(axis.expo, sizeof(settings.elrsAxisExpo[0]), "%u", (unsigned)profile.expo);
     }
 }
 
@@ -374,6 +379,14 @@ static bool saveCRSFPortalInputSettings()
     }
     if(!elrsIsValidSwitchRouting(switches)) return false;
 
+    for(const CRSFAxisSettings &axis : crsfAxisSettings) {
+        const char *value = axis.expo;
+        size_t length = strlen(value);
+        if(length < 1 || length > 3) return false;
+        for(size_t i = 0; i < length; i++) if(value[i] < '0' || value[i] > '9') return false;
+        if(atoi(value) > 100) return false;
+    }
+
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 
     for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
@@ -385,6 +398,7 @@ static bool saveCRSFPortalInputSettings()
         profile.minimum = (int16_t)atoi(axis.low);
         profile.center = (int16_t)atoi(axis.center);
         profile.maximum = (int16_t)atoi(axis.high);
+        profile.expo = (uint8_t)atoi(axis.expo);
     }
 
     const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
@@ -409,6 +423,22 @@ static void crsfReadOutputLimitParams()
             if(value.length() == 4 && strspn(value.c_str(), "0123456789") == 4) {
                 crsfReadInputParam(name, buffer, 4, side ? ELRS_INPUT_US_MID : ELRS_INPUT_US_MIN,
                                    side ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MID, 0);
+            }
+        }
+    }
+}
+
+static void crsfReadExpoParams()
+{
+    ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
+    loadELRSInputProfiles(profiles, ELRS_GIMBAL_AXIS_COUNT);
+    for(const CRSFAxisSettings &axis : crsfAxisSettings) {
+        snprintf(axis.expo, sizeof(settings.elrsAxisExpo[0]), "%u", (unsigned)profiles[axis.axis].expo);
+        if(wm.server->hasArg(axis.expoId)) {
+            String value = wm.server->arg(axis.expoId);
+            axis.expo[0] = 0;
+            if(value.length() < sizeof(settings.elrsAxisExpo[0]) && value.length() == strlen(value.c_str())) {
+                strcpy(axis.expo, value.c_str());
             }
         }
     }
@@ -630,6 +660,7 @@ struct CRSFGimbalCalAxis {
     const char *name;
     const char *liveId;
     CRSFGimbalCalField fields[3];
+    uint8_t axis;
 };
 
 static void wmAppendCRSFCALPoint(String &html,
@@ -662,8 +693,25 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
     html += "</span><span class='elrscal-live'>Filtered ADC <span id='";
     html += axis.liveId;
     html += "'>--</span></span></div>";
+    html += "<div class='elrscal-points'>";
     for(int i = 0; i < 3; i++) {
         wmAppendCRSFCALPoint(html, axis.fields[i].label, axis.fields[i].inputId, axis.liveId, axis.fields[i].value);
+    }
+    html += "</div>";
+    for(const CRSFAxisSettings &binding : crsfAxisSettings) {
+        if(binding.axis != axis.axis) continue;
+        html += "<div class='elrscal-row'><label for='"; html += binding.expoId;
+        html += "'>Curve strength (%)</label><input id='"; html += binding.expoId;
+        html += "' name='"; html += binding.expoId;
+        html += "' type='range' min='0' max='100' step='1' value='"; html += binding.expo;
+        html += "' data-elrs-expo data-centered='"; html += axis.axis == ELRS_GIMBAL_INPUT_THROTTLE ? "0" : "1";
+        html += "'><output id='"; html += binding.expoId; html += "_value' for='"; html += binding.expoId;
+        html += "'>"; html += binding.expo; html += "%</output></div><svg viewBox='0 0 1000 1000' role='img' aria-label='";
+        html += axis.name; html += " input to output curve, 1000 to 2000 microseconds' style='display:block;width:100%;max-width:100%;height:160px'>"
+                "<line x1='0' y1='1000' x2='1000' y2='0' stroke='#999' stroke-width='8'/>"
+                "<polyline id='";
+        html += binding.expoId; html += "_curve' fill='none' stroke='#176d2f' stroke-width='12'/></svg>";
+        break;
     }
     html += "</div>";
 }
@@ -671,7 +719,10 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 static const char crsfCalIntro[] =
     "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
     "Capture each gimbal's filtered ADC low, center, and high points here, then save this page. "
-    "These ADC points map to 1000/1500/2000 before the separate Travel Limits scale the transmitted output."
+    "Calibration maps to 1000/1500/2000 us before curves and Travel Limits. "
+    "Aileron, Elevator and Rudder preserve neutral at 1500 us. "
+    "Throttle center maps to 1500 us before its idle-based curve. Each curve follows its gimbal channel assignment. "
+    "Curve edits preview locally; save and restart to apply."
     "</p>"
     "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>";
 
@@ -689,7 +740,23 @@ static const char crsfCalStyle[] =
     ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) max-content;gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
     ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
     ".elrscal-row button{box-sizing:border-box;width:auto;max-width:100%;min-width:0;margin:0;padding:0 6px;font-size:.95em;line-height:2rem}"
+    ".elrscal-points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;padding:0;margin:8px 0}"
+    ".elrscal-points .elrscal-row{margin:0}"
+    ".elrscal-points .elrscal-ctl{grid-template-columns:minmax(0,1fr);gap:4px}"
+    ".elrscal-points input{max-width:5em}"
+    ".elrscal-points button{width:100%;padding:0 4px;font-size:.85em}"
     "</style>";
+
+static const char crsfExpoScript[] =
+    "<script>(function(){var controls=document.querySelectorAll('[data-elrs-expo]');"
+    "function draw(c){var strength=Number(c.value),centered=c.dataset.centered==='1',points=[];"
+    "document.getElementById(c.id+'_value').textContent=strength+'%';"
+    "for(var i=0;i<=100;i++){var x=i*10,d=centered?x-500:x,m=Math.abs(d),span=centered?500:1000;"
+    "var magnitude=Math.round(((100-strength)*m*span*span+strength*m*m*m)/(100*span*span));"
+    "var y=centered?500+(d<0?-magnitude:magnitude):magnitude;points.push(x+','+(1000-y));}"
+    "document.getElementById(c.id+'_curve').setAttribute('points',points.join(' '));}"
+    "for(var i=0;i<controls.length;i++){draw(controls[i]);controls[i].addEventListener('input',function(){draw(this);});}"
+    "})();</script>";
 
 static const char crsfCalScript[] =
     "<script>(function(){if(window.__elrsCalInit)return;window.__elrsCalInit=true;"
@@ -717,7 +784,7 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
 
     String html;
 
-    html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + 1600);
+    html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + sizeof(crsfExpoScript) + 4000);
     html += crsfCalIntro;
     html += crsfCalStyle;
 
@@ -746,28 +813,29 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
             { "Left", "cywlo", settings.elrsYawLow },
             { "Center", "cywct", settings.elrsYawCtr },
             { "Right", "cywhi", settings.elrsYawHigh }
-        } },
+        }, ELRS_GIMBAL_INPUT_RUDDER },
         { "Throttle", "elrs_throttle_live", {
             { "Up", "cthhi", settings.elrsThrHigh },
             { "Center", "cthct", settings.elrsThrCtr },
             { "Down", "cthlo", settings.elrsThrLow }
-        } },
+        }, ELRS_GIMBAL_INPUT_THROTTLE },
         { "Aileron", "elrs_roll_live", {
             { "Left", "crrlo", settings.elrsRollLow },
             { "Center", "crrct", settings.elrsRollCtr },
             { "Right", "crrhi", settings.elrsRollHigh }
-        } },
+        }, ELRS_GIMBAL_INPUT_AILERON },
         { "Elevator", "elrs_pitch_live", {
             { "Up", "cpthi", settings.elrsPitchHigh },
             { "Center", "cptct", settings.elrsPitchCtr },
             { "Down", "cptlo", settings.elrsPitchLow }
-        } }
+        }, ELRS_GIMBAL_INPUT_ELEVATOR }
     };
 
     for(size_t i = 0; i < sizeof(axes) / sizeof(axes[0]); i++) {
         wmAppendCRSFCALAxis(html, axes[i]);
     }
 
+    html += crsfExpoScript;
     html += crsfCalScript;
 
     if(op == WM_CP_LEN) {
