@@ -97,6 +97,13 @@ compile_and_run(fixture + callbacks + cases, [])
 # Keep binary migration and the rendered portal on the actual production code paths.
 source = (ROOT / 'src/src/CRSF/crsf_kludge.cpp').read_text()
 stored_settings = source[source.index('// CRSF settings\n'):source.index('bool readELRSCurrentRawAxes(')]
+stored_settings_with_files = stored_settings
+for signature in [
+    'static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes)',
+    'static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)',
+    'static bool crsfSaveStoredSettings(uint8_t *buf, int len)',
+]:
+    stored_settings = stored_settings.replace(function('src/src/CRSF/crsf_kludge.cpp', signature), '')
 portal = (ROOT / 'src/src/CRSF/crsf_wifi.h').read_text()
 axis_buffers = portal[portal.index('struct CRSFAxisSettings {'):portal.index('static const char *wmBuildCRSFSelectField(')]
 calibration_page = portal[portal.index('struct CRSFGimbalCalField {'):portal.index('static const char *wmBuildCRSFRC(const char *dest, int op)\n{')]
@@ -154,13 +161,13 @@ std::vector<uint8_t> stored;
 std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
-bool loadConfigFile(const char *, uint8_t *data, size_t size, int &valid, int) {
-    valid = min((int)size, (int)stored.size());
+bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
+    valid = min(84, (int)stored.size());
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
 }
-bool saveConfigFile(const char *, uint8_t *data, size_t size, int) {
+bool crsfSaveStoredSettings(uint8_t *data, int size) {
     if(!storageWriteOk) return false;
     stored.assign(data, data + size);
     media[configOnSD] = stored;
@@ -184,8 +191,6 @@ struct {
     char elrsYawLow[6], elrsYawCtr[6], elrsYawHigh[6];
     char elrsAdcHysteresis[3] = "5", elrsThrIdleDeadband[3] = "5";
     char elrsSwitchCh[12][3] = {"5","6","7","8","9","10","11","12","13","14","15","16"};
-    char elrsOutputMin[4][5] = {"1000","1000","1000","1000"};
-    char elrsOutputMax[4][5] = {"2000","2000","2000","2000"};
 } settings;
 bool haveNewBoard = true, opModeCRSF = true;
 struct TestServer {
@@ -702,8 +707,8 @@ int main() {
         }
     }
     preparePost();
-    memset(settings.elrsOutputMin, 0, sizeof(settings.elrsOutputMin));
-    memset(settings.elrsOutputMax, 0, sizeof(settings.elrsOutputMax));
+    memset(crsfOutputMin, 0, sizeof(crsfOutputMin));
+    memset(crsfOutputMax, 0, sizeof(crsfOutputMax));
     crsf_wifi_saveParamsCallback(); // Absent fields must refresh saved limits, not stale buffers.
     assert(saveCRSFPortalInputSettings());
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
@@ -870,3 +875,214 @@ int main() {
 }
 '''
 compile_and_run(http_fixture + http_callbacks + http_cases, [])
+
+# Exercise the real framed-file writer too: FILE_WRITE truncates its target.
+file_fixture = r'''
+#include <cassert>
+#include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+#include <string>
+#include <map>
+#include <algorithm>
+#include "remote_global.h"
+#include "src/CRSF/crsf_settings.h"
+using std::min;
+using String = std::string;
+bool haveSD = true, haveFS = true, configOnSD = false, FlashROMode = false;
+struct { char CfgOnSD[2] = "0"; } settings;
+struct File {
+    std::vector<uint8_t> *bytes = nullptr;
+    size_t allowedWrite = 999;
+    explicit operator bool() const { return bytes != nullptr; }
+    size_t size() { return bytes->size(); }
+    size_t read(uint8_t *data, int length) {
+        size_t count = min((size_t)length, bytes->size());
+        memcpy(data, bytes->data(), count);
+        return count;
+    }
+    size_t write(uint8_t *data, int length) {
+        size_t count = min((size_t)length, allowedWrite);
+        bytes->assign(data, data + count);
+        return count;
+    }
+    void close() {}
+};
+namespace fs {
+struct FS {
+    std::map<std::string, std::vector<uint8_t>> files;
+    size_t allowedWrite = 999;
+    bool failOpen = false, failBackupRemove = false;
+    int renameCalls = 0;
+    std::vector<int> failedRenames;
+    bool exists(const char *name) { return files.count(name); }
+    File open(const char *name, const char *mode) {
+        File result;
+        if(mode[0] == 'w') {
+            if(failOpen) return result;
+            files[name].clear(); // Arduino FILE_WRITE is "w", not an append.
+        } else if(!exists(name)) return result;
+        result.bytes = &files[name];
+        result.allowedWrite = allowedWrite;
+        return result;
+    }
+    bool remove(const char *name) {
+        if(failBackupRemove && std::string(name) == "/crsfcfg.bak") return false;
+        return files.erase(name);
+    }
+    bool rename(const char *from, const char *to) {
+        renameCalls++;
+        if(std::find(failedRenames.begin(), failedRenames.end(), renameCalls) != failedRenames.end()) return false;
+        // FatFS cannot rename over an existing destination.
+        if(!exists(from) || exists(to)) return false;
+        files[to] = std::move(files[from]);
+        files.erase(from);
+        return true;
+    }
+};
+}
+fs::FS SD, MYNVS;
+#define LittleFS MYNVS
+#define FILE_READ "r"
+#define FILE_WRITE "w"
+'''
+file_functions = ''.join(function('src/remote_settings.cpp', signature) for signature in [
+    'static bool writeFile(File& myFile, uint8_t *buf, int len)',
+    'bool writeFileToSD(const char *fn, uint8_t *buf, int len)',
+    'static bool writeFileToFS(const char *fn, uint8_t *buf, int len)',
+    'static uint8_t cfChkSum(const uint8_t *buf, int len)',
+    'bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0)',
+    'uint32_t calcHash(uint8_t *buf, int len)',
+])
+file_cases = r'''
+int main() {
+    const char *name = "/crsfcfg";
+    uint8_t payload[84] = {}, loaded[84];
+    // A valid checksum does not make a mismatched length header safe to read.
+    assert(saveConfigFile(name, payload, sizeof(payload)));
+    auto malformed = MYNVS.files[name];
+    malformed[0] = malformed[1] = 0;
+    malformed.back() = cfChkSum(malformed.data(), malformed.size() - 1);
+    MYNVS.files[name] = malformed;
+    memset(loaded, 0xa5, sizeof(loaded));
+    int valid = 777;
+    assert(!crsfLoadStoredSettings(loaded, valid));
+    assert(valid == 0 && loaded[0] == 0xa5);
+    MYNVS.files[name] = {0, 0};
+    assert(!crsfLoadStoredSettings(loaded, valid));
+    for(int length : {24, 52, 56, 68, 69, 70, 71, 72, 83, 84}) {
+        assert(saveConfigFile(name, payload, length));
+        assert(crsfLoadStoredSettings(loaded, valid));
+        assert(valid == length && !memcmp(payload, loaded, length));
+    }
+    puts("Binary settings reject checksum-valid mismatched length headers");
+
+    const ELRSOutputLimits original[4] = {{1200,1800},{1200,1800},{1200,1800},{1200,1800}};
+    const ELRSOutputLimits changed[4] = {{1300,1700},{1300,1700},{1300,1700},{1300,1700}};
+    auto checkLimits = [](uint16_t low, uint16_t high) {
+        ELRSOutputLimits live[4];
+        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, live);
+        for(const auto &limits : live) assert(limits.minimumUs == low && limits.maximumUs == high);
+    };
+    for(int medium = 0; medium < 2; medium++) {
+        SD = fs::FS(); MYNVS = fs::FS();
+        configOnSD = medium;
+        settings.CfgOnSD[0] = medium ? '1' : '0';
+        fs::FS &storage = medium ? SD : MYNVS;
+        crsfSettings = defaultCrsfSettings(); crsfSettingsHash = 0;
+        assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
+        const auto before = storage.files[name];
+        const auto originalHash = crsfSettingsHash;
+        assert(before.size() == 87);
+        for(int count : {0, 3, 86}) {
+            storage.allowedWrite = count;
+            assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+            assert(storage.files[name] == before && !storage.exists("/crsfcfg.tmp"));
+            assert(crsfSettingsHash == originalHash);
+            checkLimits(1200, 1800);
+            storage.allowedWrite = 999;
+            // Unchanged values can hit the cache only because the old file survived.
+            assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
+            assert(storage.files[name] == before);
+            crsf_load_settings();
+            checkLimits(1200, 1800);
+        }
+        storage.failOpen = true;
+        assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+        assert(storage.files[name] == before);
+        storage.failOpen = false;
+        for(const auto &failures : {std::vector<int>{1}, std::vector<int>{2}, std::vector<int>{2,3}}) {
+            storage.renameCalls = 0; storage.failedRenames = failures;
+            assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+            assert(crsfSettingsHash == originalHash && !storage.exists("/crsfcfg.tmp"));
+            assert((storage.exists(name) && storage.files[name] == before) ||
+                   (storage.exists("/crsfcfg.bak") && storage.files["/crsfcfg.bak"] == before));
+            crsf_load_settings();
+            checkLimits(1200, 1800);
+            storage.failedRenames.clear();
+        }
+        // Recover a backup even when rollback rename failed, then commit a healthy retry.
+        assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+        assert(storage.exists(name) && !storage.exists("/crsfcfg.bak"));
+        crsf_load_settings(); checkLimits(1300, 1700);
+        // A failed cleanup after a successful commit leaves a usable primary and backup.
+        storage.failBackupRemove = true;
+        assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
+        const auto committed = storage.files[name];
+        assert(storage.exists("/crsfcfg.bak"));
+        assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+        assert(storage.files[name] == committed);
+        crsf_load_settings(); checkLimits(1200, 1800);
+        storage.failBackupRemove = false;
+        assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+        crsf_load_settings(); checkLimits(1300, 1700);
+    }
+    puts("Real Flash/SD short writes, open/rename failures, reloads and retries preserve gimbal limits");
+
+    // A migration can temporarily select a different medium from the portal preference.
+    const auto sourceCopy = SD.files[name];
+    configOnSD = false; settings.CfgOnSD[0] = '1';
+    assert(crsf_save_settings(false));
+    assert(MYNVS.files[name] == sourceCopy && SD.files[name] == sourceCopy);
+
+    // Keep the shared writer's existing medium selection, including Flash read-only mode.
+    for(int cfg = 0; cfg < 2; cfg++)
+    for(int ro = 0; ro < 2; ro++) for(int sd = 0; sd < 2; sd++) for(int flash = 0; flash < 2; flash++) {
+        SD = fs::FS(); MYNVS = fs::FS();
+        configOnSD = cfg; FlashROMode = ro; haveSD = sd; haveFS = flash;
+        settings.CfgOnSD[0] = cfg ? '1' : '0';
+        const bool toSD = cfg || ro;
+        const bool available = toSD ? sd : flash;
+        assert(crsfSaveStoredSettings(payload, sizeof(payload)) == available);
+        assert(SD.exists(name) == (available && toSD));
+        assert(MYNVS.exists(name) == (available && !toSD));
+        assert(crsfLoadStoredSettings(loaded, valid) == available);
+        if(available) assert(valid == 84 && !memcmp(payload, loaded, sizeof(payload)));
+    }
+    haveSD = haveFS = true; configOnSD = true; FlashROMode = false;
+    settings.CfgOnSD[0] = '1';
+    SD = fs::FS(); MYNVS = fs::FS();
+    memset(payload, 0x11, sizeof(payload)); assert(saveConfigFile(name, payload, sizeof(payload), 1));
+    SD.files["/crsfcfg.bak"] = SD.files[name]; SD.files.erase(name);
+    memset(payload, 0x22, sizeof(payload)); assert(saveConfigFile(name, payload, sizeof(payload), -1));
+    assert(crsfLoadStoredSettings(loaded, valid));
+    assert(loaded[0] == 0x11); // Selected SD backup wins over an older Flash primary.
+    SD.files[name] = malformed;
+    assert(crsfLoadStoredSettings(loaded, valid));
+    assert(loaded[0] == 0x11); // Invalid primary cannot hide a valid recovery copy.
+    SD.renameCalls = 0; SD.failedRenames = {1};
+    assert(!crsfSaveStoredSettings(payload, sizeof(payload)));
+    assert(crsfLoadStoredSettings(loaded, valid));
+    assert(loaded[0] == 0x11); // Failed repair must also preserve the valid backup.
+    SD.failedRenames.clear();
+    SD.files.erase("/crsfcfg.bak");
+    assert(!crsfReadSettingsFile(SD, name, loaded, valid));
+    assert(crsfLoadStoredSettings(loaded, valid));
+    assert(loaded[0] == 0x22);
+    assert(crsfSaveStoredSettings(payload, sizeof(payload)));
+    assert(crsfLoadStoredSettings(loaded, valid) && loaded[0] == 0x22);
+    puts("CRSF file recovery retains selected-medium priority and survives a failed repair");
+}
+'''
+compile_and_run(file_fixture + file_functions + stored_settings_with_files + file_cases, ['elrs_input_model.cpp'])

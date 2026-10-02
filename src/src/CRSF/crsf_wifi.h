@@ -134,6 +134,9 @@ static CRSFAxisSettings crsfAxisSettings[] = {
     { ELRS_GIMBAL_INPUT_RUDDER, settings.elrsYawCh, settings.elrsYawRev, settings.elrsYawLow, settings.elrsYawCtr, settings.elrsYawHigh }
 };
 
+static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", "1000"};
+static char crsfOutputMax[ELRS_GIMBAL_AXIS_COUNT][5] = {"2000", "2000", "2000", "2000"};
+
 static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
 {
     if(fieldId >= CRSF_SELECT_COUNT) {
@@ -316,8 +319,8 @@ static void syncCRSFPortalBuffers()
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        snprintf(settings.elrsOutputMin[i], sizeof(settings.elrsOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
-        snprintf(settings.elrsOutputMax[i], sizeof(settings.elrsOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
+        snprintf(crsfOutputMin[i], sizeof(crsfOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
+        snprintf(crsfOutputMax[i], sizeof(crsfOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
     }
     snprintf(settings.elrsAdcHysteresis, sizeof(settings.elrsAdcHysteresis), "%u", (unsigned)adcHysteresis);
     snprintf(settings.elrsThrIdleDeadband, sizeof(settings.elrsThrIdleDeadband), "%u", (unsigned)throttleIdleDeadband);
@@ -350,7 +353,7 @@ static bool saveCRSFPortalInputSettings()
     }
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        const char *values[] = {settings.elrsOutputMin[i], settings.elrsOutputMax[i]};
+        const char *values[] = {crsfOutputMin[i], crsfOutputMax[i]};
         long bounds[2];
         for(int side = 0; side < 2; side++) {
             char *end;
@@ -394,13 +397,13 @@ static void crsfReadOutputLimitParams()
     ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits);
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        snprintf(settings.elrsOutputMin[i], sizeof(settings.elrsOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
-        snprintf(settings.elrsOutputMax[i], sizeof(settings.elrsOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
+        snprintf(crsfOutputMin[i], sizeof(crsfOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
+        snprintf(crsfOutputMax[i], sizeof(crsfOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
         for(int side = 0; side < 2; side++) {
             char name[8];
             snprintf(name, sizeof(name), "cout%d%s", i, side ? "hi" : "lo");
             if(!wm.server->hasArg(name)) continue;
-            char *buffer = side ? settings.elrsOutputMax[i] : settings.elrsOutputMin[i];
+            char *buffer = side ? crsfOutputMax[i] : crsfOutputMin[i];
             String value = wm.server->arg(name);
             buffer[0] = 0;
             if(value.length() == 4 && strspn(value.c_str(), "0123456789") == 4) {
@@ -586,7 +589,7 @@ static const char *wmBuildCRSFOutputLimits(const char *dest, int op)
             "<p><small>RC output in microseconds equivalent. Full stick travel scales to these limits; center stays at 1500. Changes apply after saving and restarting.</small></p>"
             "<style>.elrsout label{display:block;font-size:.8em}.elrsout input{box-sizing:border-box;width:100%;min-width:0;max-width:100%}</style>";
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        const char *values[] = {settings.elrsOutputMin[i], "1500", settings.elrsOutputMax[i]};
+        const char *values[] = {crsfOutputMin[i], "1500", crsfOutputMax[i]};
         html += "<fieldset style='margin:10px 0;padding:8px;min-width:0'><legend>";
         html += axes[i];
         html += "</legend><div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px'>";

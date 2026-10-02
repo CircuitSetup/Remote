@@ -54,6 +54,9 @@
 
 #include <Arduino.h>
 #include <math.h>
+#include <LittleFS.h>
+#include <SD.h>
+#include "../../remote_settings.h"
 
 #include "elrs_crsf_shared.h"
 #include "elrs_crsf.h"
@@ -61,7 +64,6 @@
 #include "crsf_settings.h"
 
 // External
-extern bool     loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs = 0);
 extern bool     saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
 extern uint32_t calcHash(uint8_t *buf, int len);
 
@@ -152,6 +154,86 @@ static uint32_t crsfSettingsHash  = 0;
 static bool     haveCRSFSettings  = false;
 
 static const char *crsfCfgName  = "/crsfcfg";
+static const char *crsfTmpName  = "/crsfcfg.tmp";
+static const char *crsfBackupName = "/crsfcfg.bak";
+
+static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes)
+{
+    validBytes = 0;
+    File file = storage.open(path, FILE_READ);
+    if(!file) return false;
+    const size_t size = file.size();
+    // Existing binary framing: uint16_t payload length, payload, checksum.
+    uint8_t *data = size >= 3 && size <= 65538 ? (uint8_t *)malloc(size) : NULL;
+    bool ret = data && file.read(data, size) == size;
+    file.close();
+    if(ret) {
+        const int payloadBytes = data[0] | (data[1] << 8);
+        uint16_t checksum = 0;
+        for(size_t i = 0; i < size - 1; i++) checksum += data[i];
+        checksum = (checksum >> 8) + (checksum & 0xff);
+        checksum += checksum >> 8;
+        ret = payloadBytes == size - 3 && data[size - 1] == (uint8_t)~checksum;
+        if(ret) {
+            validBytes = payloadBytes;
+            if(buf) memcpy(buf, data + 2, min((int)sizeof(ELRSCrsfSettingsBlob), validBytes));
+        }
+    }
+    if(data) free(data);
+    return ret;
+}
+
+static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)
+{
+    validBytes = 0;
+    const bool fromSD = haveSD && (settings.CfgOnSD[0] != '0' || FlashROMode);
+    for(int medium = 0; medium < 2; medium++) {
+        if(medium ? !haveFS : !fromSD) continue;
+        fs::FS &storage = medium ? static_cast<fs::FS &>(LittleFS) : static_cast<fs::FS &>(SD);
+        if(crsfReadSettingsFile(storage, crsfCfgName, buf, validBytes) ||
+           crsfReadSettingsFile(storage, crsfBackupName, buf, validBytes)) return true;
+    }
+    return false;
+}
+
+static bool crsfSaveStoredSettings(uint8_t *buf, int len)
+{
+    // The shared writer's medium is private and may change during moveSettings.
+    // Clear only our stages so the newly written file identifies its actual target.
+    for(int medium = 0; medium < 2; medium++) {
+        if(medium ? (!haveFS || FlashROMode) : !haveSD) continue;
+        fs::FS &storage = medium ? static_cast<fs::FS &>(LittleFS) : static_cast<fs::FS &>(SD);
+        if(storage.exists(crsfTmpName) && !storage.remove(crsfTmpName)) return false;
+    }
+    // Reuse the existing binary writer, but its truncating FILE_WRITE targets only the stage.
+    bool ret = saveConfigFile(crsfTmpName, buf, len, FlashROMode ? 1 : 0);
+    const bool toSD = haveSD && SD.exists(crsfTmpName);
+    fs::FS &storage = toSD ? static_cast<fs::FS &>(SD) : static_cast<fs::FS &>(LittleFS);
+    if(ret) {
+        bool hadOriginal = storage.exists(crsfCfgName);
+        if(hadOriginal && storage.exists(crsfBackupName)) {
+            int validBytes;
+            if(crsfReadSettingsFile(storage, crsfCfgName, NULL, validBytes)) {
+                ret = storage.remove(crsfBackupName);
+            } else if(crsfReadSettingsFile(storage, crsfBackupName, NULL, validBytes)) {
+                // A failed repair must preserve the valid backup, not replace it with corrupt data.
+                ret = storage.remove(crsfCfgName);
+                hadOriginal = false;
+            } else {
+                ret = false;
+            }
+        }
+        // SD cannot rename over an existing file; retain a recovery copy across both renames.
+        if(ret && hadOriginal) ret = storage.rename(crsfCfgName, crsfBackupName);
+        if(ret) {
+            ret = storage.rename(crsfTmpName, crsfCfgName);
+            if(ret) storage.remove(crsfBackupName);
+            else if(hadOriginal) storage.rename(crsfBackupName, crsfCfgName);
+        }
+    }
+    if(toSD || (haveFS && !FlashROMode)) storage.remove(crsfTmpName);
+    return ret;
+}
 
 static const uint16_t packetRates[5] = {
     ELRS_PACKET_RATE_50HZ,
@@ -225,7 +307,7 @@ void crsf_load_settings()
     uint8_t rawSettings[sizeof(crsfSettings)] = { 0 };
 
     crsfSettings = defaultCrsfSettings();
-    if(loadConfigFile(crsfCfgName, rawSettings, sizeof(rawSettings), crsfSetValidBytes, 0)) {
+    if(crsfLoadStoredSettings(rawSettings, crsfSetValidBytes)) {
         if(crsfSetValidBytes <= (int)sizeof(ELRSCrsfLegacySettingsBlob)) {
             ELRSCrsfLegacySettingsBlob legacySettings = {};
             int legacyAxisCount;
@@ -258,7 +340,7 @@ bool crsf_save_settings(bool useCache)
 {
     uint32_t newHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
     if(useCache && newHash == crsfSettingsHash) return true;
-    if(!saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0)) return false;
+    if(!crsfSaveStoredSettings((uint8_t *)&crsfSettings, sizeof(crsfSettings))) return false;
     crsfSettingsHash = newHash;
     return true;
 }
