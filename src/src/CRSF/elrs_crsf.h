@@ -34,7 +34,10 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             bool useLevelMeter,
             bool powerLedOnFakePower,
             bool levelMeterOnFakePower,
-            void (*fpOnWifiHandler)(bool)
+            void (*fpOnWifiHandler)(bool),
+            uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT,
+            uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT,
+            const ELRSSwitchRouting *switchRouting = NULL
         );
 
         void loop(int battWarn);
@@ -47,7 +50,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
     private:
         bool initAds1015();
-        int16_t readAdsChannel(uint8_t channel);
+        bool readAdsChannel(uint8_t channel, int16_t &value);
 
         void logMessage(const char *message) override;
 
@@ -81,7 +84,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         void setStopLed(bool state) override;
 
         void loadCalibration(ELRSAxisCalibrationData *cal, int count) override;
-        void saveCalibration(const ELRSAxisCalibrationData *cal, int count) override;
+        bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) override;
 
         ELRSCrsfCore _core;
         HardwareSerial _serial;

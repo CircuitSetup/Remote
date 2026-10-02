@@ -15,10 +15,12 @@ static const char *wmBuildCRSFPC(const char *dest, int op);
 static const char *wmBuildCRSFTC(const char *dest, int op);
 static const char *wmBuildCRSFYC(const char *dest, int op);
 static const char *wmBuildCRSFCAL(const char *dest, int op);
+static const char *wmBuildCRSFSwitchMap(const char *dest, int op);
+static void crsfReadSwitchParams();
 
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
-static void getServerParamOneBased(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal);
+static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset);
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
 static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel);
 
@@ -154,7 +156,7 @@ CRSF_SELECT_BUILDER(wmBuildCRSFMP, CRSF_SELECT_MAXPOWER)
 CRSF_SELECT_BUILDER(wmBuildCRSFDP, CRSF_SELECT_DYNPOWER)
 
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
-WiFiManagerParameter custom_ss_crsf("ELRS/CRSF Settings", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_ss_crsf("<h3>ELRS/CRSF Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfstatus(wmBuildCRSFStatus);
 WiFiManagerParameter custom_crsfap("Connect to WiFi in ELRS/CRSF mode<br><span>If unchecked, device will remain in AP mode.</span>", settings.crsfap, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
@@ -162,6 +164,7 @@ WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
 WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
 WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
 WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP);
+WiFiManagerParameter custom_ss_crsfmap("<h3>Channel Mappings</h3><p style='margin:0 0 10px'><small>Changes apply after saving and restarting.</small></p>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfrc(wmBuildCRSFRC);
 WiFiManagerParameter custom_crsfrr("Reverse Aileron", settings.elrsRollRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpc(wmBuildCRSFPC);
@@ -170,8 +173,8 @@ WiFiManagerParameter custom_crsftc(wmBuildCRSFTC);
 WiFiManagerParameter custom_crsftrv("Reverse Throttle", settings.elrsThrRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfyc(wmBuildCRSFYC);
 WiFiManagerParameter custom_crsfyrv("Reverse Rudder", settings.elrsYawRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
-WiFiManagerParameter custom_crsfswmap("<div class='cmp0' style='font-size:0.82em;line-height:1.35em;margin:8px 0 0 0;color:#444'>Switch outputs:<ul style='margin:4px 0 0 1.2em;padding:0'><li>CH5 - Stop</li><li>CH6 - FakePower</li><li>CH7 - O.O</li><li>CH8 - RESET</li><li>CH9-CH16 - ButtonPack 1-8</li></ul></div>");
-WiFiManagerParameter custom_ss_crsfcal("ELRS/CRSF Gimbal Calibration", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
+WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Calibration</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
 WiFiManagerParameter *crsfParmArray[] = {
@@ -184,6 +187,7 @@ WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsftr,
       &custom_crsfmp,
       &custom_crsfdp,
+      &custom_ss_crsfmap,
       &custom_crsfrc,
       &custom_crsfrr,
       &custom_crsfpc,
@@ -200,12 +204,16 @@ WiFiManagerParameter *crsfParmArray[] = {
 
 
 /*
- * Callback from wifi_loop() for saving settings
+ * Save input settings before the portal reports success.
  *
  */
 static bool crsf_wifi_loop_settings()
 {
     evalCB(settings.crsfap, &custom_crsfap);
+    evalCB(settings.elrsRollRev, &custom_crsfrr);
+    evalCB(settings.elrsPitchRev, &custom_crsfprv);
+    evalCB(settings.elrsThrRev, &custom_crsftrv);
+    evalCB(settings.elrsYawRev, &custom_crsfyrv);
     if(saveCRSFPortalInputSettings()) {
         if(opModeCRSF) {
             requestELRSModuleConfigUpdate((uint8_t)atoi(settings.elrsTlmRatio),
@@ -230,27 +238,26 @@ static void crsf_wifi_saveParamsCallback()
     getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
     getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
     getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
-    getServerParamOneBased("crlch", settings.elrsRollCh, 2, 1, 4, DEF_ELRSROLLCH);
-    getServerParamOneBased("cptch", settings.elrsPitchCh, 2, 1, 4, DEF_ELRSPITCHCH);
-    getServerParamOneBased("cthch", settings.elrsThrCh, 2, 1, 4, DEF_ELRSTHRCH);
-    getServerParamOneBased("cywch", settings.elrsYawCh, 2, 1, 4, DEF_ELRSYAWCH);
-    getServerParam("crrv", settings.elrsRollRev, 1, 0, 1, 0);
-    getServerParam("cprv", settings.elrsPitchRev, 1, 0, 1, 0);
-    getServerParam("ctrv", settings.elrsThrRev, 1, 0, 1, 0);
-    getServerParam("cyrv", settings.elrsYawRev, 1, 0, 1, 0);
+    crsfReadInputParam("crlch", settings.elrsRollCh, 2, 1, 16, 1);
+    crsfReadInputParam("cptch", settings.elrsPitchCh, 2, 1, 16, 1);
+    crsfReadInputParam("cthch", settings.elrsThrCh, 2, 1, 16, 1);
+    crsfReadInputParam("cywch", settings.elrsYawCh, 2, 1, 16, 1);
+    crsfReadSwitchParams();
     if(opModeCRSF) {
-        getServerParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
-        getServerParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 1024);
-        getServerParam("crrhi", settings.elrsRollHigh, 5, 0, 2047, 2047);
-        getServerParam("cptlo", settings.elrsPitchLow, 5, 0, 2047, 0);
-        getServerParam("cptct", settings.elrsPitchCtr, 5, 0, 2047, 1024);
-        getServerParam("cpthi", settings.elrsPitchHigh, 5, 0, 2047, 2047);
-        getServerParam("cthlo", settings.elrsThrLow, 5, 0, 2047, 0);
-        getServerParam("cthct", settings.elrsThrCtr, 5, 0, 2047, 1024);
-        getServerParam("cthhi", settings.elrsThrHigh, 5, 0, 2047, 2047);
-        getServerParam("cywlo", settings.elrsYawLow, 5, 0, 2047, 0);
-        getServerParam("cywct", settings.elrsYawCtr, 5, 0, 2047, 1024);
-        getServerParam("cywhi", settings.elrsYawHigh, 5, 0, 2047, 2047);
+        getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
+        getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
+        crsfReadInputParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
+        crsfReadInputParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("crrhi", settings.elrsRollHigh, 5, 0, 2047, 0);
+        crsfReadInputParam("cptlo", settings.elrsPitchLow, 5, 0, 2047, 0);
+        crsfReadInputParam("cptct", settings.elrsPitchCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("cpthi", settings.elrsPitchHigh, 5, 0, 2047, 0);
+        crsfReadInputParam("cthlo", settings.elrsThrLow, 5, 0, 2047, 0);
+        crsfReadInputParam("cthct", settings.elrsThrCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("cthhi", settings.elrsThrHigh, 5, 0, 2047, 0);
+        crsfReadInputParam("cywlo", settings.elrsYawLow, 5, 0, 2047, 0);
+        crsfReadInputParam("cywct", settings.elrsYawCtr, 5, 0, 2047, 0);
+        crsfReadInputParam("cywhi", settings.elrsYawHigh, 5, 0, 2047, 0);
     }
 }
 
@@ -294,12 +301,19 @@ static void syncCRSFPortalBuffers()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
+    ELRSSwitchRouting switches;
+    uint16_t adcHysteresis, throttleIdleDeadband;
 
     if(!haveNewBoard) {
         return;
     }
 
-    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
+    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches);
+    snprintf(settings.elrsAdcHysteresis, sizeof(settings.elrsAdcHysteresis), "%u", (unsigned)adcHysteresis);
+    snprintf(settings.elrsThrIdleDeadband, sizeof(settings.elrsThrIdleDeadband), "%u", (unsigned)throttleIdleDeadband);
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        snprintf(settings.elrsSwitchCh[i], sizeof(settings.elrsSwitchCh[i]), "%u", (unsigned)switches.channels[i]);
+    }
 
     for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
         const CRSFAxisSettings &axis = crsfAxisSettings[i];
@@ -318,10 +332,20 @@ static bool saveCRSFPortalInputSettings()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
+    ELRSSwitchRouting switches;
 
     if(!haveNewBoard) {
         return false;
     }
+
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        const char *value = settings.elrsSwitchCh[i];
+        char *end;
+        long channel = strtol(value, &end, 10);
+        if(!*value || *end || channel < 1 || channel > 16) return false;
+        switches.channels[i] = (uint8_t)channel;
+    }
+    if(!elrsIsValidSwitchRouting(switches)) return false;
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
 
@@ -336,7 +360,24 @@ static bool saveCRSFPortalInputSettings()
         profile.maximum = (int16_t)atoi(axis.high);
     }
 
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
+    const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
+    const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
+    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches);
+}
+
+static void crsfReadSwitchParams()
+{
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        char name[6];
+        snprintf(name, sizeof(name), "csw%d", i);
+        if(wm.server->hasArg(name)) {
+            String value = wm.server->arg(name);
+            settings.elrsSwitchCh[i][0] = 0;
+            if(value.length() < sizeof(settings.elrsSwitchCh[i]) && value.length() == strlen(value.c_str())) {
+                strcpy(settings.elrsSwitchCh[i], value.c_str());
+            }
+        }
+    }
 }
 
 /*
@@ -433,17 +474,55 @@ static const char *wmBuildCRSFStatus(const char *dest, int op)
     return str;
 }
 
+static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+    static const char *labels[ELRS_SWITCH_INPUT_COUNT] = {
+        "Stop", "FakePower", "O.O", "RESET", "ButtonPack 1", "ButtonPack 2", "ButtonPack 3", "ButtonPack 4",
+        "ButtonPack 5", "ButtonPack 6", "ButtonPack 7", "ButtonPack 8"
+    };
+    String html;
+    html.reserve(10000);
+    html += "<div class='cmp0'><h4 style='margin:12px 0 5px'>Switch Channels</h4><p style='margin:0 0 10px;white-space:normal'><small>All inputs can use CH1-CH16. Choose a different channel for each gimbal and switch. ELRS RF mode determines receiver channel availability and resolution. Keep steering and throttle on CH1-CH4 in Hybrid/Wide; use Full Resolution 16ch for all 16 input channels.</small></p>";
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        char name[6];
+        snprintf(name, sizeof(name), "csw%d", i);
+        html += "<div class='cmp0'><label class='mp0' for='"; html += name; html += "'>"; html += labels[i]; html += " target channel</label><select class='sel0' data-elrs-switch id='";
+        html += name; html += "' name='"; html += name; html += "'>";
+        for(int channel = 1; channel <= 16; channel++) {
+            char value[3];
+            snprintf(value, sizeof(value), "%d", channel);
+            html += "<option value='"; html += value; html += "'";
+            if(channel == atoi(settings.elrsSwitchCh[i])) html += " selected";
+            html += ">CH"; html += value; html += "</option>";
+        }
+        html += "</select></div>";
+    }
+    html += "</div><script>(function(){var s=document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]');function c(e){return Number(e.value)+(e.hasAttribute('data-elrs-switch')?0:1);}function v(){var n={};for(var i=0;i<s.length;i++)n[c(s[i])]=(n[c(s[i])]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[c(s[i])]>1?'Choose a different channel for each input.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
+    if(op == WM_CP_LEN) {
+        wmLenBuf = html.length() + 1;
+        return (const char *)&wmLenBuf;
+    }
+    char *result = (char *)malloc(html.length() + 1);
+    if(!result) return NULL;
+    strcpy(result, html.c_str());
+    return result;
+}
+
 static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
 {
-    const char *html[6];
+    const char *html[18];
 
     html[0] = label;
     html[1] = id;
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < 16; i++) {
         html[i + 2] = cChannelCustHTMLSrc[i];
     }
 
-    return wmBuildSelectOneBased(dest, op, html, 6, setting, false);
+    return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
 }
 
 struct CRSFGimbalCalField {
@@ -474,7 +553,7 @@ static void wmAppendCRSFCALPoint(String &html,
     html += inputId;
     html += "' maxlength='4' value='";
     html += value;
-    html += "' type='number' min='0' max='2047'><button type='button' onclick=\"elrsCapture('";
+    html += "' type='number' min='0' max='2047' required><button type='button' onclick=\"elrsCapture('";
     html += liveId;
     html += "','";
     html += inputId;
@@ -485,7 +564,7 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 {
     html += "<div class='elrscal-axis'><div class='elrscal-head'><span class='elrscal-name'>";
     html += axis.name;
-    html += "</span><span class='elrscal-live'>Live <span id='";
+    html += "</span><span class='elrscal-live'>Filtered ADC <span id='";
     html += axis.liveId;
     html += "'>--</span></span></div>";
     for(int i = 0; i < 3; i++) {
@@ -496,24 +575,25 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 
 static const char crsfCalIntro[] =
     "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
-    "Capture each gimbal's raw ADC low, center, and high points here, then save this page. "
+    "Capture each gimbal's filtered ADC low, center, and high points here, then save this page. "
     "Those saved points become the real CRSF gimbal output mapping: low=1000, center=1500, high=2000."
     "</p>"
-    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Live ADC: waiting for samples...</div>";
+    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>";
 
 static const char crsfCalStyle[] =
     "<style>"
     ".elrscal-wrap{box-sizing:border-box;width:100%;max-width:100%;padding:0;margin:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden}"
     ".elrscal-wrap p,.elrscal-wrap #elrscalstat{white-space:normal;overflow-wrap:anywhere;max-width:100%}"
+    ".elrscal-wrap p{font-size:.85em;line-height:1.35em}"
     ".elrscal-axis{box-sizing:border-box;width:100%;max-width:100%;margin:12px 0 0 0;padding:10px 0 0 0;border-top:1px solid #ddd;overflow:hidden;white-space:normal}"
     ".elrscal-head{display:block;line-height:1.3em;max-width:100%;overflow-wrap:anywhere;white-space:normal}"
     ".elrscal-name{font-weight:bold}"
     ".elrscal-live{display:block;font-size:.85em;color:#333}"
     ".elrscal-row{box-sizing:border-box;width:100%;max-width:100%;margin:8px 0;overflow:hidden;padding:0}"
     ".elrscal-row label{display:block;font-size:.82em;margin:0 0 2px 0}"
-    ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) minmax(4.8em,1fr);gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
+    ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) max-content;gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
     ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
-    ".elrscal-row button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;margin:0;font-size:.95em;line-height:2rem}"
+    ".elrscal-row button{box-sizing:border-box;width:auto;max-width:100%;min-width:0;margin:0;padding:0 6px;font-size:.95em;line-height:2rem}"
     "</style>";
 
 static const char crsfCalScript[] =
@@ -522,12 +602,12 @@ static const char crsfCalScript[] =
     "function setStatus(msg){var el=ge('elrscalstat');if(el)el.textContent=msg;}"
     "window.elrsCapture=function(liveId,targetId){var live=ge(liveId),target=ge(targetId);if(!live||!target)return;"
     "if(live.textContent==='--')return;target.value=live.textContent;};"
-    "function fail(){setStatus('Live ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
+    "function fail(){setStatus('Filtered ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
     "setLive('elrs_roll_live','--');setLive('elrs_pitch_live','--');setLive('elrs_throttle_live','--');setLive('elrs_yaw_live','--');}"
     "function poll(){fetch('/elrsraw',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
     "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
     "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
-    "setStatus('Live ADC connected.');"
+    "setStatus('Filtered ADC connected.');"
     "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>";
 
 static const char *wmBuildCRSFCAL(const char *dest, int op)
@@ -545,6 +625,26 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
     html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + 1600);
     html += crsfCalIntro;
     html += crsfCalStyle;
+
+    CRSFGimbalCalField tolerances[] = {
+        { "Jitter tolerance (ADC counts)", "chyst", settings.elrsAdcHysteresis },
+        { "Throttle idle deadband (ADC counts)", "cthid", settings.elrsThrIdleDeadband }
+    };
+    for(const CRSFGimbalCalField &field : tolerances) {
+        html += "<div class='elrscal-row'><label for='";
+        html += field.inputId;
+        html += "'>";
+        html += field.label;
+        html += "</label><div class='elrscal-ctl'><input id='";
+        html += field.inputId;
+        html += "' name='";
+        html += field.inputId;
+        html += "' maxlength='2' type='number' min='0' max='32' value='";
+        html += field.value;
+        html += "'></div></div>";
+    }
+    html += "<p>Both settings default to 5 counts; 0 disables the setting. Higher jitter tolerance ignores more small movements. "
+            "Live readings and captures include filtering and jitter tolerance, before throttle idle and calibration mapping.</p>";
 
     CRSFGimbalCalAxis axes[] = {
         { "Rudder", "elrs_yaw_live", {
@@ -624,12 +724,16 @@ static void handleELRSRawRead()
     wm.server->send(200, "application/json", buf);
 }
 
-static void getServerParamOneBased(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal)
+static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset)
 {
-    char tempBuf[4];
-
-    getServerParam(name, tempBuf, sizeof(tempBuf) - 1, minval - 1, maxval - 1, defaultVal - 1);
-    snprintf(destBuf, length + 1, "%d", atoi(tempBuf) + 1);
+    String value = wm.server->arg(name);
+    const char *text = value.c_str();
+    char *end;
+    long parsed = strtol(text, &end, 10);
+    bool valid = *text && !*end && value.length() == strlen(text) &&
+        parsed >= minval - offset && parsed <= maxval - offset;
+    // Keep invalid submissions invalid until the atomic input validator rejects them.
+    snprintf(destBuf, length + 1, "%ld", valid ? parsed + offset : -1L);
 }
 
 #endif

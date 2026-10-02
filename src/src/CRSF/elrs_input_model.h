@@ -28,7 +28,16 @@ struct ELRSGimbalRouting {
     uint8_t rudderChannel;
 };
 
+constexpr uint8_t ELRS_SWITCH_INPUT_COUNT = 12;
+struct ELRSSwitchRouting {
+    uint8_t channels[ELRS_SWITCH_INPUT_COUNT]; // Stop, FakePower, O.O, RESET, ButtonPack 1-8.
+};
+
+constexpr uint16_t ELRS_INPUT_TOLERANCE_DEFAULT = 5;
+constexpr uint16_t ELRS_INPUT_TOLERANCE_MAX = 32;
+
 int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw);
+int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband);
 uint16_t elrsInputUsToCrsfTicks(int16_t us);
 ELRSInputAxisProfile elrsDefaultInputAxisProfile();
 ELRSGimbalRouting elrsDefaultGimbalRouting();
@@ -36,5 +45,10 @@ bool elrsIsValidInputAxisProfile(const ELRSInputAxisProfile &profile);
 ELRSInputAxisProfile elrsSanitizeInputAxisProfile(const ELRSInputAxisProfile &profile);
 bool elrsIsValidGimbalRouting(const ELRSGimbalRouting &routing);
 ELRSGimbalRouting elrsSanitizeGimbalRouting(const ELRSGimbalRouting &routing);
+ELRSSwitchRouting elrsDefaultSwitchRouting();
+bool elrsIsValidSwitchRouting(const ELRSSwitchRouting &routing);
+ELRSSwitchRouting elrsSanitizeSwitchRouting(const ELRSSwitchRouting &routing);
+bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchRouting &switches);
+void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &switches);
 
 #endif

@@ -231,8 +231,8 @@ class WiFiManager
                                   { _presaveparamscallback = func; };
     #endif
 
-    // called when saving either params-in-wifi or params page
-    void          setSaveParamsCallback(void(*func)(int))
+    // Called when saving params; return false to reject the save.
+    void          setSaveParamsCallback(bool(*func)(int))
                                   { _saveparamscallback = func; };
 
     // called just before/after OTA update
@@ -616,7 +616,7 @@ class WiFiManager
     #ifdef WM_PRESAVECB
     void (*_presaveparamscallback)(int)                                 = NULL;
     #endif
-    void (*_saveparamscallback)(int)                                    = NULL;
+    bool (*_saveparamscallback)(int)                                    = NULL;
     void (*_preotaupdatecallback)(void)                                 = NULL;
     void (*_postotaupdatecallback)(bool)                                = NULL;
 	  void (*_menuoutcallback)(String&, unsigned int)                     = NULL;

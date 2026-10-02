@@ -73,6 +73,9 @@ extern void     wifiOnFakePowerOn(bool showWait);
 struct [[gnu::packed]] ELRSCrsfSettingsBlob {
     ELRSInputAxisProfile axisProfile[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting gimbalRouting;
+    uint16_t adcHysteresis;
+    uint16_t throttleIdleDeadband;
+    ELRSSwitchRouting switchRouting;
 };
 
 struct [[gnu::packed]] ELRSCrsfLegacySettingsBlob {
@@ -88,6 +91,9 @@ static ELRSCrsfSettingsBlob defaultCrsfSettings()
         settings.axisProfile[i] = defaultProfile;
     }
     settings.gimbalRouting = elrsDefaultGimbalRouting();
+    settings.adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
+    settings.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
+    settings.switchRouting = elrsDefaultSwitchRouting();
 
     return settings;
 }
@@ -119,7 +125,9 @@ static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         settings.axisProfile[i] = elrsSanitizeInputAxisProfile(settings.axisProfile[i]);
     }
-    settings.gimbalRouting = elrsSanitizeGimbalRouting(settings.gimbalRouting);
+    elrsSanitizeInputRouting(settings.gimbalRouting, settings.switchRouting);
+    if(settings.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) settings.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
+    if(settings.throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) settings.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_MAX;
 }
 
 static int clampProfileCount(int count)
@@ -221,10 +229,15 @@ void crsf_load_settings()
             for(int i = 0; i < legacyAxisCount; i++) {
                 crsfSettings.axisProfile[i] = calibrationToProfile(legacySettings.elrsAxis[i]);
             }
-        } else if(crsfSetValidBytes < (int)sizeof(crsfSettings)) {
-            memcpy(&crsfSettings, rawSettings, crsfSetValidBytes);
         } else {
-            memcpy(&crsfSettings, rawSettings, sizeof(crsfSettings));
+            int bytes = min(crsfSetValidBytes, (int)sizeof(crsfSettings));
+            const int toleranceOffset = offsetof(ELRSCrsfSettingsBlob, adcHysteresis);
+            const int switchOffset = offsetof(ELRSCrsfSettingsBlob, switchRouting);
+            // A partial permutation cannot safely replace the complete default map.
+            if(bytes > switchOffset && bytes < (int)sizeof(crsfSettings)) bytes = switchOffset;
+            // Optional tolerances use defaults until a complete uint16_t is present.
+            if(bytes > toleranceOffset) bytes = toleranceOffset + ((bytes - toleranceOffset) / 2) * 2;
+            memcpy(&crsfSettings, rawSettings, bytes);
         }
         sanitizeCrsfSettings(crsfSettings);
         crsfSettingsHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
@@ -234,17 +247,11 @@ void crsf_load_settings()
 
 bool crsf_save_settings(bool useCache)
 {
-    uint32_t oldHash = crsfSettingsHash;
-
-    crsfSettingsHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
-
-    if(useCache) {
-        if(oldHash == crsfSettingsHash) {
-            return true;
-        }
-    }
-
-    return saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0);
+    uint32_t newHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
+    if(useCache && newHash == crsfSettingsHash) return true;
+    if(!saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0)) return false;
+    crsfSettingsHash = newHash;
+    return true;
 }
 
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
@@ -259,12 +266,13 @@ void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count)
     }
 }
 
-void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
+bool saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
 {
     if(!cal) {
-        return;
+        return false;
     }
 
+    ELRSCrsfSettingsBlob previous = crsfSettings;
     count = clampProfileCount(count);
     for(int i = 0; i < count; i++) {
         crsfSettings.axisProfile[i].minimum = cal[i].minimum;
@@ -272,7 +280,9 @@ void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count)
         crsfSettings.axisProfile[i].maximum = cal[i].maximum;
     }
     sanitizeCrsfSettings(crsfSettings);
-    crsf_save_settings(true);
+    if(crsf_save_settings(true)) return true;
+    crsfSettings = previous;
+    return false;
 }
 
 void loadELRSInputProfiles(ELRSInputAxisProfile *profiles, int count)
@@ -289,16 +299,7 @@ void loadELRSInputProfiles(ELRSInputAxisProfile *profiles, int count)
 
 void saveELRSInputProfiles(const ELRSInputAxisProfile *profiles, int count)
 {
-    if(!profiles) {
-        return;
-    }
-
-    count = clampProfileCount(count);
-    for(int i = 0; i < count; i++) {
-        crsfSettings.axisProfile[i] = elrsSanitizeInputAxisProfile(profiles[i]);
-    }
-    sanitizeCrsfSettings(crsfSettings);
-    crsf_save_settings(true);
+    if(profiles) saveELRSInputConfig(profiles, count);
 }
 
 ELRSGimbalRouting loadELRSGimbalRouting()
@@ -306,7 +307,9 @@ ELRSGimbalRouting loadELRSGimbalRouting()
     return crsfSettings.gimbalRouting;
 }
 
-void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing)
+void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing,
+                         uint16_t *adcHysteresis, uint16_t *throttleIdleDeadband,
+                         ELRSSwitchRouting *switchRouting)
 {
     if(profiles) {
         loadELRSInputProfiles(profiles, count);
@@ -315,30 +318,48 @@ void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRo
     if(routing) {
         *routing = crsfSettings.gimbalRouting;
     }
+    if(adcHysteresis) *adcHysteresis = crsfSettings.adcHysteresis;
+    if(throttleIdleDeadband) *throttleIdleDeadband = crsfSettings.throttleIdleDeadband;
+    if(switchRouting) *switchRouting = crsfSettings.switchRouting;
 }
 
 void saveELRSGimbalRouting(const ELRSGimbalRouting &routing)
 {
-    crsfSettings.gimbalRouting = elrsSanitizeGimbalRouting(routing);
-    sanitizeCrsfSettings(crsfSettings);
-    crsf_save_settings(true);
+    saveELRSInputConfig(nullptr, 0, &routing);
 }
 
-bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing)
+bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing,
+                         const uint16_t *adcHysteresis, const uint16_t *throttleIdleDeadband,
+                         const ELRSSwitchRouting *switchRouting)
 {
+    count = clampProfileCount(count);
     if(profiles) {
-        count = clampProfileCount(count);
         for(int i = 0; i < count; i++) {
-            crsfSettings.axisProfile[i] = elrsSanitizeInputAxisProfile(profiles[i]);
+            if(!elrsIsValidInputAxisProfile(profiles[i])) return false;
+        }
+    }
+    if(!elrsIsValidInputRouting(routing ? *routing : crsfSettings.gimbalRouting,
+                               switchRouting ? *switchRouting : crsfSettings.switchRouting)) return false;
+    const ELRSCrsfSettingsBlob previous = crsfSettings;
+    const uint32_t previousHash = crsfSettingsHash;
+    if(profiles) {
+        for(int i = 0; i < count; i++) {
+            crsfSettings.axisProfile[i] = profiles[i];
         }
     }
 
     if(routing) {
-        crsfSettings.gimbalRouting = elrsSanitizeGimbalRouting(*routing);
+        crsfSettings.gimbalRouting = *routing;
     }
+    if(adcHysteresis) crsfSettings.adcHysteresis = *adcHysteresis;
+    if(throttleIdleDeadband) crsfSettings.throttleIdleDeadband = *throttleIdleDeadband;
+    if(switchRouting) crsfSettings.switchRouting = *switchRouting;
 
     sanitizeCrsfSettings(crsfSettings);
-    return crsf_save_settings(true);
+    if(crsf_save_settings(true)) return true;
+    crsfSettings = previous;
+    crsfSettingsHash = previousHash;
+    return false;
 }
 
 bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
@@ -371,8 +392,10 @@ bool crsf_begin(
 {
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting inputRouting;
+    ELRSSwitchRouting switchRouting;
+    uint16_t adcHysteresis, throttleIdleDeadband;
 
-    loadELRSInputConfig(axisProfiles, ELRS_GIMBAL_AXIS_COUNT, &inputRouting);
+    loadELRSInputConfig(axisProfiles, ELRS_GIMBAL_AXIS_COUNT, &inputRouting, &adcHysteresis, &throttleIdleDeadband, &switchRouting);
 
     return elrsMode.begin(
             packetRateHz,
@@ -392,7 +415,10 @@ bool crsf_begin(
             useLevelMeter,
             powerLedOnFakePower,
             levelMeterOnFakePower,
-            fpOnWifiHandler
+            fpOnWifiHandler,
+            adcHysteresis,
+            throttleIdleDeadband,
+            &switchRouting
         );
 }
 

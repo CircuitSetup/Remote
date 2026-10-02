@@ -59,6 +59,7 @@ uint8_t   crsf_getTelemetryRatio(int idx);
 uint8_t   crsf_getMaxPower(int idx);
 uint8_t   crsf_getDynamicPower(int idx);
 void      crsf_load_settings();
+bool      crsf_save_settings(bool useCache);
 
 bool      crsf_begin(
             uint16_t packetRateHz,

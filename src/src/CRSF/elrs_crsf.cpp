@@ -4,6 +4,9 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#ifdef REMOTE_DBG
+#include <WiFi.h>
+#endif
 
 #include "elrs_crsf.h"
 #include "crsf_settings.h"
@@ -45,7 +48,10 @@ bool ELRSCrsfMode::begin(
     bool useLevelMeter,
     bool powerLedOnFakePower,
     bool levelMeterOnFakePower,
-    void (*fpOnWifiHandler)(bool))
+    void (*fpOnWifiHandler)(bool),
+    uint16_t adcHysteresis,
+    uint16_t throttleIdleDeadband,
+    const ELRSSwitchRouting *switchRouting)
 {
     ELRSCrsfCoreConfig config;
 
@@ -92,6 +98,9 @@ bool ELRSCrsfMode::begin(
     config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
     config.maxPower = elrsMaxPowerOrDefault(maxPower);
     config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
+    config.adcHysteresis = adcHysteresis;
+    config.throttleIdleDeadband = throttleIdleDeadband;
+    if(switchRouting) config.switchRouting = *switchRouting;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         if(axisProfiles) {
             config.axisProfiles[i] = elrsSanitizeInputAxisProfile(axisProfiles[i]);
@@ -99,7 +108,7 @@ bool ELRSCrsfMode::begin(
             config.axisProfiles[i] = elrsDefaultInputAxisProfile();
         }
     }
-    config.inputRouting = elrsSanitizeGimbalRouting(inputRouting);
+    config.inputRouting = inputRouting;
     config.transport.baudRate = elrsCrsfRecommendedBaudRate(packetRateHz);
     config.transport.invertLine = false;
     config.transport.packetRateHz = packetRateHz;
@@ -119,6 +128,11 @@ bool ELRSCrsfMode::begin(
     #endif
     config.transport.oeActiveLow = _oeActiveLow;
 
+    #ifdef REMOTE_DBG
+    Serial.printf("ELRS/CRSF: WiFi mode=%u status=%u STA=%s AP=%s\n",
+                  (unsigned)WiFi.getMode(), (unsigned)WiFi.status(),
+                  WiFi.localIP().toString().c_str(), WiFi.softAPIP().toString().c_str());
+    #endif
     return _core.begin(*this, config, millis(), micros());
 }
 
@@ -156,15 +170,12 @@ bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
     if(!_haveAds) {
         _haveAds = initAds1015();
     }
-    if(!_haveAds) {
+    if(!_haveAds || !_haveFilteredAxes) {
         return false;
     }
 
-    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        axes[i] = readAdsChannel(i);
-    }
-
-    return true;
+    // Share the control loop's filtering and jitter hold with portal captures.
+    return _core.readFilteredAxes(axes);
 }
 
 bool ELRSCrsfMode::initAds1015()
@@ -177,14 +188,12 @@ bool ELRSCrsfMode::initAds1015()
     return ok;
 }
 
-int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
+bool ELRSCrsfMode::readAdsChannel(uint8_t channel, int16_t &value)
 {
     uint8_t cfg[3];
     uint8_t raw[2];
-    int value = 0;
-
     if(channel >= ELRS_GIMBAL_AXIS_COUNT) {
-        return 1024;
+        return false;
     }
 
     cfg[0] = ADS_REG_CONFIG;
@@ -196,7 +205,7 @@ int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
     Wire.write(cfg[1]);
     Wire.write(cfg[2]);
     if(Wire.endTransmission(true)) {
-        return _rawAxes[channel];
+        return false;
     }
 
     delayMicroseconds(500);
@@ -204,11 +213,11 @@ int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
     Wire.beginTransmission(ADS1015_ADDR);
     Wire.write(ADS_REG_CONVERT);
     if(Wire.endTransmission(false)) {
-        return _rawAxes[channel];
+        return false;
     }
 
     if(Wire.requestFrom((uint8_t)ADS1015_ADDR, (uint8_t)2) != 2) {
-        return _rawAxes[channel];
+        return false;
     }
 
     raw[0] = Wire.read();
@@ -219,7 +228,7 @@ int16_t ELRSCrsfMode::readAdsChannel(uint8_t channel)
         value = 0;
     }
 
-    return (int16_t)value;
+    return true;
 }
 
 void ELRSCrsfMode::logMessage(const char *message)
@@ -285,18 +294,27 @@ unsigned long ELRSCrsfMode::microsNow()
 
 bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
-    int16_t sample;
+    int16_t samples[ELRS_GIMBAL_AXIS_COUNT];
 
+    if(!_haveAds) {
+        _haveAds = initAds1015();
+    }
     if(!_haveAds) {
         return false;
     }
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        sample = readAdsChannel(i);
+        if(!readAdsChannel(i, samples[i])) {
+            _haveAds = false;
+            _haveFilteredAxes = false;
+            return false;
+        }
+    }
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         if(!_haveFilteredAxes) {
-            _filteredAxes[i] = sample;
+            _filteredAxes[i] = samples[i];
         } else {
-            _filteredAxes[i] = elrsIirFilterStep(_filteredAxes[i], sample, ADS_FILTER_SHIFT);
+            _filteredAxes[i] = elrsIirFilterStep(_filteredAxes[i], samples[i], ADS_FILTER_SHIFT);
         }
         _rawAxes[i] = _filteredAxes[i];
         axes[i] = _filteredAxes[i];
@@ -414,9 +432,9 @@ void ELRSCrsfMode::loadCalibration(ELRSAxisCalibrationData *cal, int count)
     loadELRSCalibration(cal, count);
 }
 
-void ELRSCrsfMode::saveCalibration(const ELRSAxisCalibrationData *cal, int count)
+bool ELRSCrsfMode::saveCalibration(const ELRSAxisCalibrationData *cal, int count)
 {
-    saveELRSCalibration(cal, count);
+    return saveELRSCalibration(cal, count);
 }
 
 #endif

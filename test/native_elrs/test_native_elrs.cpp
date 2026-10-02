@@ -215,12 +215,14 @@ class FakeHost : public ELRSCrsfHost {
             }
         }
 
-        void saveCalibration(const ELRSAxisCalibrationData *cal, int count) override
+        bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) override
         {
             savedCalibrationCount = count;
+            if(!calibrationWriteOk) return false;
             for(int i = 0; i < count && i < ELRS_GIMBAL_AXIS_COUNT; i++) {
                 calibration[i] = cal[i];
             }
+            return true;
         }
 
         void queueFrame(const std::vector<uint8_t> &frame)
@@ -251,6 +253,7 @@ class FakeHost : public ELRSCrsfHost {
         int displaySpeed = -1;
         int displayShows = 0;
         int savedCalibrationCount = 0;
+        bool calibrationWriteOk = true;
         int discardSerialCount = 0;
         int stopSerialCount = 0;
         int flushCount = 0;
@@ -613,11 +616,13 @@ static void test_light_iir_filter_moves_quarter_step_toward_sample()
     TEST_ASSERT_EQUAL_INT16(1300, elrsIirFilterStep(1400, 1000, 2));
 }
 
-static void test_light_iir_filter_leaves_small_jitter_unchanged()
+static void test_light_iir_filter_converges_on_small_stable_changes()
 {
-    TEST_ASSERT_EQUAL_INT16(1000, elrsIirFilterStep(1000, 1001, 2));
-    TEST_ASSERT_EQUAL_INT16(1000, elrsIirFilterStep(1000, 1003, 2));
-    TEST_ASSERT_EQUAL_INT16(1000, elrsIirFilterStep(1000, 999, 2));
+    for(int16_t sample : {997, 999, 1000, 1001, 1003}) {
+        int16_t filtered = 1000;
+        for(int i = 0; i < 5; i++) filtered = elrsIirFilterStep(filtered, sample, 2);
+        TEST_ASSERT_EQUAL_INT16(sample, filtered);
+    }
 }
 
 static void test_input_model_center_maps_to_1500_us()
@@ -1057,7 +1062,7 @@ static void test_self_test_emits_known_frame()
 
     channels[0] = 992;
     channels[1] = 992;
-    channels[2] = 172;
+    channels[2] = 992;
     channels[3] = 992;
     channels[4] = 1811;
     for(int i = 5; i < 16; i++) {
@@ -1084,7 +1089,7 @@ static void test_adc_missing_at_boot_sets_fault_and_safe_channels()
     TEST_ASSERT_FALSE(status.faultFlags & ELRS_FAULT_ADC_STALE);
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(3));
 }
 
@@ -1110,8 +1115,31 @@ static void test_adc_stale_after_valid_samples_uses_safe_fallback()
     TEST_ASSERT_TRUE(status.faultFlags & ELRS_FAULT_ADC_STALE);
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(3));
+}
+
+static void test_adc_fault_and_self_test_keep_remapped_throttle_neutral()
+{
+    for(int scenario = 0; scenario < 3; scenario++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.inputRouting = elrsDefaultGimbalRouting();
+        config.inputRouting.elevatorChannel = 3;
+        config.inputRouting.throttleChannel = 2;
+        host.axes[AXIS_THROTTLE] = 0;
+        host.axesAvailable = scenario != 0;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        if(scenario) {
+            TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(1));
+            if(scenario == 1) host.axesAvailable = false;
+            else core.startSelfTest(0);
+            core.loop(host, 150, 0);
+        }
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+    }
 }
 
 static void test_button_pack_stale_holds_last_valid_states()
@@ -1297,7 +1325,7 @@ static void test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapp
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
 }
 
-static void test_gimbal_routing_can_claim_fixed_function_channels()
+static void test_gimbal_routing_collision_uses_defaults()
 {
     FakeHost host;
     ELRSCrsfCore core;
@@ -1321,11 +1349,15 @@ static void test_gimbal_routing_can_claim_fixed_function_channels()
     TEST_ASSERT_TRUE(core.begin(host, config, 0));
     loopAt(core, host, 20, 20000);
 
-    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(4));
-    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(5));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(1));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(582, core.channelAt(3));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(5));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(6));
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(7));
-    TEST_ASSERT_EQUAL_UINT16(582, core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(7));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(8));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(9));
 }
 
@@ -1801,6 +1833,33 @@ static void test_module_settings_retry_without_blocking_rc_output()
     TEST_ASSERT_GREATER_THAN_INT(2, countWrittenFrameType(host, 0x16));
 }
 
+static void test_unanswered_module_probes_stop_until_reconnect_or_save()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0, 0);
+    for(unsigned long now = 0; now <= 60000; now += 20) loopAt(core, host, now, now * 1000UL);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x28));
+    TEST_ASSERT_GREATER_THAN_INT(2900, countWrittenFrameType(host, 0x16));
+    host.queueFrame(makeFrame(0x3A, std::vector<uint8_t>{0xEA, 0xEE}));
+    loopAt(core, host, 61000, 61000000);
+    loopAt(core, host, 61200, 61200000);
+    loopAt(core, host, 61220, 61220000);
+    TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x28));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 0));
+    loopAt(core, host, 61240, 61240000);
+    loopAt(core, host, 64000, 64000000); // Completed session must still notice link loss.
+    host.queueFrame(makeFrame(0x3A, std::vector<uint8_t>{0xEA, 0xEE}));
+    loopAt(core, host, 65000, 65000000);
+    loopAt(core, host, 65200, 65200000);
+    loopAt(core, host, 65220, 65220000);
+    TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x28));
+    core.requestModuleConfigUpdate(0, 0, 0, 66000);
+    loopAt(core, host, 67000, 67000000);
+    loopAt(core, host, 67020, 67020000);
+    TEST_ASSERT_EQUAL_INT(6, countWrittenFrameType(host, 0x28));
+}
+
 static void test_module_settings_request_remaining_chunks_before_advancing_field()
 {
     FakeHost host;
@@ -1988,7 +2047,7 @@ static void test_bootstrap_probe_waits_long_enough_for_late_first_module_reply()
 
     loopAt(core, host, 1055, 1055000);
     TEST_ASSERT_EQUAL_UINT32(0, statusOf(core).lastReplyTimeoutAt);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(3, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
 
     host.queueFrame(makeFrame(0x3A, std::vector<uint8_t>{ 0xEA, 0xEE, 0x10, 0x00, 0x00, 0x9C, 0x40, 0xFF, 0xFF, 0xFC, 0x18 }));
     loopAt(core, host, 1060, 1060000);
@@ -2122,36 +2181,27 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     TEST_ASSERT_EQUAL_UINT16(500, statusOf(core).packetRateHz);
 }
 
-static void test_module_ping_holds_rc_until_reply_timeout_on_half_duplex_link()
+static void test_module_ping_keeps_rc_running_while_waiting_for_settings()
 {
-    FakeHost host;
-    ELRSCrsfCore core;
-    ELRSCrsfCoreConfig config = defaultConfig();
-
-    config.transport.packetRateHz = 500;
-    config.transport.replyTimeoutMs = 20;
-
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
-
-    loopAt(core, host, 0, 0);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x16));
-
-    loopAt(core, host, 1000, 1000000);
-    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x16));
-
-    loopAt(core, host, 1002, 1002000);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
-    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x16));
-
-    loopAt(core, host, 1010, 1010000);
-    loopAt(core, host, 1018, 1018000);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
-
-    loopAt(core, host, 1021, 1021000);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x16), writtenFrameTypes(host).c_str());
-
-    loopAt(core, host, 1253, 1253000);
-    TEST_ASSERT_TRUE(countWrittenFrameType(host, 0x16) >= 3);
+    for(uint16_t rate : {50, 250, 500}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.transport.packetRateHz = rate;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+        const unsigned long interval = 1000 / rate;
+        loopAt(core, host, 1000, 1000000);
+        loopAt(core, host, 1000 + interval, (1000 + interval) * 1000UL);
+        TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+        int rcCount = countWrittenFrameType(host, 0x16);
+        for(unsigned long now = 1000 + 2 * interval; now < 1250; now += interval) {
+            host.axes[AXIS_THROTTLE] = 1500;
+            loopAt(core, host, now, now * 1000UL);
+            TEST_ASSERT_EQUAL_INT(++rcCount, countWrittenFrameType(host, 0x16));
+            TEST_ASSERT_FALSE(host.driverEnabled);
+        }
+        TEST_ASSERT_NOT_EQUAL(992, core.channelAt(2));
+    }
 }
 
 static void test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer()
@@ -2210,12 +2260,548 @@ void tearDown(void)
 {
 }
 
+static void calibrationPress(ELRSCrsfCore &core, FakeHost &host, unsigned long &now, bool longPress = false)
+{
+    host.calibrationButton = true;
+    now += 100;
+    loopAt(core, host, now, now * 1000UL);
+    now += 60;
+    loopAt(core, host, now, now * 1000UL);
+    if(longPress) {
+        now += 2000;
+        loopAt(core, host, now, now * 1000UL);
+    }
+    host.calibrationButton = false;
+    now += 100;
+    loopAt(core, host, now, now * 1000UL);
+    now += 60;
+    loopAt(core, host, now, now * 1000UL);
+}
+
+static void test_invalid_button_calibration_preserves_minimum_throttle()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    host.axes[AXIS_THROTTLE] = 0;
+    core.begin(host, defaultConfig(), 0, 0);
+    unsigned long now = 0;
+    calibrationPress(core, host, now, true);
+    for(int i = 0; i < 9; i++) calibrationPress(core, host, now);
+    TEST_ASSERT_FALSE(core.isCalibrating());
+    TEST_ASSERT_EQUAL_INT(0, host.savedCalibrationCount);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+}
+
+static void test_failed_button_capture_does_not_advance_calibration()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0, 0);
+    unsigned long now = 0;
+    calibrationPress(core, host, now, true);
+    host.axesAvailable = false;
+    calibrationPress(core, host, now);
+    host.axesAvailable = true;
+    now += 1200;
+    loopAt(core, host, now, now * 1000UL);
+    TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
+    calibrationPress(core, host, now);
+    TEST_ASSERT_EQUAL_STRING("TLO", host.displayText.c_str());
+}
+
+static void test_valid_descending_button_calibration_is_saved()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0, 0);
+    unsigned long now = 0;
+    calibrationPress(core, host, now, true);
+    for(int point = 0; point < 9; point++) {
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = !point ? 1024 : ((point & 1) ? 2047 : 0);
+        calibrationPress(core, host, now);
+    }
+    TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
+    TEST_ASSERT_EQUAL_INT16(2047, host.calibration[AXIS_THROTTLE].minimum);
+    TEST_ASSERT_EQUAL_INT16(0, host.calibration[AXIS_THROTTLE].maximum);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
+}
+
+static void test_failed_button_calibration_save_reports_error()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    host.calibrationWriteOk = false;
+    core.begin(host, defaultConfig(), 0, 0);
+    unsigned long now = 0;
+    calibrationPress(core, host, now, true);
+    for(int point = 0; point < 9; point++) {
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = !point ? 1024 : ((point & 1) ? 2047 : 0);
+        calibrationPress(core, host, now);
+    }
+    TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
+    TEST_ASSERT_FALSE(core.isCalibrating());
+    TEST_ASSERT_EQUAL_STRING("ERR", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+}
+
+static void test_transport_sends_across_micros_rollover()
+{
+    const uint16_t rates[] = {50, 100, 150, 250, 500};
+    for(uint16_t rate : rates) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSCrsfTransportConfig config;
+        config.packetRateHz = rate;
+        const unsigned long interval = (1000000UL + rate - 1) / rate;
+        const unsigned long before = 0xFFFFFFFFUL - interval / 2;
+        transport.begin(host, config, 0, before);
+        transport.loop(host, 0, before);
+        transport.loop(host, 1, (uint32_t)(before + interval));
+        TEST_ASSERT_EQUAL_INT(2, host.writes.size());
+        transport.loop(host, 2, (uint32_t)(before + 2 * interval));
+        TEST_ASSERT_EQUAL_INT(3, host.writes.size());
+    }
+}
+
+static void test_malformed_parameter_reply_keeps_retries_active()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0, 0);
+    for(unsigned long now = 20; now <= 1020; now += 20) loopAt(core, host, now, now * 1000UL);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    loopAt(core, host, 1040, 1040000);
+    loopAt(core, host, 1120, 1120000);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
+    host.queueFrame(makeParameterChunkFrame(1, 0, std::vector<uint8_t>{0, 9, 'x'}));
+    loopAt(core, host, 1130, 1130000);
+    for(unsigned long now = 1160; now <= 4000; now += 20) {
+        host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+        loopAt(core, host, now, now * 1000UL);
+    }
+    TEST_ASSERT_GREATER_THAN_INT(1, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_TRUE(logsContain(host, "parameter scan timed out"));
+}
+
+static void test_service_reply_window_and_echo_cross_millis_rollover()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    const unsigned long before = 0xFFFFFFFFUL - 249;
+    const std::vector<uint8_t> ping = makeFrame(0x28, std::vector<uint8_t>{0, 0xEA});
+    transport.begin(host, config, before, 1000);
+    transport.queueServiceFrame(ping.data(), ping.size());
+    transport.loop(host, before, 1000); // Bootstrap reply deadline wraps exactly to zero.
+    host.queueFrame(ping); // Delayed local echo must not release the reply window.
+    transport.loop(host, before + 10, 11000);
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    TEST_ASSERT_EQUAL_INT(2, host.writes.size());
+    transport.loop(host, 0xFFFFFFFFUL, 250000);
+    TEST_ASSERT_EQUAL_INT(3, host.writes.size());
+    transport.loop(host, 0, 251000);
+    TEST_ASSERT_EQUAL_INT(3, host.writes.size());
+    TEST_ASSERT_EQUAL_UINT32(0, transport.status().lastReplyTimeoutAt);
+    TEST_ASSERT_EQUAL_HEX8(0x16, host.writes.back()[2]);
+}
+
+static void test_delayed_outbound_frames_do_not_count_as_module_replies()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    transport.begin(host, config, 0, 0);
+    const std::vector<uint8_t> ping = makeFrame(0x28, std::vector<uint8_t>{0, 0xEA});
+    transport.queueServiceFrame(ping.data(), ping.size());
+    transport.loop(host, 0, 0);
+    transport.loop(host, 4, 4000);
+    const std::vector<uint8_t> oldRc = host.writes.back();
+    uint16_t channels[16] = {};
+    channels[0] = 1200;
+    transport.setChannels(channels);
+    transport.loop(host, 8, 8000);
+    host.queueFrame(ping);
+    host.queueFrame(oldRc);
+    host.queueFrame(makeFrame(0x2C, std::vector<uint8_t>{0xEE, 0xEF, 1, 0}));
+    transport.loop(host, 12, 12000);
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 0));
+    transport.loop(host, 16, 16000);
+    TEST_ASSERT_TRUE(transport.status().everReplied);
+}
+
+static void test_oversized_parameter_restarts_from_chunk_zero_and_recovers()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0, 0);
+    for(unsigned long now = 20; now <= 1020; now += 20) loopAt(core, host, now, now * 1000UL);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    loopAt(core, host, 1040, 1040000);
+    loopAt(core, host, 1120, 1120000);
+    for(int chunk = 0; chunk < 4; chunk++) {
+        const unsigned long now = 1130 + chunk * 110;
+        host.queueFrame(makeParameterChunkFrame(1, 4 - chunk, std::vector<uint8_t>(56, 0)));
+        loopAt(core, host, now, now * 1000UL);
+        loopAt(core, host, now + 100, (now + 100) * 1000UL);
+    }
+    loopAt(core, host, 1860, 1860000);
+    loopAt(core, host, 1960, 1960000);
+    const std::vector<uint8_t> *retry = findWrittenFrameType(host, 0x2C, 4);
+    TEST_ASSERT_NOT_NULL(retry);
+    TEST_ASSERT_EQUAL_UINT8(0, (*retry)[6]);
+    host.queueFrame(makeParameterChunkFrame(1, 0, makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4)));
+    for(unsigned long now = 1980; now <= 2800; now += 20) loopAt(core, host, now, now * 1000UL);
+    TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
+}
+
+static void test_hysteresis_holds_jitter_and_tracks_slow_motion()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    core.begin(host, defaultConfig(), 0);
+    unsigned long now = 0;
+    for(int offset = -4; offset <= 5; offset++) {
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1024 + offset;
+        now += 20;
+        core.loop(host, now, 0);
+        for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+    }
+    for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1030;
+    core.loop(host, now + 20, 0);
+    for(int channel = 0; channel < 4; channel++) TEST_ASSERT_NOT_EQUAL(992, core.channelAt(channel));
+}
+
+static void test_hysteresis_reaches_endpoints_and_reseeds_after_error()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    host.axes[0] = 2;
+    core.begin(host, defaultConfig(), 0);
+    host.axes[0] = 0;
+    core.loop(host, 20, 0);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
+    host.axes[0] = 2045;
+    core.loop(host, 40, 0);
+    host.axes[0] = 2047;
+    core.loop(host, 60, 0);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
+    host.axesAvailable = false;
+    core.loop(host, 80, 0);
+    host.axesAvailable = true;
+    host.axes[0] = 2043;
+    core.loop(host, 100, 0);
+    TEST_ASSERT_EQUAL_UINT16(1808, core.channelAt(0));
+}
+
+static void test_hysteresis_returns_to_neutral_for_all_profile_directions()
+{
+    for(int descending = 0; descending < 2; descending++) {
+        for(int reverse = 0; reverse < 2; reverse++) {
+            for(int side : {-1, 1}) {
+                FakeHost host;
+                ELRSCrsfCore core;
+                ELRSCrsfCoreConfig config = defaultConfig();
+                config.inputRouting = {4, 3, 2, 1};
+                config.throttleIdleDeadband = 0;
+                for(int axis = 0; axis < 4; axis++) {
+                    config.axisProfiles[axis] = elrsDefaultInputAxisProfile();
+                    config.axisProfiles[axis].minimum = descending ? 1020 : 1000;
+                    config.axisProfiles[axis].center = 1010;
+                    config.axisProfiles[axis].maximum = descending ? 1000 : 1020;
+                    config.axisProfiles[axis].reverse = reverse;
+                    host.axes[axis] = 1010 + side * 4;
+                }
+                core.begin(host, config, 0);
+                for(int channel = 0; channel < 4; channel++) TEST_ASSERT_NOT_EQUAL(992, core.channelAt(channel));
+                for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1010;
+                core.loop(host, 20, 0);
+                for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+                // Once neutral, small ADC excursions must still be held.
+                for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1010 + side * 4;
+                core.loop(host, 40, 0);
+                for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+            }
+        }
+    }
+}
+
+static void test_throttle_idle_band_handles_all_profile_directions()
+{
+    for(int descending = 0; descending <= 1; descending++) {
+        for(int reverse = 0; reverse <= 1; reverse++) {
+            ELRSCrsfCoreConfig config = defaultConfig();
+            ELRSInputAxisProfile &profile = config.axisProfiles[AXIS_THROTTLE];
+            profile = elrsDefaultInputAxisProfile();
+            profile.minimum = descending ? 1500 : 300;
+            profile.center = 900;
+            profile.maximum = descending ? 300 : 1500;
+            profile.reverse = reverse;
+            int idle = reverse ? profile.maximum : profile.minimum;
+            int full = reverse ? profile.minimum : profile.maximum;
+            int direction = (full > idle) ? 1 : -1;
+            for(int offset = 0; offset <= 5; offset++) {
+                FakeHost host;
+                ELRSCrsfCore core;
+                host.axes[AXIS_THROTTLE] = idle + direction * offset;
+                core.begin(host, config, 0);
+                TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+            }
+            FakeHost host;
+            ELRSCrsfCore core;
+            host.axes[AXIS_THROTTLE] = profile.center;
+            core.begin(host, config, 0);
+            TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+            host.axes[AXIS_THROTTLE] = full;
+            core.loop(host, 20, 0);
+            TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
+            host.axes[AXIS_THROTTLE] = idle + direction * 20;
+            core.loop(host, 40, 0);
+            TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+        }
+    }
+}
+
+static void test_throttle_idle_entry_bypasses_hysteresis()
+{
+    for(int narrow = 0; narrow <= 1; narrow++) {
+        for(int descending = 0; descending <= 1; descending++) {
+            for(int reverse = 0; reverse <= 1; reverse++) {
+                ELRSCrsfCoreConfig config = defaultConfig();
+                config.throttleIdleDeadband = narrow ? 32 : 5;
+                ELRSInputAxisProfile &profile = config.axisProfiles[AXIS_THROTTLE];
+                profile.minimum = descending ? (narrow ? 1020 : 1500) : (narrow ? 1000 : 300);
+                profile.center = narrow ? 1010 : 900;
+                profile.maximum = descending ? (narrow ? 1000 : 300) : (narrow ? 1020 : 1500);
+                profile.reverse = reverse;
+                int idle = reverse ? profile.maximum : profile.minimum;
+                int full = reverse ? profile.minimum : profile.maximum;
+                int direction = (full > idle) ? 1 : -1;
+                FakeHost host;
+                ELRSCrsfCore core;
+                host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                core.begin(host, config, 0);
+                TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+                host.axes[AXIS_THROTTLE] = idle + direction * (narrow ? 9 : 5);
+                for(unsigned long now = 20; now <= 60; now += 20) {
+                    core.loop(host, now, 0);
+                    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+                }
+                if(!narrow) {
+                    host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                    core.loop(host, 80, 0);
+                    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+                    host.axes[AXIS_THROTTLE] = idle + direction * 11;
+                    core.loop(host, 100, 0);
+                    TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+                }
+            }
+        }
+    }
+}
+
+static void test_input_tolerances_are_adjustable_and_can_be_disabled()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.adcHysteresis = 8;
+    core.begin(host, config, 0);
+    host.axes[0] = 1032;
+    core.loop(host, 20, 0);
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+    host.axes[0] = 1033;
+    core.loop(host, 40, 0);
+    TEST_ASSERT_EQUAL_UINT16(998, core.channelAt(0));
+    config.adcHysteresis = 0;
+    host.axes[0] = 1024;
+    core.begin(host, config, 60);
+    host.axes[0] = 1028;
+    core.loop(host, 80, 0);
+    TEST_ASSERT_EQUAL_UINT16(995, core.channelAt(0));
+    config.throttleIdleDeadband = 0;
+    config.axisProfiles[AXIS_THROTTLE] = elrsDefaultInputAxisProfile();
+    config.axisProfiles[AXIS_THROTTLE].minimum = 300;
+    config.axisProfiles[AXIS_THROTTLE].center = 900;
+    config.axisProfiles[AXIS_THROTTLE].maximum = 1500;
+    host.axes[AXIS_THROTTLE] = 305;
+    core.begin(host, config, 100);
+    TEST_ASSERT_EQUAL_UINT16(179, core.channelAt(2));
+}
+
+static void test_throttle_idle_band_preserves_center_deadband_endpoints()
+{
+    ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
+    profile.minimum = 1000;
+    profile.center = 1010;
+    profile.maximum = 1020;
+    profile.deadband = 9;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1000, 5));
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1005, 5));
+    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1010, 5));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1020, 5));
+    profile.reverse = 1;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1020, 5));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1000, 5));
+}
+
+static void test_throttle_idle_band_preserves_narrow_profiles()
+{
+    for(int descending = 0; descending <= 1; descending++) {
+        for(int reverse = 0; reverse <= 1; reverse++) {
+            ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
+            profile.minimum = descending ? 1002 : 1000;
+            profile.center = 1001;
+            profile.maximum = descending ? 1000 : 1002;
+            profile.reverse = reverse;
+            TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, reverse ? profile.maximum : profile.minimum, 32));
+            TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1001, 32));
+            TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, reverse ? profile.minimum : profile.maximum, 32));
+        }
+    }
+    ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
+    profile.minimum = 1000;
+    profile.center = 1010;
+    profile.maximum = 1020;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, 1009, 32));
+    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1010, 32));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, 1020, 32));
+}
+
+static void test_switch_mapping_routes_each_input_without_leaking_old_channels()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) config.switchRouting.channels[i] = 5 + (i + 3) % 12;
+    core.begin(host, config, 0);
+    for(int input = 0; input < ELRS_SWITCH_INPUT_COUNT; input++) {
+        host.stop = input == 0;
+        host.fakePower = input == 1;
+        host.buttonA = input == 2;
+        host.buttonB = input == 3;
+        host.packStates = input >= 4 ? 1 << (input - 4) : 0;
+        core.loop(host, 20 * (input + 1), 0);
+        for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+            TEST_ASSERT_EQUAL_UINT16(i == input ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
+        }
+        for(int i = 0; i < 4; i++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(i));
+        TEST_ASSERT_EQUAL(host.stop, host.stopLed);
+        TEST_ASSERT_EQUAL(host.fakePower, core.fakePowerOn());
+    }
+    host.axesAvailable = false;
+    core.loop(host, 500, 0);
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[11] - 1));
+}
+
+static void test_switch_mapping_preserves_self_test_and_buttonpack_fallback()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) config.switchRouting.channels[i] = 16 - i;
+    host.packAvailable = false;
+    core.begin(host, config, 0);
+    core.loop(host, 200, 0);
+    for(int i = 4; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(config.switchRouting.channels[i] - 1));
+    host.packAvailable = true;
+    host.packStates = 1;
+    core.loop(host, 220, 0);
+    host.packAvailable = false;
+    core.loop(host, 500, 0);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[4] - 1));
+    core.startSelfTest(500);
+    core.loop(host, 520, 0);
+    for(int i = 0; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(i == 0 ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
+}
+
+static void test_switch_mapping_rejects_duplicates_and_invalid_channels()
+{
+    ELRSSwitchRouting routing = elrsDefaultSwitchRouting();
+    TEST_ASSERT_TRUE(elrsIsValidSwitchRouting(routing));
+    for(int i = 0; i < 12; i++) TEST_ASSERT_EQUAL_UINT8(5 + i, routing.channels[i]);
+    const uint8_t invalid[] = {0, 17, 255, 6};
+    for(uint8_t channel : invalid) {
+        routing = elrsDefaultSwitchRouting();
+        routing.channels[0] = channel;
+        TEST_ASSERT_FALSE(elrsIsValidSwitchRouting(routing));
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.switchRouting = routing;
+        host.stop = true;
+        core.begin(host, config, 0);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
+        TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(5));
+    }
+}
+
+static void test_all_inputs_can_use_every_channel_without_collisions()
+{
+    for(int rotation = 0; rotation < 16; rotation++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.inputRouting = {
+            (uint8_t)(1 + rotation % 16), (uint8_t)(1 + (1 + rotation) % 16),
+            (uint8_t)(1 + (2 + rotation) % 16), (uint8_t)(1 + (3 + rotation) % 16)
+        };
+        for(int i = 0; i < 12; i++) config.switchRouting.channels[i] = 1 + (4 + i + rotation) % 16;
+        core.begin(host, config, 0);
+        for(int input = 0; input < 12; input++) {
+            host.stop = input == 0;
+            host.fakePower = input == 1;
+            host.buttonA = input == 2;
+            host.buttonB = input == 3;
+            host.packStates = input >= 4 ? 1 << (input - 4) : 0;
+            core.loop(host, 20 * (input + 1), 0);
+            for(int i = 0; i < 12; i++) {
+                TEST_ASSERT_EQUAL_UINT16(i == input ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
+            }
+            for(int i = 0; i < 4; i++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt((i + rotation) % 16));
+        }
+        host.axesAvailable = false;
+        core.loop(host, 500, 0);
+        for(int i = 0; i < 4; i++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt((i + rotation) % 16));
+        core.startSelfTest(500);
+        core.loop(host, 520, 0);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[0] - 1));
+        for(int i = 1; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(config.switchRouting.channels[i] - 1));
+    }
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
+    // The production changes these catch are lost hysteresis, stale held state, and missing idle mapping.
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_adc_fault_and_self_test_keep_remapped_throttle_neutral);
+    RUN_TEST(test_hysteresis_returns_to_neutral_for_all_profile_directions);
+    RUN_TEST(test_switch_mapping_routes_each_input_without_leaking_old_channels);
+    RUN_TEST(test_switch_mapping_preserves_self_test_and_buttonpack_fallback);
+    RUN_TEST(test_switch_mapping_rejects_duplicates_and_invalid_channels);
+    RUN_TEST(test_all_inputs_can_use_every_channel_without_collisions);
+    RUN_TEST(test_throttle_idle_entry_bypasses_hysteresis);
+    RUN_TEST(test_throttle_idle_band_preserves_center_deadband_endpoints);
+    RUN_TEST(test_input_tolerances_are_adjustable_and_can_be_disabled);
+    RUN_TEST(test_throttle_idle_band_preserves_narrow_profiles);
+    RUN_TEST(test_hysteresis_holds_jitter_and_tracks_slow_motion);
+    RUN_TEST(test_hysteresis_reaches_endpoints_and_reseeds_after_error);
+    RUN_TEST(test_throttle_idle_band_handles_all_profile_directions);
+    RUN_TEST(test_invalid_button_calibration_preserves_minimum_throttle);
+    RUN_TEST(test_failed_button_capture_does_not_advance_calibration);
+    RUN_TEST(test_valid_descending_button_calibration_is_saved);
+    RUN_TEST(test_failed_button_calibration_save_reports_error);
+    RUN_TEST(test_transport_sends_across_micros_rollover);
+    RUN_TEST(test_malformed_parameter_reply_keeps_retries_active);
+    RUN_TEST(test_service_reply_window_and_echo_cross_millis_rollover);
+    RUN_TEST(test_delayed_outbound_frames_do_not_count_as_module_replies);
+    RUN_TEST(test_oversized_parameter_restarts_from_chunk_zero_and_recovers);
     RUN_TEST(test_rc_frame_packing_and_driver_enable);
     RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
     RUN_TEST(test_transport_debug_suppresses_raw_frame_dumps_by_default);
@@ -2224,7 +2810,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_ads1015_single_ended_config_uses_4v096_range);
     RUN_TEST(test_adc_debug_log_only_emits_on_axis_change);
     RUN_TEST(test_light_iir_filter_moves_quarter_step_toward_sample);
-    RUN_TEST(test_light_iir_filter_leaves_small_jitter_unchanged);
+    RUN_TEST(test_light_iir_filter_converges_on_small_stable_changes);
     RUN_TEST(test_input_model_center_maps_to_1500_us);
     RUN_TEST(test_input_model_min_max_map_to_1000_and_2000_us);
     RUN_TEST(test_input_model_reverse_flips_output);
@@ -2260,7 +2846,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_axis_order_aileron_elevator_throttle_rudder_matches_runtime_banner);
     RUN_TEST(test_nondefault_axis_profile_changes_runtime_output_scaling);
     RUN_TEST(test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapping);
-    RUN_TEST(test_gimbal_routing_can_claim_fixed_function_channels);
+    RUN_TEST(test_gimbal_routing_collision_uses_defaults);
     RUN_TEST(test_telemetry_parsing_and_bad_crc_rejection);
     RUN_TEST(test_non_c8_sync_frame_is_accepted);
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);
@@ -2279,6 +2865,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_battery_overlay_and_calibration_prompt_still_override_normal_display);
     RUN_TEST(test_module_settings_are_discovered_and_written);
     RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
+    RUN_TEST(test_unanswered_module_probes_stop_until_reconnect_or_save);
     RUN_TEST(test_module_settings_request_remaining_chunks_before_advancing_field);
     RUN_TEST(test_module_settings_retry_timed_out_chunk_before_scan_backoff);
     RUN_TEST(test_module_settings_retry_probe_before_long_backoff);
@@ -2286,7 +2873,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_bootstrap_probe_waits_long_enough_for_late_first_module_reply);
     RUN_TEST(test_module_settings_apply_after_targets_are_found_without_full_scan);
     RUN_TEST(test_module_settings_do_not_write_packet_rate_target_or_change_transport_rate);
-    RUN_TEST(test_module_ping_holds_rc_until_reply_timeout_on_half_duplex_link);
+    RUN_TEST(test_module_ping_keeps_rc_running_while_waiting_for_settings);
     RUN_TEST(test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer);
     RUN_TEST(test_service_probe_drain_preserves_following_module_reply_bytes);
     return UNITY_END();

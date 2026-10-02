@@ -140,7 +140,6 @@ class ELRSCrsfTransport {
         unsigned long _replyDeadlineAt = 0;
         unsigned long _nextTxAtUs = 0;
         unsigned long _lastServiceTxAt = 0;
-        unsigned long _serviceReplyHoldoffUntil = 0;
         unsigned long _echoSuppressUntil = 0;
         unsigned long _crcBurstAt = 0;
         unsigned long _frameBurstAt = 0;

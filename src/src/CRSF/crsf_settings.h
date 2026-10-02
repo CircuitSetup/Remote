@@ -55,13 +55,17 @@
 #endif
 
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
-void saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
+bool saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 void loadELRSInputProfiles(ELRSInputAxisProfile *profiles, int count = ELRS_GIMBAL_AXIS_COUNT);
 void saveELRSInputProfiles(const ELRSInputAxisProfile *profiles, int count = ELRS_GIMBAL_AXIS_COUNT);
 ELRSGimbalRouting loadELRSGimbalRouting();
 void saveELRSGimbalRouting(const ELRSGimbalRouting &routing);
-void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing = NULL);
-bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing = NULL);
+void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing = NULL,
+                         uint16_t *adcHysteresis = NULL, uint16_t *throttleIdleDeadband = NULL,
+                         ELRSSwitchRouting *switchRouting = NULL);
+bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing = NULL,
+                         const uint16_t *adcHysteresis = NULL, const uint16_t *throttleIdleDeadband = NULL,
+                         const ELRSSwitchRouting *switchRouting = NULL);
 bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
 

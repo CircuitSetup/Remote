@@ -70,7 +70,7 @@ class ELRSCrsfHost : public ELRSCrsfTransportHal {
         virtual void setStopLed(bool state) = 0;
 
         virtual void loadCalibration(ELRSAxisCalibrationData *cal, int count) = 0;
-        virtual void saveCalibration(const ELRSAxisCalibrationData *cal, int count) = 0;
+        virtual bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) = 0;
 };
 
 struct ELRSCrsfCoreConfig {
@@ -83,8 +83,11 @@ struct ELRSCrsfCoreConfig {
     uint8_t telemetryRatio = ELRS_TLM_RATIO_DEFAULT;
     uint8_t maxPower = ELRS_MAX_POWER_DEFAULT;
     uint8_t dynamicPower = ELRS_DYNAMIC_POWER_DEFAULT;
+    uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
+    uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT] = {};
-    ELRSGimbalRouting inputRouting = {};
+    ELRSGimbalRouting inputRouting = elrsDefaultGimbalRouting();
+    ELRSSwitchRouting switchRouting = elrsDefaultSwitchRouting();
     ELRSCrsfTransportConfig transport;
 };
 
@@ -111,6 +114,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         uint32_t baudRate() const;
         uint16_t channelAt(uint8_t index) const;
+        bool readFilteredAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) const;
         uint8_t linkQuality() const;
         uint8_t remoteBatteryPercent() const;
         float remoteBatteryVoltage() const;
@@ -155,7 +159,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void writeGimbalChannel(uint8_t channel, uint16_t ticks);
         void writeFixedChannelIfUnclaimed(uint8_t channel, uint16_t ticks);
         bool channelClaimedByGimbal(uint8_t channel) const;
-        uint16_t safeAxisTicks(uint8_t axis) const;
         uint16_t axisToTicks(uint8_t axis) const;
 
         void applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn);
@@ -176,7 +179,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool queueParameterRead(uint8_t fieldId, uint8_t chunkIndex = 0);
         bool queueParameterWrite(uint8_t fieldId, uint8_t value);
         void startModuleConfigSession(unsigned long now);
-        void setModuleConfigBackoff(unsigned long now, unsigned long delayMs);
+        void pauseModuleConfigSession();
         void noteModuleConfigResponse();
         void handleDeviceInfo(const uint8_t *payload, size_t payloadLen, unsigned long now);
         void handleParameterSettingsEntry(const uint8_t *payload, size_t payloadLen, unsigned long now);
@@ -209,8 +212,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
             MODULECFG_WAIT_PARAMETER,
             MODULECFG_APPLY_SETTING,
             MODULECFG_WAIT_WRITE,
-            MODULECFG_DONE,
-            MODULECFG_BACKOFF
+            MODULECFG_DONE
         };
 
         struct ModuleParameterInfo {
@@ -224,6 +226,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ELRSCrsfTransport _transport;
 
         bool _haveAds = false;
+        bool _haveStableAxes = false;
         bool _fakePowerOn = false;
         bool _selfTestActive = false;
 
@@ -246,6 +249,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         uint16_t _channels[16];
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT];
+        int16_t _stableAxes[ELRS_GIMBAL_AXIS_COUNT];
         ELRSAxisCalibrationData _axisCal[ELRS_GIMBAL_AXIS_COUNT];
         ELRSInputAxisProfile _axisProfiles[ELRS_GIMBAL_AXIS_COUNT];
         ELRSGimbalRouting _inputRouting;

@@ -1713,6 +1713,11 @@ static void reInstallFlashFS()
         write_mqtt_settings();
         #endif
         saveSecSettings(false);
+        #ifdef HAVE_CRSF
+        if(haveNewBoard && !crsf_save_settings(false)) {
+            Serial.println("Failed to restore CRSF settings after formatting flash");
+        }
+        #endif
     }
 }
 
@@ -1736,6 +1741,15 @@ void moveSettings()
     flushDelayedSave();
 
     configOnSD = !configOnSD;
+
+    #ifdef HAVE_CRSF
+    if(haveNewBoard && !crsf_save_settings(false)) {
+        configOnSD = !configOnSD;
+        settings.CfgOnSD[0] = configOnSD ? '1' : '0';
+        Serial.println("Failed to copy CRSF settings; storage preference unchanged");
+        return;
+    }
+    #endif
     
     #ifdef HAVE_MQTT
     mqttConfigHash = 0;

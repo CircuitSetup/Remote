@@ -14,6 +14,7 @@ constexpr uint8_t CRSF_FRAME_RC_CHANNELS_PACKED = 0x16;
 constexpr uint8_t CRSF_SYNC_BYTE = 0xC8;
 constexpr uint8_t CRSF_SYNC_BROADCAST = 0x00;
 constexpr uint8_t CRSF_ADDR_RADIO_TRANSMITTER = 0xEA;
+constexpr uint8_t CRSF_ADDR_HANDSET = 0xEF;
 constexpr uint8_t CRSF_ADDR_CRSF_TRANSMITTER = 0xEE;
 constexpr uint8_t CRSF_ADDR_CRSF_RECEIVER = 0xEC;
 constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
@@ -92,7 +93,6 @@ void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransport
     _replyDeadlineAt = 0;
     _nextTxAtUs = nowUs;
     _lastServiceTxAt = 0;
-    _serviceReplyHoldoffUntil = 0;
     _echoSuppressUntil = 0;
     _crcBurstAt = 0;
     _frameBurstAt = 0;
@@ -146,17 +146,16 @@ void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsig
     pollFrames(hal, now);
     updateState(hal, now);
 
-    if(nowUs >= _nextTxAtUs) {
+    if((int32_t)(nowUs - _nextTxAtUs) >= 0) {
         if(_haveServiceFrame && (!_lastServiceTxAt || (now - _lastServiceTxAt >= CRSF_SERVICE_FRAME_GAP_MS))) {
             sendFrame(hal, _serviceFrame, _serviceFrameLen, now, nowUs, "ELRS/CRSF CFG", true);
-            _serviceReplyHoldoffUntil = now + effectiveReplyTimeoutMs(true);
             _haveServiceFrame = false;
             _serviceFrameLen = 0;
             _lastServiceTxAt = now;
-        } else if(!_serviceReplyHoldoffUntil || now >= _serviceReplyHoldoffUntil) {
-            sendChannels(hal, now, nowUs);
         } else {
-            return;
+            // Keep RC cadence while a settings reply is pending. Each scheduled
+            // frame still releases the half-duplex bus for the rest of its slot.
+            sendChannels(hal, now, nowUs);
         }
     }
 }
@@ -233,7 +232,7 @@ void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *fram
     }
     do {
         advanceNextTxDeadline();
-    } while(_nextTxAtUs <= nowUs);
+    } while((int32_t)(nowUs - _nextTxAtUs) >= 0);
 }
 
 size_t ELRSCrsfTransport::drainExactEchoFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen)
@@ -358,9 +357,16 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
                 }
 
                 if(crcValid) {
+                    // These are handset-to-module frames, including delayed
+                    // local echo from an earlier TX slot, not module replies.
+                    if(_rxFrame[2] == CRSF_FRAME_RC_CHANNELS_PACKED ||
+                       (_rxFrame[2] >= 0x28 && expectLen >= 6 &&
+                        (_rxFrame[4] == CRSF_ADDR_RADIO_TRANSMITTER || _rxFrame[4] == CRSF_ADDR_HANDSET))) {
+                        _rxFrameLen = 0;
+                        continue;
+                    }
                     if(_lastTxFrameLen == expectLen &&
-                       _echoSuppressUntil &&
-                       now <= _echoSuppressUntil &&
+                       (int32_t)(now - _echoSuppressUntil) <= 0 &&
                        !memcmp(_lastTxFrame, _rxFrame, expectLen)) {
                         _rxFrameLen = 0;
                         continue;
@@ -371,7 +377,6 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
                     _status.lastReplyAt = now;
                     _status.lastRxAt = now;
                     _lastReplyAt = now;
-                    _serviceReplyHoldoffUntil = 0;
                     _status.replyActive = true;
                     _status.synced = true;
                     _status.everReplied = true;
@@ -479,7 +484,7 @@ void ELRSCrsfTransport::updateState(ELRSCrsfTransportHal &hal, unsigned long now
     _status.synced = _status.replyActive;
     _status.everSynced = _status.everReplied;
 
-    if(_waitingForReply && !_replySeenForTx && _replyDeadlineAt && (now >= _replyDeadlineAt)) {
+    if(_waitingForReply && !_replySeenForTx && (int32_t)(now - _replyDeadlineAt) >= 0) {
         _waitingForReply = false;
         _status.lastReplyTimeoutAt = now;
         if(_status.debugEnabled) {

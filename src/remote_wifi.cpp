@@ -511,7 +511,7 @@ static void wifiOff(bool force);
 
 static void checkForUpdate();
 
-static void saveParamsCallback(int);
+static bool saveParamsCallback(int);
 static void saveWiFiCallback(const char *ssid, const char *pass, const char *bssid);
 static void preUpdateCallback();
 static void postUpdateCallback(bool);
@@ -1222,7 +1222,8 @@ void wifi_loop()
             // through getServerParam() must be handled in saveParamsCallback()
             
             #ifdef HAVE_CRSF
-            write_main_settings = crsf_wifi_loop_settings();
+            // Input settings were validated and saved before the HTTP response.
+            write_main_settings = true;
             #endif
             
         }
@@ -1733,10 +1734,8 @@ static void saveWiFiCallback(const char *ssid, const char *pass, const char *bss
 // This is the callback from the actual Params page. We read out
 // the WM "Settings" parameters and save them.
 // paramspage is 1 (Settings), 2 (HA/MQTT), 3 (CRSF)
-static void saveParamsCallback(int paramspage)
+static bool saveParamsCallback(int paramspage)
 {
-    wifiLoopSaveAction |= (1 << (paramspage - 1 + WLA_SET1_B));
-
     switch(paramspage) {
     case 1:
         getServerParam("tut", settings.playTUT, 1, 0, 1, DEF_TUT);
@@ -1757,12 +1756,20 @@ static void saveParamsCallback(int paramspage)
         for(int i = 0; i < 8; i++) handleMQTTTopMsg(i);
         #endif
         break;
-    case 3:
+    case 3: {
         #ifdef HAVE_CRSF
+        const auto previousSettings = settings;
         crsf_wifi_saveParamsCallback();
+        if(!crsf_wifi_loop_settings()) {
+            settings = previousSettings;
+            return false;
+        }
         #endif
         break;
     }
+    }
+    wifiLoopSaveAction |= (1 << (paramspage - 1 + WLA_SET1_B));
+    return true;
 }
 
 // This is called before a firmware updated is initiated.

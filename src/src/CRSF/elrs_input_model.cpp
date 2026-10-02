@@ -97,6 +97,25 @@ int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
     return mapped;
 }
 
+int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband)
+{
+    if(!idleDeadband || !elrsIsValidInputAxisProfile(profile)) {
+        return elrsInputModelAxisToUs(profile, raw);
+    }
+    ELRSInputAxisProfile adjusted = profile;
+    int16_t &idle = adjusted.reverse ? adjusted.maximum : adjusted.minimum;
+    int span = (int)idle - adjusted.center;
+    if(span < 0) span = -span;
+    uint16_t amount = (idleDeadband < span) ? idleDeadband : (uint16_t)(span - 1);
+    idle = moveToward(idle, adjusted.center, amount);
+    int otherSpan = (int)(adjusted.reverse ? adjusted.minimum : adjusted.maximum) - adjusted.center;
+    if(otherSpan < 0) otherSpan = -otherSpan;
+    int smallerSpan = (span - amount < otherSpan) ? span - amount : otherSpan;
+    // A center deadband must leave a nonzero mapping segment at both endpoints.
+    adjusted.deadband = (uint16_t)clampLong(adjusted.deadband, 0, smallerSpan - 1);
+    return elrsInputModelAxisToUs(adjusted, raw);
+}
+
 uint16_t elrsInputUsToCrsfTicks(int16_t us)
 {
     long clampedUs = clampLong(us, ELRS_INPUT_US_MIN, ELRS_INPUT_US_MAX);
@@ -156,10 +175,10 @@ ELRSInputAxisProfile elrsSanitizeInputAxisProfile(const ELRSInputAxisProfile &pr
 
 bool elrsIsValidGimbalRouting(const ELRSGimbalRouting &routing)
 {
-    return (routing.aileronChannel >= 1 && routing.aileronChannel <= 4) &&
-           (routing.elevatorChannel >= 1 && routing.elevatorChannel <= 4) &&
-           (routing.throttleChannel >= 1 && routing.throttleChannel <= 4) &&
-           (routing.rudderChannel >= 1 && routing.rudderChannel <= 4) &&
+    return (routing.aileronChannel >= 1 && routing.aileronChannel <= 16) &&
+           (routing.elevatorChannel >= 1 && routing.elevatorChannel <= 16) &&
+           (routing.throttleChannel >= 1 && routing.throttleChannel <= 16) &&
+           (routing.rudderChannel >= 1 && routing.rudderChannel <= 16) &&
            (routing.aileronChannel != routing.elevatorChannel) &&
            (routing.aileronChannel != routing.throttleChannel) &&
            (routing.aileronChannel != routing.rudderChannel) &&
@@ -175,4 +194,46 @@ ELRSGimbalRouting elrsSanitizeGimbalRouting(const ELRSGimbalRouting &routing)
     }
 
     return elrsDefaultGimbalRouting();
+}
+
+ELRSSwitchRouting elrsDefaultSwitchRouting()
+{
+    ELRSSwitchRouting routing;
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) routing.channels[i] = 5 + i;
+    return routing;
+}
+
+bool elrsIsValidSwitchRouting(const ELRSSwitchRouting &routing)
+{
+    uint16_t used = 0;
+    for(uint8_t channel : routing.channels) {
+        if(channel < 1 || channel > 16) return false;
+        uint16_t bit = (uint16_t)1 << (channel - 1);
+        if(used & bit) return false;
+        used |= bit;
+    }
+    return true;
+}
+
+ELRSSwitchRouting elrsSanitizeSwitchRouting(const ELRSSwitchRouting &routing)
+{
+    return elrsIsValidSwitchRouting(routing) ? routing : elrsDefaultSwitchRouting();
+}
+
+bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchRouting &switches)
+{
+    if(!elrsIsValidGimbalRouting(gimbals) || !elrsIsValidSwitchRouting(switches)) return false;
+    for(uint8_t channel : switches.channels) {
+        if(channel == gimbals.aileronChannel || channel == gimbals.elevatorChannel ||
+           channel == gimbals.throttleChannel || channel == gimbals.rudderChannel) return false;
+    }
+    return true;
+}
+
+void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &switches)
+{
+    if(!elrsIsValidInputRouting(gimbals, switches)) {
+        gimbals = elrsDefaultGimbalRouting();
+        switches = elrsDefaultSwitchRouting();
+    }
 }
