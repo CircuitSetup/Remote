@@ -94,6 +94,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _axisProfiles[i] = elrsSanitizeInputAxisProfile(_config.axisProfiles[i]);
         _config.axisProfiles[i] = _axisProfiles[i];
+        _config.outputLimits[i] = elrsSanitizeOutputLimits(_config.outputLimits[i]);
     }
     _inputRouting = _config.inputRouting;
     _transport = ELRSCrsfTransport();
@@ -728,7 +729,7 @@ uint16_t ELRSCrsfCore::axisToTicks(uint8_t axis) const
     int16_t us = (axis == AXIS_THROTTLE)
         ? elrsInputModelThrottleToUs(profile, _stableAxes[axis], _config.throttleIdleDeadband)
         : elrsInputModelAxisToUs(profile, _stableAxes[axis]);
-    return elrsInputUsToCrsfTicks(us);
+    return elrsInputUsToCrsfTicks(elrsApplyOutputLimits(_config.outputLimits[axis], us));
 }
 
 void ELRSCrsfCore::applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn)

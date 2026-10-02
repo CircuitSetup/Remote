@@ -15,6 +15,8 @@ static const char *wmBuildCRSFPC(const char *dest, int op);
 static const char *wmBuildCRSFTC(const char *dest, int op);
 static const char *wmBuildCRSFYC(const char *dest, int op);
 static const char *wmBuildCRSFCAL(const char *dest, int op);
+static const char *wmBuildCRSFOutputLimits(const char *dest, int op);
+static void crsfReadOutputLimitParams();
 static const char *wmBuildCRSFSwitchMap(const char *dest, int op);
 static void crsfReadSwitchParams();
 
@@ -132,6 +134,9 @@ static CRSFAxisSettings crsfAxisSettings[] = {
     { ELRS_GIMBAL_INPUT_RUDDER, settings.elrsYawCh, settings.elrsYawRev, settings.elrsYawLow, settings.elrsYawCtr, settings.elrsYawHigh }
 };
 
+static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", "1000"};
+static char crsfOutputMax[ELRS_GIMBAL_AXIS_COUNT][5] = {"2000", "2000", "2000", "2000"};
+
 static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
 {
     if(fieldId >= CRSF_SELECT_COUNT) {
@@ -174,6 +179,7 @@ WiFiManagerParameter custom_crsftrv("Reverse Throttle", settings.elrsThrRev, "cl
 WiFiManagerParameter custom_crsfyc(wmBuildCRSFYC);
 WiFiManagerParameter custom_crsfyrv("Reverse Rudder", settings.elrsYawRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
+WiFiManagerParameter custom_crsflimits(wmBuildCRSFOutputLimits);
 WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Calibration</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
@@ -197,6 +203,7 @@ WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsfyc,
       &custom_crsfyrv,
       &custom_crsfswmap,
+      &custom_crsflimits,
       &custom_ss_crsfcal,
       &custom_crsfcal,
       NULL
@@ -243,6 +250,7 @@ static void crsf_wifi_saveParamsCallback()
     crsfReadInputParam("cthch", settings.elrsThrCh, 2, 1, 16, 1);
     crsfReadInputParam("cywch", settings.elrsYawCh, 2, 1, 16, 1);
     crsfReadSwitchParams();
+    crsfReadOutputLimitParams();
     if(opModeCRSF) {
         getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
         getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
@@ -300,6 +308,7 @@ static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint
 static void syncCRSFPortalBuffers()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
+    ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
     ELRSSwitchRouting switches;
     uint16_t adcHysteresis, throttleIdleDeadband;
@@ -308,7 +317,11 @@ static void syncCRSFPortalBuffers()
         return;
     }
 
-    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches);
+    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        snprintf(crsfOutputMin[i], sizeof(crsfOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
+        snprintf(crsfOutputMax[i], sizeof(crsfOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
+    }
     snprintf(settings.elrsAdcHysteresis, sizeof(settings.elrsAdcHysteresis), "%u", (unsigned)adcHysteresis);
     snprintf(settings.elrsThrIdleDeadband, sizeof(settings.elrsThrIdleDeadband), "%u", (unsigned)throttleIdleDeadband);
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
@@ -331,11 +344,25 @@ static void syncCRSFPortalBuffers()
 static bool saveCRSFPortalInputSettings()
 {
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
+    ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
     ELRSSwitchRouting switches;
 
     if(!haveNewBoard) {
         return false;
+    }
+
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        const char *values[] = {crsfOutputMin[i], crsfOutputMax[i]};
+        long bounds[2];
+        for(int side = 0; side < 2; side++) {
+            char *end;
+            bounds[side] = strtol(values[side], &end, 10);
+            if(strlen(values[side]) != 4 || strspn(values[side], "0123456789") != 4 || *end ||
+               bounds[side] < ELRS_INPUT_US_MIN || bounds[side] > ELRS_INPUT_US_MAX) return false;
+        }
+        limits[i] = {(uint16_t)bounds[0], (uint16_t)bounds[1]};
+        if(!elrsIsValidOutputLimits(limits[i])) return false;
     }
 
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
@@ -362,7 +389,29 @@ static bool saveCRSFPortalInputSettings()
 
     const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
     const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches);
+    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
+}
+
+static void crsfReadOutputLimitParams()
+{
+    ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits);
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        snprintf(crsfOutputMin[i], sizeof(crsfOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
+        snprintf(crsfOutputMax[i], sizeof(crsfOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
+        for(int side = 0; side < 2; side++) {
+            char name[8];
+            snprintf(name, sizeof(name), "cout%d%s", i, side ? "hi" : "lo");
+            if(!wm.server->hasArg(name)) continue;
+            char *buffer = side ? crsfOutputMax[i] : crsfOutputMin[i];
+            String value = wm.server->arg(name);
+            buffer[0] = 0;
+            if(value.length() == 4 && strspn(value.c_str(), "0123456789") == 4) {
+                crsfReadInputParam(name, buffer, 4, side ? ELRS_INPUT_US_MID : ELRS_INPUT_US_MIN,
+                                   side ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MID, 0);
+            }
+        }
+    }
 }
 
 static void crsfReadSwitchParams()
@@ -525,6 +574,52 @@ static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, cons
     return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
 }
 
+static const char *wmBuildCRSFOutputLimits(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) {
+        if(dest) free((void *)dest);
+        return NULL;
+    }
+    static const char *axes[] = {"Aileron", "Elevator", "Rudder", "Throttle"};
+    static const char *labels[] = {"Lower limit", "Center", "Upper limit"};
+    static const char *suffixes[] = {"lo", "ct", "hi"};
+    String html;
+    html.reserve(3200);
+    html += "<div class='cmp0 elrsout' style='white-space:normal'><h3>Travel Limits</h3>"
+            "<p><small>RC output in microseconds equivalent. Full stick travel scales to these limits; center stays at 1500. Changes apply after saving and restarting.</small></p>"
+            "<style>.elrsout label{display:block;font-size:.8em}.elrsout input{box-sizing:border-box;width:100%;min-width:0;max-width:100%}.elrsout .elrscenter{display:block;padding:5px;margin:5px 0}</style>";
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        const char *values[] = {crsfOutputMin[i], "1500", crsfOutputMax[i]};
+        html += "<fieldset style='margin:10px 0;padding:8px;min-width:0'><legend>";
+        html += axes[i];
+        html += "</legend><div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px'>";
+        for(int field = 0; field < 3; field++) {
+            if(field == 1) {
+                html += "<div><span style='display:block;font-size:.8em'>Center</span><span class='elrscenter'>1500</span></div>";
+                continue;
+            }
+            char name[8];
+            snprintf(name, sizeof(name), "cout%d%s", i, suffixes[field]);
+            html += "<div><label for='"; html += name; html += "'>"; html += labels[field];
+            html += "</label><input id='"; html += name; html += "' type='number' value='";
+            html += values[field]; html += "'";
+            html += " name='"; html += name; html += "' maxlength='4'";
+            html += field == 0 ? " min='1000' max='1500' required" : " min='1500' max='2000' required";
+            html += "></div>";
+        }
+        html += "</div></fieldset>";
+    }
+    html += "</div>";
+    if(op == WM_CP_LEN) {
+        wmLenBuf = html.length() + 1;
+        return (const char *)&wmLenBuf;
+    }
+    char *result = (char *)malloc(html.length() + 1);
+    if(!result) return NULL;
+    strcpy(result, html.c_str());
+    return result;
+}
+
 struct CRSFGimbalCalField {
     const char *label;
     const char *inputId;
@@ -576,7 +671,7 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 static const char crsfCalIntro[] =
     "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
     "Capture each gimbal's filtered ADC low, center, and high points here, then save this page. "
-    "Those saved points become the real CRSF gimbal output mapping: low=1000, center=1500, high=2000."
+    "These ADC points map to 1000/1500/2000 before the separate Travel Limits scale the transmitted output."
     "</p>"
     "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>";
 

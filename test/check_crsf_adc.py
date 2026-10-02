@@ -185,6 +185,29 @@ int main() {
         }
     }
     puts("CRSF real ADC filter return to neutral check passed");
+    // Limits affect transmitted travel, while portal calibration still sees raw ADC.
+    const ELRSOutputLimits limits[4] = {{1200,1800}, {1200,1800}, {1200,1800}, {1200,1800}};
+    const int16_t rawPoints[3] = {0,1024,2047};
+    const uint16_t expectedTicks[3] = {500,992,1483};
+    for(int point = 0; point < 3; point++) {
+        for(int i = 0; i < 4; i++) {
+            profiles[i] = elrsDefaultInputAxisProfile();
+            Wire.values[i] = rawPoints[point];
+        }
+        assert(mode.begin(250, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
+                          nullptr, false, nullptr, nullptr, nullptr, nullptr,
+                          false, false, false, false, nullptr, 5, 5, nullptr, limits));
+        testNow += 20;
+        mode.loop(0);
+        assert(mode.readCurrentRawAxes(axes));
+        for(int i = 0; i < 4; i++) {
+            assert(axes[i] == rawPoints[point]);
+            const int bit = i * 11, byte = 3 + bit / 8;
+            const uint32_t packed = lastRcFrame[byte] | (lastRcFrame[byte+1] << 8) | (lastRcFrame[byte+2] << 16);
+            assert(((packed >> (bit % 8)) & 0x7ff) == expectedTicks[point]);
+        }
+    }
+    puts("CRSF adapter output limits and raw calibration check passed");
 }
 '''
 def compile_and_run(source, sources):

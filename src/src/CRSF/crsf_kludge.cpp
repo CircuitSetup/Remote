@@ -54,6 +54,9 @@
 
 #include <Arduino.h>
 #include <math.h>
+#include <LittleFS.h>
+#include <SD.h>
+#include "../../remote_settings.h"
 
 #include "elrs_crsf_shared.h"
 #include "elrs_crsf.h"
@@ -61,7 +64,6 @@
 #include "crsf_settings.h"
 
 // External
-extern bool     loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int forcefs = 0);
 extern bool     saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
 extern uint32_t calcHash(uint8_t *buf, int len);
 
@@ -76,7 +78,11 @@ struct [[gnu::packed]] ELRSCrsfSettingsBlob {
     uint16_t adcHysteresis;
     uint16_t throttleIdleDeadband;
     ELRSSwitchRouting switchRouting;
+    ELRSOutputLimits outputLimits[ELRS_GIMBAL_AXIS_COUNT];
 };
+
+static_assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68, "Preserve the legacy CRSF settings prefix");
+static_assert(sizeof(ELRSCrsfSettingsBlob) == 84, "CRSF settings must contain four complete limit pairs");
 
 struct [[gnu::packed]] ELRSCrsfLegacySettingsBlob {
     ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT];
@@ -89,6 +95,7 @@ static ELRSCrsfSettingsBlob defaultCrsfSettings()
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         settings.axisProfile[i] = defaultProfile;
+        settings.outputLimits[i] = elrsDefaultOutputLimits();
     }
     settings.gimbalRouting = elrsDefaultGimbalRouting();
     settings.adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
@@ -124,6 +131,7 @@ static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
 {
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         settings.axisProfile[i] = elrsSanitizeInputAxisProfile(settings.axisProfile[i]);
+        settings.outputLimits[i] = elrsSanitizeOutputLimits(settings.outputLimits[i]);
     }
     elrsSanitizeInputRouting(settings.gimbalRouting, settings.switchRouting);
     if(settings.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) settings.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
@@ -146,6 +154,94 @@ static uint32_t crsfSettingsHash  = 0;
 static bool     haveCRSFSettings  = false;
 
 static const char *crsfCfgName  = "/crsfcfg";
+static const char *crsfTmpName  = "/crsfcfg.tmp";
+static const char *crsfBackupName = "/crsfcfg.bak";
+
+static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes)
+{
+    validBytes = 0;
+    File file = storage.open(path, FILE_READ);
+    if(!file) return false;
+    const size_t size = file.size();
+    // Existing binary framing: uint16_t payload length, payload, checksum.
+    uint8_t *data = size >= 3 && size <= 65538 ? (uint8_t *)malloc(size) : NULL;
+    bool ret = data && file.read(data, size) == size;
+    file.close();
+    if(ret) {
+        const int payloadBytes = data[0] | (data[1] << 8);
+        uint16_t checksum = 0;
+        for(size_t i = 0; i < size - 1; i++) checksum += data[i];
+        checksum = (checksum >> 8) + (checksum & 0xff);
+        checksum += checksum >> 8;
+        ret = payloadBytes == size - 3 && data[size - 1] == (uint8_t)~checksum;
+        if(ret) {
+            validBytes = payloadBytes;
+            if(buf) memcpy(buf, data + 2, min((int)sizeof(ELRSCrsfSettingsBlob), validBytes));
+        }
+    }
+    if(data) free(data);
+    return ret;
+}
+
+static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)
+{
+    validBytes = 0;
+    const bool fromSD = haveSD && (settings.CfgOnSD[0] != '0' || FlashROMode);
+    for(int medium = 0; medium < 2; medium++) {
+        if(medium ? !haveFS : !fromSD) continue;
+        fs::FS &storage = medium ? static_cast<fs::FS &>(LittleFS) : static_cast<fs::FS &>(SD);
+        if(crsfReadSettingsFile(storage, crsfCfgName, buf, validBytes) ||
+           crsfReadSettingsFile(storage, crsfBackupName, buf, validBytes)) return true;
+    }
+    return false;
+}
+
+static bool crsfSaveStoredSettings(uint8_t *buf, int len)
+{
+    // The shared writer's medium is private and may change during moveSettings.
+    // An unused stage identifies its target without modifying the other medium.
+    char temporary[32];
+    snprintf(temporary, sizeof(temporary), "%s", crsfTmpName);
+    for(unsigned int suffix = 0; (haveSD && SD.exists(temporary)) ||
+                                (haveFS && LittleFS.exists(temporary)); suffix++) {
+        snprintf(temporary, sizeof(temporary), "%s.%u", crsfTmpName, suffix);
+    }
+    // Reuse the existing binary writer, but its truncating FILE_WRITE targets only the stage.
+    bool ret = saveConfigFile(temporary, buf, len, FlashROMode ? 1 : 0);
+    const bool toSD = haveSD && SD.exists(temporary);
+    fs::FS &storage = toSD ? static_cast<fs::FS &>(SD) : static_cast<fs::FS &>(LittleFS);
+    // A buffered write can succeed even if close fails to flush the complete file.
+    uint8_t verified[sizeof(ELRSCrsfSettingsBlob)];
+    int validBytes;
+    ret = ret && len >= 0 && len <= (int)sizeof(verified) &&
+          crsfReadSettingsFile(storage, temporary, verified, validBytes) &&
+          validBytes == len && !memcmp(verified, buf, len);
+    if(ret) {
+        bool hadOriginal = storage.exists(crsfCfgName);
+        if(hadOriginal && storage.exists(crsfBackupName)) {
+            int validBytes;
+            if(crsfReadSettingsFile(storage, crsfCfgName, NULL, validBytes)) {
+                ret = storage.remove(crsfBackupName);
+            } else if(crsfReadSettingsFile(storage, crsfBackupName, NULL, validBytes)) {
+                // A failed repair must preserve the valid backup, not replace it with corrupt data.
+                ret = storage.remove(crsfCfgName);
+                hadOriginal = false;
+            } else {
+                // Neither copy is valid; allow the verified stage to repair them.
+                ret = storage.remove(crsfBackupName);
+            }
+        }
+        // SD cannot rename over an existing file; retain a recovery copy across both renames.
+        if(ret && hadOriginal) ret = storage.rename(crsfCfgName, crsfBackupName);
+        if(ret) {
+            ret = storage.rename(temporary, crsfCfgName);
+            if(ret) storage.remove(crsfBackupName);
+            else if(hadOriginal) storage.rename(crsfBackupName, crsfCfgName);
+        }
+    }
+    if(toSD || (haveFS && !FlashROMode)) storage.remove(temporary);
+    return ret;
+}
 
 static const uint16_t packetRates[5] = {
     ELRS_PACKET_RATE_50HZ,
@@ -219,7 +315,7 @@ void crsf_load_settings()
     uint8_t rawSettings[sizeof(crsfSettings)] = { 0 };
 
     crsfSettings = defaultCrsfSettings();
-    if(loadConfigFile(crsfCfgName, rawSettings, sizeof(rawSettings), crsfSetValidBytes, 0)) {
+    if(crsfLoadStoredSettings(rawSettings, crsfSetValidBytes)) {
         if(crsfSetValidBytes <= (int)sizeof(ELRSCrsfLegacySettingsBlob)) {
             ELRSCrsfLegacySettingsBlob legacySettings = {};
             int legacyAxisCount;
@@ -233,8 +329,11 @@ void crsf_load_settings()
             int bytes = min(crsfSetValidBytes, (int)sizeof(crsfSettings));
             const int toleranceOffset = offsetof(ELRSCrsfSettingsBlob, adcHysteresis);
             const int switchOffset = offsetof(ELRSCrsfSettingsBlob, switchRouting);
+            const int limitsOffset = offsetof(ELRSCrsfSettingsBlob, outputLimits);
             // A partial permutation cannot safely replace the complete default map.
-            if(bytes > switchOffset && bytes < (int)sizeof(crsfSettings)) bytes = switchOffset;
+            if(bytes > switchOffset && bytes < limitsOffset) bytes = switchOffset;
+            // A partial endpoint pair retains both default bounds for that axis.
+            if(bytes > limitsOffset) bytes = limitsOffset + ((bytes - limitsOffset) / (int)sizeof(ELRSOutputLimits)) * sizeof(ELRSOutputLimits);
             // Optional tolerances use defaults until a complete uint16_t is present.
             if(bytes > toleranceOffset) bytes = toleranceOffset + ((bytes - toleranceOffset) / 2) * 2;
             memcpy(&crsfSettings, rawSettings, bytes);
@@ -249,7 +348,7 @@ bool crsf_save_settings(bool useCache)
 {
     uint32_t newHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
     if(useCache && newHash == crsfSettingsHash) return true;
-    if(!saveConfigFile(crsfCfgName, (uint8_t *)&crsfSettings, sizeof(crsfSettings), 0)) return false;
+    if(!crsfSaveStoredSettings((uint8_t *)&crsfSettings, sizeof(crsfSettings))) return false;
     crsfSettingsHash = newHash;
     return true;
 }
@@ -309,7 +408,7 @@ ELRSGimbalRouting loadELRSGimbalRouting()
 
 void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing,
                          uint16_t *adcHysteresis, uint16_t *throttleIdleDeadband,
-                         ELRSSwitchRouting *switchRouting)
+                         ELRSSwitchRouting *switchRouting, ELRSOutputLimits *outputLimits)
 {
     if(profiles) {
         loadELRSInputProfiles(profiles, count);
@@ -321,6 +420,7 @@ void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRo
     if(adcHysteresis) *adcHysteresis = crsfSettings.adcHysteresis;
     if(throttleIdleDeadband) *throttleIdleDeadband = crsfSettings.throttleIdleDeadband;
     if(switchRouting) *switchRouting = crsfSettings.switchRouting;
+    if(outputLimits) memcpy(outputLimits, crsfSettings.outputLimits, sizeof(crsfSettings.outputLimits));
 }
 
 void saveELRSGimbalRouting(const ELRSGimbalRouting &routing)
@@ -330,7 +430,7 @@ void saveELRSGimbalRouting(const ELRSGimbalRouting &routing)
 
 bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing,
                          const uint16_t *adcHysteresis, const uint16_t *throttleIdleDeadband,
-                         const ELRSSwitchRouting *switchRouting)
+                         const ELRSSwitchRouting *switchRouting, const ELRSOutputLimits *outputLimits)
 {
     count = clampProfileCount(count);
     if(profiles) {
@@ -340,6 +440,11 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
     }
     if(!elrsIsValidInputRouting(routing ? *routing : crsfSettings.gimbalRouting,
                                switchRouting ? *switchRouting : crsfSettings.switchRouting)) return false;
+    if(outputLimits) {
+        for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+            if(!elrsIsValidOutputLimits(outputLimits[i])) return false;
+        }
+    }
     const ELRSCrsfSettingsBlob previous = crsfSettings;
     const uint32_t previousHash = crsfSettingsHash;
     if(profiles) {
@@ -354,6 +459,7 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
     if(adcHysteresis) crsfSettings.adcHysteresis = *adcHysteresis;
     if(throttleIdleDeadband) crsfSettings.throttleIdleDeadband = *throttleIdleDeadband;
     if(switchRouting) crsfSettings.switchRouting = *switchRouting;
+    if(outputLimits) memcpy(crsfSettings.outputLimits, outputLimits, sizeof(crsfSettings.outputLimits));
 
     sanitizeCrsfSettings(crsfSettings);
     if(crsf_save_settings(true)) return true;
@@ -393,9 +499,10 @@ bool crsf_begin(
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting inputRouting;
     ELRSSwitchRouting switchRouting;
+    ELRSOutputLimits outputLimits[ELRS_GIMBAL_AXIS_COUNT];
     uint16_t adcHysteresis, throttleIdleDeadband;
 
-    loadELRSInputConfig(axisProfiles, ELRS_GIMBAL_AXIS_COUNT, &inputRouting, &adcHysteresis, &throttleIdleDeadband, &switchRouting);
+    loadELRSInputConfig(axisProfiles, ELRS_GIMBAL_AXIS_COUNT, &inputRouting, &adcHysteresis, &throttleIdleDeadband, &switchRouting, outputLimits);
 
     return elrsMode.begin(
             packetRateHz,
@@ -418,7 +525,8 @@ bool crsf_begin(
             fpOnWifiHandler,
             adcHysteresis,
             throttleIdleDeadband,
-            &switchRouting
+            &switchRouting,
+            outputLimits
         );
 }
 

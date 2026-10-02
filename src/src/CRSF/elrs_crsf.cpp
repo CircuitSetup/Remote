@@ -51,7 +51,8 @@ bool ELRSCrsfMode::begin(
     void (*fpOnWifiHandler)(bool),
     uint16_t adcHysteresis,
     uint16_t throttleIdleDeadband,
-    const ELRSSwitchRouting *switchRouting)
+    const ELRSSwitchRouting *switchRouting,
+    const ELRSOutputLimits *outputLimits)
 {
     ELRSCrsfCoreConfig config;
 
@@ -107,6 +108,7 @@ bool ELRSCrsfMode::begin(
         } else {
             config.axisProfiles[i] = elrsDefaultInputAxisProfile();
         }
+        config.outputLimits[i] = outputLimits ? outputLimits[i] : elrsDefaultOutputLimits();
     }
     config.inputRouting = inputRouting;
     config.transport.baudRate = elrsCrsfRecommendedBaudRate(packetRateHz);
