@@ -708,6 +708,106 @@ static void test_output_limits_follow_axes_through_reverse_and_routing()
     }
 }
 
+// Missing centered shaping, shaping before deadband/reversal, or shaping throttle
+// twice would break these literal outputs through the existing public APIs.
+static void test_gimbal_curve_values_and_bounds()
+{
+    const int16_t inputs[] = {1000, 1250, 1500, 1750, 2000};
+    const uint8_t strengths[] = {0, 40, 100};
+    const int16_t centeredValues[][5] = {{1000, 1250, 1500, 1750, 2000}, {1000, 1325, 1500, 1675, 2000}, {1000, 1437, 1500, 1563, 2000}};
+    const int16_t throttleValues[][5] = {{1000, 1250, 1500, 1750, 2000}, {1000, 1156, 1350, 1619, 2000}, {1000, 1016, 1125, 1422, 2000}};
+    for(int row = 0; row < 3; row++) {
+        for(int i = 0; i < 5; i++) {
+            TEST_ASSERT_EQUAL_INT16(centeredValues[row][i], elrsInputModelApplyExpo(inputs[i], strengths[row], true));
+            TEST_ASSERT_EQUAL_INT16(throttleValues[row][i], elrsInputModelApplyExpo(inputs[i], strengths[row], false));
+        }
+    }
+    for(int strength = 0; strength <= 100; strength++) {
+        for(bool centered : {false, true}) {
+            int16_t previous = 1000;
+            TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelApplyExpo(500, strength, centered));
+            TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelApplyExpo(2500, strength, centered));
+            TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelApplyExpo(1000, strength, centered));
+            TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelApplyExpo(2000, strength, centered));
+            for(int16_t input = 1000; input <= 2000; input++) {
+                int16_t output = elrsInputModelApplyExpo(input, strength, centered);
+                TEST_ASSERT_TRUE(output >= 1000 && output <= 2000);
+                TEST_ASSERT_TRUE(output >= previous);
+                if(!strength) TEST_ASSERT_EQUAL_INT16(input, output);
+                if(centered) {
+                    TEST_ASSERT_EQUAL_INT16(3000 - output, elrsInputModelApplyExpo(3000 - input, strength, true));
+                    TEST_ASSERT_TRUE(input <= 1500 ? (output >= input && output <= 1500) : (output <= input && output >= 1500));
+                } else {
+                    TEST_ASSERT_TRUE(output <= input);
+                }
+                previous = output;
+            }
+        }
+    }
+    for(uint8_t strength : {101, 255}) {
+        for(bool centered : {false, true}) {
+            TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelApplyExpo(500, strength, centered));
+            TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelApplyExpo(2500, strength, centered));
+            for(int16_t input = 1000; input <= 2000; input++) TEST_ASSERT_EQUAL_INT16(input, elrsInputModelApplyExpo(input, strength, centered));
+        }
+    }
+}
+
+static void test_throttle_curves_preserve_idle_center_and_endpoints()
+{
+    for(uint8_t strength : {40, 100}) {
+        for(int narrow = 0; narrow <= 2; narrow++) {
+            for(int descending = 0; descending <= 1; descending++) {
+                for(int reverse = 0; reverse <= 1; reverse++) {
+                    for(uint16_t band : {0, 5, 32}) {
+                        int16_t lo = narrow ? 1000 : 300;
+                        int16_t mid = narrow == 2 ? 1001 : (narrow ? 1010 : 900);
+                        int16_t hi = narrow == 2 ? 1002 : (narrow ? 1020 : 1500);
+                        ELRSInputAxisProfile profile = {descending ? hi : lo, mid, descending ? lo : hi, (uint16_t)reverse, 0, strength};
+                        int idle = reverse ? profile.maximum : profile.minimum;
+                        int full = reverse ? profile.minimum : profile.maximum;
+                        int direction = full > idle ? 1 : -1;
+                        TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, idle, band));
+                        TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, full, band));
+                        TEST_ASSERT_EQUAL_INT16(strength == 40 ? 1350 : 1125, elrsInputModelThrottleToUs(profile, mid, band));
+                        FakeHost host;
+                        ELRSCrsfCore core;
+                        ELRSCrsfCoreConfig config = defaultConfig();
+                        config.axisProfiles[AXIS_THROTTLE] = profile;
+                        config.throttleIdleDeadband = band;
+                        host.axes[AXIS_THROTTLE] = mid;
+                        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+                        TEST_ASSERT_EQUAL_UINT16(strength == 40 ? 746 : 377, core.channelAt(2));
+                        host.axes[AXIS_THROTTLE] = full;
+                        core.loop(host, 20, 0);
+                        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
+                        host.axes[AXIS_THROTTLE] = idle;
+                        core.loop(host, 40, 0);
+                        TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+                        if(band) {
+                            int span = direction * (mid - idle);
+                            int amount = band < span ? band : span - 1;
+                            host.axes[AXIS_THROTTLE] = idle + direction * amount;
+                            core.loop(host, 60, 0);
+                            TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+                        }
+                        if(!narrow && !band) {
+                            TEST_ASSERT_EQUAL_INT16(strength == 40 ? 1156 : 1016, elrsInputModelThrottleToUs(profile, idle + direction * 300, 0));
+                            TEST_ASSERT_EQUAL_INT16(strength == 40 ? 1619 : 1422, elrsInputModelThrottleToUs(profile, mid + direction * 300, 0));
+                        }
+                        // Center deadband is resolved before the idle curve, even
+                        // when a large band leaves only one count at an endpoint.
+                        profile.deadband = narrow == 2 ? 0 : (narrow ? 9 : 20);
+                        TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelThrottleToUs(profile, idle, band));
+                        TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelThrottleToUs(profile, full, band));
+                        TEST_ASSERT_EQUAL_INT16(strength == 40 ? 1350 : 1125, elrsInputModelThrottleToUs(profile, mid, band));
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void test_output_limits_preserve_safe_neutral_and_idle()
 {
     for(int scenario = 0; scenario < 3; scenario++) {
@@ -716,6 +816,7 @@ static void test_output_limits_preserve_safe_neutral_and_idle()
         ELRSCrsfCoreConfig config = defaultConfig();
         config.inputRouting = {4, 3, 2, 1};
         for(auto &limits : config.outputLimits) limits = {1200, 1800};
+        for(auto &profile : config.axisProfiles) profile.expo = 100;
         host.axes[AXIS_THROTTLE] = 0;
         host.axesAvailable = scenario != 0;
         TEST_ASSERT_TRUE(core.begin(host, config, 0));
@@ -741,6 +842,151 @@ static void test_output_limits_runtime_invalid_pairs_use_defaults()
     host.axes[0] = 2047;
     core.loop(host, 20, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
+}
+
+static void test_gimbal_curves_keep_direct_safe_outputs_and_reseed_on_recovery()
+{
+    for(uint8_t strength : {40, 100}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.adcHysteresis = 32;
+        config.throttleIdleDeadband = 5;
+        for(int axis = 0; axis < 4; axis++) config.axisProfiles[axis] = {300, 900, 1500, 0, 0, strength};
+        host.axesAvailable = false;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_MISSING);
+        for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+        host.axesAvailable = true;
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = 900;
+        core.loop(host, 20, 0);
+        TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+        TEST_ASSERT_EQUAL_UINT16(strength == 40 ? 746 : 377, core.channelAt(2));
+        // Return to idle must bypass even a 32-count hold. At strength 100,
+        // nearest-us rounding extends idle beyond the raw five-count band.
+        host.axes[AXIS_THROTTLE] = strength == 40 ? 330 : 400;
+        core.loop(host, 40, 0);
+        TEST_ASSERT_TRUE(core.channelAt(2) > 172);
+        host.axes[AXIS_THROTTLE] = strength == 40 ? 305 : 380;
+        core.loop(host, 60, 0);
+        TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+        host.axes[AXIS_THROTTLE] = 600;
+        core.loop(host, 80, 0);
+        uint16_t beforeFailure = core.channelAt(2);
+        host.axesAvailable = false;
+        core.loop(host, 100, 0);
+        // A failed sample clears the raw hold, and fresh recovery reseeds it.
+        host.axesAvailable = true;
+        host.axes[AXIS_THROTTLE] = 620;
+        core.loop(host, 120, 0);
+        TEST_ASSERT_TRUE(core.channelAt(2) > beforeFailure);
+        host.axesAvailable = false;
+        core.loop(host, 260, 0);
+        TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+        for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+        host.axesAvailable = true;
+        for(int axis = 0; axis < 4; axis++) host.axes[axis] = 900;
+        core.loop(host, 280, 0);
+        TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+        for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+        TEST_ASSERT_EQUAL_UINT16(strength == 40 ? 746 : 377, core.channelAt(2));
+        core.startSelfTest(280);
+        core.loop(host, 290, 0);
+        TEST_ASSERT_TRUE(statusOf(core).selfTestActive);
+        for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+    }
+}
+
+static void test_gimbal_curves_preserve_neutral_direction_and_deadbands()
+{
+    for(uint8_t strength : {40, 100}) {
+        for(int axis = AXIS_AILERON; axis <= AXIS_RUDDER; axis++) {
+            for(int descending = 0; descending <= 1; descending++) {
+                for(int reverse = 0; reverse <= 1; reverse++) {
+                    ELRSInputAxisProfile profile = {300, 900, 1500, (uint16_t)reverse, 20, strength};
+                    if(descending) { profile.minimum = 1500; profile.maximum = 300; }
+                    int direction = descending ? -1 : 1;
+                    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelAxisToUs(profile, 900));
+                    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelAxisToUs(profile, 880));
+                    TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelAxisToUs(profile, 920));
+                    TEST_ASSERT_EQUAL_INT16(reverse ? 2000 : 1000, elrsInputModelAxisToUs(profile, profile.minimum));
+                    TEST_ASSERT_EQUAL_INT16(reverse ? 1000 : 2000, elrsInputModelAxisToUs(profile, profile.maximum));
+                    int16_t below = strength == 40 ? 1325 : 1437;
+                    int16_t above = strength == 40 ? 1675 : 1563;
+                    TEST_ASSERT_EQUAL_INT16(reverse ? above : below, elrsInputModelAxisToUs(profile, 900 - direction * 310));
+                    TEST_ASSERT_EQUAL_INT16(reverse ? below : above, elrsInputModelAxisToUs(profile, 900 + direction * 310));
+                    // Exercise each physical centered axis through the core, too.
+                    FakeHost host;
+                    ELRSCrsfCore core;
+                    ELRSCrsfCoreConfig config = defaultConfig();
+                    config.axisProfiles[axis] = profile;
+                    host.axes[axis] = 900 - direction * 310;
+                    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+                    uint8_t channel = axis == AXIS_RUDDER ? 3 : axis;
+                    TEST_ASSERT_EQUAL_UINT16(reverse ? (strength == 40 ? 1278 : 1095) : (strength == 40 ? 705 : 888), core.channelAt(channel));
+                }
+            }
+        }
+    }
+}
+
+static void test_gimbal_curve_sanitization_preserves_profiles()
+{
+    for(uint8_t strength : {40, 100, 101, 255}) {
+        ELRSInputAxisProfile profile = {1800, 1000, 300, 1, 20, strength};
+        ELRSInputAxisProfile sanitized = elrsSanitizeInputAxisProfile(profile);
+        TEST_ASSERT_EQUAL_INT16(1800, sanitized.minimum);
+        TEST_ASSERT_EQUAL_INT16(1000, sanitized.center);
+        TEST_ASSERT_EQUAL_INT16(300, sanitized.maximum);
+        TEST_ASSERT_EQUAL_UINT16(1, sanitized.reverse);
+        TEST_ASSERT_EQUAL_UINT16(20, sanitized.deadband);
+        TEST_ASSERT_EQUAL_UINT8(strength <= 100 ? strength : 0, sanitized.expo);
+        profile.minimum = profile.center;
+        sanitized = elrsSanitizeInputAxisProfile(profile);
+        TEST_ASSERT_EQUAL_INT16(0, sanitized.minimum);
+        TEST_ASSERT_EQUAL_INT16(1024, sanitized.center);
+        TEST_ASSERT_EQUAL_INT16(2047, sanitized.maximum);
+        TEST_ASSERT_EQUAL_UINT16(0, sanitized.reverse);
+        TEST_ASSERT_EQUAL_UINT16(0, sanitized.deadband);
+        TEST_ASSERT_EQUAL_UINT8(0, sanitized.expo);
+        TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelAxisToUs(profile, 1000));
+        TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1000, 0));
+        TEST_ASSERT_EQUAL_INT16(1500, elrsInputModelThrottleToUs(profile, 1000, 32));
+    }
+}
+
+static void test_gimbal_curves_are_independent_and_follow_channel_routing()
+{
+    const uint8_t strengths[] = {40, 0, 100, 40};
+    const uint16_t expected[] = {705, 582, 888, 428};
+    for(int permuted = 0; permuted <= 1; permuted++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.throttleIdleDeadband = 0;
+        const uint8_t channels[2][4] = {{0, 1, 3, 2}, {2, 3, 1, 0}};
+        if(permuted) config.inputRouting = {3, 4, 1, 2};
+        for(int axis = 0; axis < 4; axis++) {
+            config.axisProfiles[axis] = {300, 900, 1500, 0, 0, strengths[axis]};
+            host.axes[axis] = 600;
+        }
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
+        // Changing Elevator cannot change the other three physical outputs.
+        config.axisProfiles[AXIS_ELEVATOR].expo = 100;
+        TEST_ASSERT_TRUE(core.begin(host, config, 20));
+        TEST_ASSERT_EQUAL_UINT16(888, core.channelAt(channels[permuted][AXIS_ELEVATOR]));
+        for(int axis : {AXIS_AILERON, AXIS_RUDDER, AXIS_THROTTLE}) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
+        // Curves shape calibrated input before travel limits scale each physical axis.
+        config.axisProfiles[AXIS_ELEVATOR].expo = strengths[AXIS_ELEVATOR];
+        for(auto &limits : config.outputLimits) limits = {1200, 1800};
+        TEST_ASSERT_TRUE(core.begin(host, config, 40));
+        const uint16_t limited[] = {819, 746, 929, 654};
+        for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(limited[axis], core.channelAt(channels[permuted][axis]));
+    }
 }
 
 static void test_input_model_center_maps_to_1500_us()
@@ -2900,6 +3146,12 @@ int main(int argc, char **argv)
     UNITY_BEGIN();
     RUN_TEST(test_adc_fault_and_self_test_keep_remapped_throttle_neutral);
     RUN_TEST(test_hysteresis_returns_to_neutral_for_all_profile_directions);
+    RUN_TEST(test_gimbal_curve_values_and_bounds);
+    RUN_TEST(test_throttle_curves_preserve_idle_center_and_endpoints);
+    RUN_TEST(test_gimbal_curves_keep_direct_safe_outputs_and_reseed_on_recovery);
+    RUN_TEST(test_gimbal_curves_preserve_neutral_direction_and_deadbands);
+    RUN_TEST(test_gimbal_curve_sanitization_preserves_profiles);
+    RUN_TEST(test_gimbal_curves_are_independent_and_follow_channel_routing);
     RUN_TEST(test_switch_mapping_routes_each_input_without_leaking_old_channels);
     RUN_TEST(test_switch_mapping_preserves_self_test_and_buttonpack_fallback);
     RUN_TEST(test_switch_mapping_rejects_duplicates_and_invalid_channels);

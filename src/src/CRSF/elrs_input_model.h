@@ -18,7 +18,7 @@ struct ELRSInputAxisProfile {
     int16_t maximum;
     uint16_t reverse;
     uint16_t deadband;
-    uint8_t expo; // Reserved for later curve shaping; Task 1 primitives do not apply expo yet.
+    uint8_t expo; // Independent response curve strength, 0 (linear) through 100 (cubic).
 };
 
 struct ELRSGimbalRouting {
@@ -41,6 +41,7 @@ struct ELRSSwitchRouting {
 constexpr uint16_t ELRS_INPUT_TOLERANCE_DEFAULT = 5;
 constexpr uint16_t ELRS_INPUT_TOLERANCE_MAX = 32;
 
+int16_t elrsInputModelApplyExpo(int16_t linearUs, uint8_t expo, bool centered);
 int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw);
 int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband);
 ELRSOutputLimits elrsDefaultOutputLimits();

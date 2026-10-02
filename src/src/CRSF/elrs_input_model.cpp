@@ -45,9 +45,7 @@ static int16_t moveToward(int16_t start, int16_t target, uint16_t amount)
     return (int16_t)(start - (int16_t)clampLong((long)amount, 0, -delta));
 }
 
-}
-
-int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
+static int16_t mapAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
 {
     const int16_t midUs = ELRS_INPUT_US_MID;
     int16_t lowUs = profile.reverse ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MIN;
@@ -87,7 +85,6 @@ int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
         return mapped;
     }
 
-    // Task 1 keeps expo explicit but inactive until a later task defines the curve behavior.
     int16_t mapped = mapAxisSegment(raw, highThreshold, profile.maximum, midUs, highUs);
 
     if(mapped == midUs) {
@@ -97,10 +94,39 @@ int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
     return mapped;
 }
 
+}
+
+int16_t elrsInputModelApplyExpo(int16_t linearUs, uint8_t expo, bool centered)
+{
+    linearUs = (int16_t)clampLong(linearUs, ELRS_INPUT_US_MIN, ELRS_INPUT_US_MAX);
+    if(!expo || expo > 100) return linearUs;
+
+    const int16_t origin = centered ? ELRS_INPUT_US_MID : ELRS_INPUT_US_MIN;
+    const int64_t span = centered ? 500 : 1000;
+    int64_t magnitude = (int64_t)linearUs - origin;
+    bool negative = magnitude < 0;
+    if(negative) magnitude = -magnitude;
+    const int64_t denominator = 100 * span * span;
+    const int64_t numerator = (100 - expo) * magnitude * span * span +
+                              expo * magnitude * magnitude * magnitude;
+    int16_t shaped = (int16_t)((numerator + denominator / 2) / denominator);
+    return origin + (negative ? -shaped : shaped);
+}
+
+int16_t elrsInputModelAxisToUs(const ELRSInputAxisProfile &profile, int16_t raw)
+{
+    int16_t linearUs = mapAxisToUs(profile, raw);
+    return elrsIsValidInputAxisProfile(profile)
+        ? elrsInputModelApplyExpo(linearUs, profile.expo, true) : linearUs;
+}
+
 int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t raw, uint16_t idleDeadband)
 {
-    if(!idleDeadband || !elrsIsValidInputAxisProfile(profile)) {
-        return elrsInputModelAxisToUs(profile, raw);
+    if(!elrsIsValidInputAxisProfile(profile)) {
+        return mapAxisToUs(profile, raw);
+    }
+    if(!idleDeadband) {
+        return elrsInputModelApplyExpo(mapAxisToUs(profile, raw), profile.expo, false);
     }
     ELRSInputAxisProfile adjusted = profile;
     int16_t &idle = adjusted.reverse ? adjusted.maximum : adjusted.minimum;
@@ -113,7 +139,7 @@ int16_t elrsInputModelThrottleToUs(const ELRSInputAxisProfile &profile, int16_t 
     int smallerSpan = (span - amount < otherSpan) ? span - amount : otherSpan;
     // A center deadband must leave a nonzero mapping segment at both endpoints.
     adjusted.deadband = (uint16_t)clampLong(adjusted.deadband, 0, smallerSpan - 1);
-    return elrsInputModelAxisToUs(adjusted, raw);
+    return elrsInputModelApplyExpo(mapAxisToUs(adjusted, raw), profile.expo, false);
 }
 
 ELRSOutputLimits elrsDefaultOutputLimits()
@@ -192,7 +218,9 @@ bool elrsIsValidInputAxisProfile(const ELRSInputAxisProfile &profile)
 ELRSInputAxisProfile elrsSanitizeInputAxisProfile(const ELRSInputAxisProfile &profile)
 {
     if(elrsIsValidInputAxisProfile(profile)) {
-        return profile;
+        ELRSInputAxisProfile sanitized = profile;
+        if(sanitized.expo > 100) sanitized.expo = 0;
+        return sanitized;
     }
 
     return elrsDefaultInputAxisProfile();

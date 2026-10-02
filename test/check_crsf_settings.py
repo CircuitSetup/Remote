@@ -115,6 +115,7 @@ portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for s
 ])
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
 limits_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFOutputLimits(const char *dest, int op)')
+expo_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadExpoParams()')
 switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchParams()')
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
 select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
@@ -190,6 +191,7 @@ struct {
     char elrsThrLow[6], elrsThrCtr[6], elrsThrHigh[6];
     char elrsYawLow[6], elrsYawCtr[6], elrsYawHigh[6];
     char elrsAdcHysteresis[3] = "5", elrsThrIdleDeadband[3] = "5";
+    char elrsAxisExpo[4][4] = {"0","0","0","0"};
     char elrsSwitchCh[12][3] = {"5","6","7","8","9","10","11","12","13","14","15","16"};
 } settings;
 bool haveNewBoard = true, opModeCRSF = true;
@@ -261,6 +263,7 @@ int main() {
     uint16_t hysteresis = 99, idle = 99;
     loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle);
     assert(hysteresis == 5 && idle == 5);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == 0);
     assert(profiles[0].minimum == 300 && profiles[0].reverse == 1 && profiles[0].deadband == 12);
     assert(routing.aileronChannel == 2 && routing.elevatorChannel == 1);
     hysteresis = 0; idle = 32;
@@ -308,6 +311,7 @@ int main() {
     loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle);
     assert(hysteresis == 5 && idle == 5 && profiles[0].minimum == 300 && profiles[0].center == 900);
     assert(routing.aileronChannel == 1 && profiles[0].reverse == 0);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == 0);
     puts("CRSF tolerance persistence, legacy migration, and portal check passed");
     // A previous firmware's full blob has profiles, gimbal routing and tolerances, but no switch map.
     hysteresis = 8; idle = 7;
@@ -431,6 +435,104 @@ int main() {
     assert(strstr(gimbalPage, "value='15' selected>CH16</option></select></div>"));
     wmBuildCRSFGimbalChannelSelect(gimbalPage, WM_CP_DESTROY, "'>Rudder target channel", "cywch", lastGimbalChannel);
     puts("CRSF gimbal selector has sixteen valid options and no trailing option fragment");
+    // Wrong identity/order, dropped profile bytes, or a partial save must fail these cases.
+    const unsigned strengths[4] = {10,25,60,40};
+    const char *expoIds[4] = {"crlexp","cptexp","cywexp","cthexp"};
+    server.name.clear(); server.args.clear();
+    syncCRSFPortalBuffers();
+    for(int i = 0; i < 4; i++) snprintf(settings.elrsAxisExpo[i], 4, "%u", strengths[i]);
+    const size_t curveBlobSize = stored.size();
+    assert(saveCRSFPortalInputSettings());
+    crsf_load_settings();
+    loadELRSInputConfig(profiles, 4, &routing);
+    assert(stored.size() == curveBlobSize);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
+    syncCRSFPortalBuffers();
+    for(int i = 0; i < 4; i++) assert(atoi(settings.elrsAxisExpo[i]) == (int)strengths[i]);
+    auto fourStrengths = stored;
+    ELRSSwitchRouting curveSwitches = elrsDefaultSwitchRouting();
+    assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &curveSwitches));
+    loadELRSInputConfig(profiles, 4, nullptr);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
+    stored = fourStrengths; crsf_load_settings();
+    stored[offsetof(ELRSCrsfSettingsBlob, axisProfile) + 2 * sizeof(ELRSInputAxisProfile) + offsetof(ELRSInputAxisProfile, expo)] = 255;
+    crsf_load_settings(); loadELRSInputConfig(profiles, 4, nullptr);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == 2 ? 0 : strengths[i]));
+    assert(profiles[0].minimum == 300 && profiles[0].center == 900);
+    stored = fourStrengths; crsf_load_settings();
+    const char *validExpo[] = {"0","40","100","040"};
+    const unsigned wantExpo[] = {0,40,100,40};
+    for(int axis = 0; axis < 4; axis++) {
+        for(int v = 0; v < 4; v++) {
+            stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
+            server.args = {{expoIds[axis], validExpo[v]}};
+            crsfReadExpoParams(); assert(saveCRSFPortalInputSettings());
+            loadELRSInputConfig(profiles, 4, nullptr);
+            for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == axis ? wantExpo[v] : strengths[i]));
+        }
+    }
+    ELRSInputAxisProfile fourProfiles[4];
+    stored = fourStrengths; crsf_load_settings(); loadELRSInputConfig(fourProfiles, 4, nullptr);
+    const std::string invalidExpo[] = {"","-1","+1","101","40x","4.5"," 40","40 ","1000",std::string("40\0x",4),std::string("4\0x",3),std::string("40\0",3)};
+    for(int axis = 0; axis < 4; axis++) {
+        for(const std::string &bad : invalidExpo) {
+            stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
+            server.args.clear();
+            for(int i = 0; i < 4; i++) server.args[expoIds[i]] = "99";
+            server.args[expoIds[axis]] = bad;
+            crsfReadExpoParams(); strcpy(settings.elrsRollLow, "500");
+            assert(!saveCRSFPortalInputSettings()); assert(stored == fourStrengths);
+            loadELRSInputConfig(profiles, 4, nullptr);
+            assert(memcmp(profiles, fourProfiles, sizeof(profiles)) == 0);
+            for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
+        }
+    }
+    stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
+    server.args.clear(); crsfReadExpoParams(); assert(saveCRSFPortalInputSettings());
+    assert(stored == fourStrengths);
+    // Omit each identity while editing all its siblings.
+    for(int missing = 0; missing < 4; missing++) {
+        stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers(); server.args.clear();
+        for(int i = 0; i < 4; i++) if(i != missing) server.args[expoIds[i]] = "75";
+        crsfReadExpoParams(); assert(saveCRSFPortalInputSettings()); loadELRSInputConfig(profiles, 4, nullptr);
+        for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == missing ? strengths[i] : 75));
+    }
+    stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
+    server.args.clear(); for(int i = 0; i < 4; i++) server.args[expoIds[i]] = "80";
+    crsfReadExpoParams(); storageWriteOk = false;
+    assert(!saveCRSFPortalInputSettings()); assert(stored == fourStrengths);
+    loadELRSInputConfig(profiles, 4, nullptr);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
+    storageWriteOk = true; assert(saveCRSFPortalInputSettings());
+    loadELRSInputConfig(profiles, 4, nullptr);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == 80);
+    stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers(); server.args.clear();
+    const char *curvePage = wmBuildCRSFCAL(nullptr, 2);
+    for(int i = 0; i < 4; i++) {
+        char control[180];
+        snprintf(control, sizeof(control), "id='%s' name='%s' type='range' min='0' max='100' step='1' value='%u' data-elrs-expo data-centered='%d'", expoIds[i], expoIds[i], strengths[i], i == 3 ? 0 : 1);
+        const char *found = strstr(curvePage, control); assert(found);
+        assert(!strstr(found + strlen(control), control));
+        const char *labels[4] = {"Aileron","Elevator","Rudder","Throttle"};
+        const char *axisStart = strstr(curvePage, (std::string("elrscal-name'>") + labels[i]).c_str());
+        assert(axisStart && axisStart < found);
+        const char *nextAxis = strstr(axisStart + 15, "elrscal-name'>");
+        assert(!nextAxis || found < nextAxis);
+        char id[40]; snprintf(id, sizeof(id), "id='%s'", expoIds[i]);
+        found = strstr(curvePage, id); assert(found && !strstr(found + strlen(id), id));
+        snprintf(id, sizeof(id), "id='%s_curve'", expoIds[i]); assert(strstr(curvePage, id));
+        snprintf(id, sizeof(id), "id='%s_value'", expoIds[i]); assert(strstr(curvePage, id));
+        snprintf(id, sizeof(id), "for='%s'", expoIds[i]); assert(strstr(curvePage, id));
+    }
+    assert(strstr(curvePage, "Curve strength (%)") && strstr(curvePage, "role='img'"));
+    assert(*(const size_t *)wmBuildCRSFCAL(nullptr, WM_CP_LEN) == strlen(curvePage) + 1);
+    if(const char *previewPath = getenv("CRSF_GIMBAL_PREVIEW")) {
+        FILE *preview = fopen(previewPath, "w"); assert(preview);
+        fprintf(preview, "<!doctype html><html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>ELRS gimbal curve check</title><style>body{font-family:sans-serif;max-width:420px;margin:16px auto;padding:0 8px}button,input{font:inherit}</style><form>%s<button type='submit'>Save</button></form></html>", curvePage);
+        fclose(preview);
+    }
+    assert(wmBuildCRSFCAL(curvePage, WM_CP_DESTROY) == nullptr);
+    puts("CRSF four curve persistence, strict POST, atomic save, retry and rendering check passed");
     auto beforeCalibration = stored;
     ELRSAxisCalibrationData retryCalibration[4];
     memcpy(retryCalibration, calibration, sizeof(retryCalibration));
@@ -445,6 +547,7 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(profiles, 4, nullptr, nullptr, nullptr, &switches);
     assert(profiles[0].minimum == 350);
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
     assert(switches.channels[0] == 15 && switches.channels[1] == 16);
     puts("CRSF calibration write failure and retry check passed");
     profiles[0].reverse = 1;
@@ -779,7 +882,7 @@ int main() {
     puts("CRSF real 84-byte settings preserve limits, calibration, tolerances and mappings across Flash/SD migration and reinstall");
 }
 '''
-compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + storage_cases, ['elrs_input_model.cpp'])
+compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + storage_cases, ['elrs_input_model.cpp'])
 
 # Exercise the actual HTTP handler and the application's reboot scheduling callback.
 save_signature = 'static bool saveParamsCallback(int paramspage)'
@@ -1116,3 +1219,104 @@ int main() {
 }
 '''
 compile_and_run(file_fixture + file_functions + stored_settings_with_files + file_cases, ['elrs_input_model.cpp'])
+
+# Couple the actual raw request reader, transactional save, HTTP handler, and reboot callback.
+integration_fixture = storage_fixture + '#define STRLEN(s) (sizeof(s)-1)\n'
+integration_callbacks = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
+integration_callbacks += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
+integration_callbacks += post_parser
+integration_cases = r'''
+// Submit the required routing/calibration fields while allowing curve fields to be omitted.
+void submitCurveRequest(WiFiManager &manager) {
+    server.args["copm"] = "1";
+    const char *channelNames[] = {"crlch", "cptch", "cthch", "cywch"};
+    const char *pointNames[][3] = {{"crrlo","crrct","crrhi"}, {"cptlo","cptct","cpthi"},
+                                 {"cthlo","cthct","cthhi"}, {"cywlo","cywct","cywhi"}};
+    for(int axis = 0; axis < 4; axis++) {
+        const auto &fields = crsfAxisSettings[axis];
+        server.args[channelNames[axis]] = std::to_string(atoi(fields.channel) - 1);
+        const char *points[] = {fields.low, fields.center, fields.high};
+        for(int point = 0; point < 3; point++) server.args[pointNames[axis][point]] = points[point];
+    }
+    manager._handleParamSave(3, "ELRS");
+}
+
+// Rejected edits must not become the next request's omitted defaults.
+void test_rejected_curve_request_preserves_saved_omissions(WiFiManager &manager) {
+    const uint8_t expected[4] = {10,25,60,40};
+    const auto saved = stored;
+    for(int omitAll = 0; omitAll < 2; omitAll++) {
+        wifiLoopSaveAction = 0;
+        server.args = {{"crlexp","99"},{"cptexp","88"},{"cywexp","77"},{"cthexp","bad"}};
+        submitCurveRequest(manager);
+        assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == saved);
+        // No portal sync or reload between requests. A partial retry omits three fields.
+        server.args.clear();
+        if(!omitAll) server.args["cthexp"] = "40";
+        submitCurveRequest(manager);
+        assert(server.status == 200 && wifiLoopSaveAction == 32);
+        ELRSInputAxisProfile profiles[4]; loadELRSInputConfig(profiles, 4, nullptr);
+        for(int i = 0; i < 4; i++) assert(profiles[i].expo == expected[i]);
+        assert(stored == saved);
+    }
+    puts("CRSF rejected request then omit some/all curve fields check passed");
+}
+
+void test_failed_curve_write_preserves_saved_omissions(WiFiManager &manager) {
+    const uint8_t expected[4] = {10,25,60,40};
+    const auto saved = stored;
+    for(int omitAll = 0; omitAll < 2; omitAll++) {
+        wifiLoopSaveAction = 0;
+        server.args = {{"crlexp","80"},{"cptexp","70"},{"cywexp","60"},{"cthexp","50"}};
+        storageWriteOk = false;
+        submitCurveRequest(manager);
+        assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == saved);
+        storageWriteOk = true;
+        // No portal sync or reload. This partial retry omits exactly Aileron.
+        server.args.clear();
+        if(!omitAll) server.args = {{"cptexp","25"},{"cywexp","60"},{"cthexp","40"}};
+        submitCurveRequest(manager);
+        assert(server.status == 200 && wifiLoopSaveAction == 32);
+        ELRSInputAxisProfile profiles[4]; loadELRSInputConfig(profiles, 4, nullptr);
+        for(int i = 0; i < 4; i++) assert(profiles[i].expo == expected[i]);
+        assert(stored == saved);
+    }
+    puts("CRSF failed write then omit one/all curve fields check passed");
+}
+
+int main() {
+    crsf_load_settings();
+    syncCRSFPortalBuffers();
+    assert(saveCRSFPortalInputSettings());
+    auto before = stored;
+    ELRSInputAxisProfile oldProfiles[4], profiles[4];
+    loadELRSInputConfig(oldProfiles, 4, nullptr);
+    WiFiManager manager;
+    manager._saveparamscallback = saveParamsCallback;
+    server.args = {{"crlexp","10"},{"cptexp","25"},{"cywexp","60"},{"cthexp","40x"}};
+    strcpy(settings.elrsRollLow, "500");
+    submitCurveRequest(manager);
+    assert(server.status == 400 && wifiLoopSaveAction == 0);
+    assert(server.body.find("Settings saved.") == String::npos && stored == before);
+    loadELRSInputConfig(profiles, 4, nullptr);
+    assert(memcmp(profiles, oldProfiles, sizeof(profiles)) == 0);
+    server.args["cthexp"] = "40";
+    storageWriteOk = false;
+    submitCurveRequest(manager);
+    assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == before);
+    loadELRSInputConfig(profiles, 4, nullptr);
+    assert(memcmp(profiles, oldProfiles, sizeof(profiles)) == 0);
+    storageWriteOk = true;
+    submitCurveRequest(manager);
+    assert(server.status == 200 && wifiLoopSaveAction == 32);
+    assert(server.body.find("Settings saved.") != String::npos);
+    crsf_load_settings(); loadELRSInputConfig(profiles, 4, nullptr);
+    const uint8_t expected[4] = {10,25,60,40};
+    for(int i = 0; i < 4; i++) assert(profiles[i].expo == expected[i]);
+    assert(profiles[0].minimum == 500);
+    puts("CRSF real four-curve HTTP rejection, atomic write failure and successful reboot retry check passed");
+    test_rejected_curve_request_preserves_saved_omissions(manager);
+    test_failed_curve_write_preserves_saved_omissions(manager);
+}
+'''
+compile_and_run(integration_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + integration_callbacks + http_callbacks + integration_cases, ['elrs_input_model.cpp'])
