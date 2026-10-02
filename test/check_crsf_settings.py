@@ -895,6 +895,7 @@ struct { char CfgOnSD[2] = "0"; } settings;
 struct File {
     std::vector<uint8_t> *bytes = nullptr;
     size_t allowedWrite = 999;
+    int closeLength = -1;
     explicit operator bool() const { return bytes != nullptr; }
     size_t size() { return bytes->size(); }
     size_t read(uint8_t *data, int length) {
@@ -907,13 +908,15 @@ struct File {
         bytes->assign(data, data + count);
         return count;
     }
-    void close() {}
+    void close() { if(closeLength >= 0) bytes->resize(closeLength); }
 };
 namespace fs {
 struct FS {
     std::map<std::string, std::vector<uint8_t>> files;
     size_t allowedWrite = 999;
+    int closeLength = -1;
     bool failOpen = false, failBackupRemove = false;
+    std::string failRemovePath;
     int renameCalls = 0;
     std::vector<int> failedRenames;
     bool exists(const char *name) { return files.count(name); }
@@ -925,9 +928,11 @@ struct FS {
         } else if(!exists(name)) return result;
         result.bytes = &files[name];
         result.allowedWrite = allowedWrite;
+        if(mode[0] == 'w') result.closeLength = closeLength;
         return result;
     }
     bool remove(const char *name) {
+        if(name == failRemovePath) return false;
         if(failBackupRemove && std::string(name) == "/crsfcfg.bak") return false;
         return files.erase(name);
     }
@@ -990,8 +995,15 @@ int main() {
         configOnSD = medium;
         settings.CfgOnSD[0] = medium ? '1' : '0';
         fs::FS &storage = medium ? SD : MYNVS;
+        fs::FS &other = medium ? MYNVS : SD;
+        // An interrupted save on the other, now read-only medium cannot block this one.
+        other.files["/crsfcfg.tmp"] = {0, 0};
+        other.failRemovePath = "/crsfcfg.tmp";
         crsfSettings = defaultCrsfSettings(); crsfSettingsHash = 0;
         assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
+        assert(other.files["/crsfcfg.tmp"] == std::vector<uint8_t>({0, 0}));
+        assert(storage.files.size() == 1); // Clean up only this attempt's stage.
+        other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
         assert(before.size() == 87);
@@ -1012,6 +1024,16 @@ int main() {
         assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
         assert(storage.files[name] == before);
         storage.failOpen = false;
+        // Buffered fwrite can accept every byte before fclose fails to flush it.
+        for(int count : {0, 3, 86}) {
+            storage.closeLength = count;
+            assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+            assert(storage.files[name] == before && !storage.exists("/crsfcfg.tmp"));
+            assert(crsfSettingsHash == originalHash);
+            checkLimits(1200, 1800);
+            storage.closeLength = -1;
+            crsf_load_settings(); checkLimits(1200, 1800);
+        }
         for(const auto &failures : {std::vector<int>{1}, std::vector<int>{2}, std::vector<int>{2,3}}) {
             storage.renameCalls = 0; storage.failedRenames = failures;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
@@ -1036,6 +1058,13 @@ int main() {
         crsf_load_settings(); checkLimits(1200, 1800);
         storage.failBackupRemove = false;
         assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+        crsf_load_settings(); checkLimits(1300, 1700);
+        // With no valid copy left, a verified new save must still repair storage.
+        storage.files[name] = storage.files["/crsfcfg.bak"] = {0, 0};
+        crsfSettings = defaultCrsfSettings(); crsfSettingsHash = 0;
+        crsf_load_settings();
+        assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
+        assert(!storage.exists("/crsfcfg.bak"));
         crsf_load_settings(); checkLimits(1300, 1700);
     }
     puts("Real Flash/SD short writes, open/rename failures, reloads and retries preserve gimbal limits");

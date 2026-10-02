@@ -199,16 +199,23 @@ static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)
 static bool crsfSaveStoredSettings(uint8_t *buf, int len)
 {
     // The shared writer's medium is private and may change during moveSettings.
-    // Clear only our stages so the newly written file identifies its actual target.
-    for(int medium = 0; medium < 2; medium++) {
-        if(medium ? (!haveFS || FlashROMode) : !haveSD) continue;
-        fs::FS &storage = medium ? static_cast<fs::FS &>(LittleFS) : static_cast<fs::FS &>(SD);
-        if(storage.exists(crsfTmpName) && !storage.remove(crsfTmpName)) return false;
+    // An unused stage identifies its target without modifying the other medium.
+    char temporary[32];
+    snprintf(temporary, sizeof(temporary), "%s", crsfTmpName);
+    for(unsigned int suffix = 0; (haveSD && SD.exists(temporary)) ||
+                                (haveFS && LittleFS.exists(temporary)); suffix++) {
+        snprintf(temporary, sizeof(temporary), "%s.%u", crsfTmpName, suffix);
     }
     // Reuse the existing binary writer, but its truncating FILE_WRITE targets only the stage.
-    bool ret = saveConfigFile(crsfTmpName, buf, len, FlashROMode ? 1 : 0);
-    const bool toSD = haveSD && SD.exists(crsfTmpName);
+    bool ret = saveConfigFile(temporary, buf, len, FlashROMode ? 1 : 0);
+    const bool toSD = haveSD && SD.exists(temporary);
     fs::FS &storage = toSD ? static_cast<fs::FS &>(SD) : static_cast<fs::FS &>(LittleFS);
+    // A buffered write can succeed even if close fails to flush the complete file.
+    uint8_t verified[sizeof(ELRSCrsfSettingsBlob)];
+    int validBytes;
+    ret = ret && len >= 0 && len <= (int)sizeof(verified) &&
+          crsfReadSettingsFile(storage, temporary, verified, validBytes) &&
+          validBytes == len && !memcmp(verified, buf, len);
     if(ret) {
         bool hadOriginal = storage.exists(crsfCfgName);
         if(hadOriginal && storage.exists(crsfBackupName)) {
@@ -220,18 +227,19 @@ static bool crsfSaveStoredSettings(uint8_t *buf, int len)
                 ret = storage.remove(crsfCfgName);
                 hadOriginal = false;
             } else {
-                ret = false;
+                // Neither copy is valid; allow the verified stage to repair them.
+                ret = storage.remove(crsfBackupName);
             }
         }
         // SD cannot rename over an existing file; retain a recovery copy across both renames.
         if(ret && hadOriginal) ret = storage.rename(crsfCfgName, crsfBackupName);
         if(ret) {
-            ret = storage.rename(crsfTmpName, crsfCfgName);
+            ret = storage.rename(temporary, crsfCfgName);
             if(ret) storage.remove(crsfBackupName);
             else if(hadOriginal) storage.rename(crsfBackupName, crsfCfgName);
         }
     }
-    if(toSD || (haveFS && !FlashROMode)) storage.remove(crsfTmpName);
+    if(toSD || (haveFS && !FlashROMode)) storage.remove(temporary);
     return ret;
 }
 
