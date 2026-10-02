@@ -693,9 +693,11 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
     html += "</span><span class='elrscal-live'>Filtered ADC <span id='";
     html += axis.liveId;
     html += "'>--</span></span></div>";
+    html += "<div class='elrscal-points'>";
     for(int i = 0; i < 3; i++) {
         wmAppendCRSFCALPoint(html, axis.fields[i].label, axis.fields[i].inputId, axis.liveId, axis.fields[i].value);
     }
+    html += "</div>";
     for(const CRSFAxisSettings &binding : crsfAxisSettings) {
         if(binding.axis != axis.axis) continue;
         html += "<div class='elrscal-row'><label for='"; html += binding.expoId;
@@ -738,6 +740,11 @@ static const char crsfCalStyle[] =
     ".elrscal-ctl{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,5.8em) max-content;gap:6px;width:100%;max-width:100%;padding:0;margin:0;align-items:stretch}"
     ".elrscal-row input{box-sizing:border-box;width:100%;max-width:100%;min-width:0}"
     ".elrscal-row button{box-sizing:border-box;width:auto;max-width:100%;min-width:0;margin:0;padding:0 6px;font-size:.95em;line-height:2rem}"
+    ".elrscal-points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;padding:0;margin:8px 0}"
+    ".elrscal-points .elrscal-row{margin:0}"
+    ".elrscal-points .elrscal-ctl{grid-template-columns:minmax(0,1fr);gap:4px}"
+    ".elrscal-points input{max-width:5em}"
+    ".elrscal-points button{width:100%;padding:0 4px;font-size:.85em}"
     "</style>";
 
 static const char crsfExpoScript[] =
