@@ -673,7 +673,8 @@ int main() {
         assert(block.find("Lower limit") != std::string::npos && block.find("Upper limit") != std::string::npos);
         assert(block.find("min='1000' max='1500'") != std::string::npos);
         assert(block.find("min='1500' max='2000'") != std::string::npos);
-        assert(block.find("Center") != std::string::npos && block.find("value='1500' readonly") != std::string::npos);
+        assert(block.find("Center") != std::string::npos && block.find("class='elrscenter'>1500</span>") != std::string::npos);
+        assert(block.find("readonly") == std::string::npos);
         assert(block.find("required") != std::string::npos);
     }
     assert(*(const size_t *)wmBuildCRSFOutputLimits(nullptr, WM_CP_LEN) == strlen(limitsPage) + 1);

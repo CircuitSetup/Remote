@@ -587,23 +587,24 @@ static const char *wmBuildCRSFOutputLimits(const char *dest, int op)
     html.reserve(3200);
     html += "<div class='cmp0 elrsout' style='white-space:normal'><h3>Travel Limits</h3>"
             "<p><small>RC output in microseconds equivalent. Full stick travel scales to these limits; center stays at 1500. Changes apply after saving and restarting.</small></p>"
-            "<style>.elrsout label{display:block;font-size:.8em}.elrsout input{box-sizing:border-box;width:100%;min-width:0;max-width:100%}</style>";
+            "<style>.elrsout label{display:block;font-size:.8em}.elrsout input{box-sizing:border-box;width:100%;min-width:0;max-width:100%}.elrsout .elrscenter{display:block;padding:5px;margin:5px 0}</style>";
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         const char *values[] = {crsfOutputMin[i], "1500", crsfOutputMax[i]};
         html += "<fieldset style='margin:10px 0;padding:8px;min-width:0'><legend>";
         html += axes[i];
         html += "</legend><div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px'>";
         for(int field = 0; field < 3; field++) {
+            if(field == 1) {
+                html += "<div><span style='display:block;font-size:.8em'>Center</span><span class='elrscenter'>1500</span></div>";
+                continue;
+            }
             char name[8];
             snprintf(name, sizeof(name), "cout%d%s", i, suffixes[field]);
             html += "<div><label for='"; html += name; html += "'>"; html += labels[field];
             html += "</label><input id='"; html += name; html += "' type='number' value='";
             html += values[field]; html += "'";
-            if(field == 1) html += " readonly";
-            else {
-                html += " name='"; html += name; html += "' maxlength='4'";
-                html += field == 0 ? " min='1000' max='1500' required" : " min='1500' max='2000' required";
-            }
+            html += " name='"; html += name; html += "' maxlength='4'";
+            html += field == 0 ? " min='1000' max='1500' required" : " min='1500' max='2000' required";
             html += "></div>";
         }
         html += "</div></fieldset>";
