@@ -537,9 +537,7 @@ void crsf_loop(int battWarn)
 
 void csrf_query_status(bool &FPBUnitIsOn)
 {
-    ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
-    FPBUnitIsOn = elrsStatus.fakePowerOn;
-    //calibMode = elrsStatus.calibrating;
+    FPBUnitIsOn = elrsMode.fakePowerOn();
 }
 
 #endif

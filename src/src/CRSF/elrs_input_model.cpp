@@ -102,14 +102,16 @@ int16_t elrsInputModelApplyExpo(int16_t linearUs, uint8_t expo, bool centered)
     if(!expo || expo > 100) return linearUs;
 
     const int16_t origin = centered ? ELRS_INPUT_US_MID : ELRS_INPUT_US_MIN;
-    const int64_t span = centered ? 500 : 1000;
-    int64_t magnitude = (int64_t)linearUs - origin;
-    bool negative = magnitude < 0;
-    if(negative) magnitude = -magnitude;
-    const int64_t denominator = 100 * span * span;
-    const int64_t numerator = (100 - expo) * magnitude * span * span +
-                              expo * magnitude * magnitude * magnitude;
-    int16_t shaped = (int16_t)((numerator + denominator / 2) / denominator);
+    const int16_t offset = linearUs - origin;
+    const bool negative = offset < 0;
+    const uint32_t magnitude = negative ? -offset : offset;
+    const uint32_t spanSquared = centered ? 250000U : 1000000U;
+    const uint32_t cube = magnitude * magnitude * magnitude;
+    // Split the cubic term before weighting: cube <= 1e9, remainder * expo < 1e8.
+    // Truncating that term before the final /100 preserves the original rounding.
+    const uint32_t scaled = (100 - expo) * magnitude + expo * (cube / spanSquared) +
+                            expo * (cube % spanSquared) / spanSquared;
+    const int16_t shaped = (int16_t)((scaled + 50) / 100);
     return origin + (negative ? -shaped : shaped);
 }
 

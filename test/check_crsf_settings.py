@@ -120,14 +120,14 @@ switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchPa
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
 select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
 select_page += wifi_source[wifi_source.index('static const char custHTMLSelFmt[]'):wifi_source.index('\n', wifi_source.index('static const char custHTMLSelFmt[]'))] + '\n'
-select_page += portal[portal.index('static const char *cChannelCustHTMLSrc['):portal.index('enum CRSFSelectFieldId')]
+select_page += portal[portal.index('static const char * const cChannelCustHTMLSrc['):portal.index('enum CRSFSelectFieldId')]
 select_page += '#define STRLEN(s) (sizeof(s)-1)\n'
 select_page += ''.join(function('src/remote_wifi.cpp', signature) for signature in [
-    'static unsigned int calcSelectMenu(const char **theHTML, int cnt, char *setting, bool indent = false)',
-    'static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting, bool indent = false)',
-    'static const char *wmBuildSelect(const char *dest, int op, const char **src, int count, char *setting, bool indent)',
+    'static unsigned int calcSelectMenu(const char * const *theHTML, int cnt, char *setting, bool indent = false)',
+    'static void buildSelectMenu(char *target, const char * const *theHTML, int cnt, char *setting, bool indent = false)',
+    'static const char *wmBuildSelect(const char *dest, int op, const char * const *src, int count, char *setting, bool indent)',
 ])
-select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildSelectOneBased(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)')
+select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildSelectOneBased(const char *dest, int op, const char * const *src, int count, char *setting, bool indent = false)')
 select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)')
 post_parser = '\n'.join(line for line in (ROOT / 'src/remote_settings.h').read_text().splitlines() if line.startswith('#define DEF_ELRS')) + '\n'
 post_parser += function('src/remote_wifi.cpp', 'static bool isNumString(char *s)')

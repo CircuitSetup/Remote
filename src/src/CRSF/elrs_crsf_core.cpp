@@ -1177,10 +1177,8 @@ void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, si
 {
     const char *name;
     const char *options;
-    const char *currentOption = NULL;
     size_t nameLen;
     size_t optionsLen;
-    size_t currentOptionLen = 0;
     uint8_t type;
     uint8_t currentValue;
 
@@ -1205,6 +1203,9 @@ void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, si
             return;
         }
         currentValue = (uint8_t)options[optionsLen + 1];
+#ifdef REMOTE_DBG
+        const char *currentOption = NULL;
+        size_t currentOptionLen = 0;
         if(!readOptionAt(options, currentValue, &currentOption, &currentOptionLen)) {
             currentOption = NULL;
             currentOptionLen = 0;
@@ -1214,6 +1215,7 @@ void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, si
                   name,
                   (int)currentOptionLen,
                   currentOption ? currentOption : "");
+#endif
         applyDiscoveredParameter(fieldId, name, type, options, currentValue);
     } else {
         debugLogf("ELRS/CRSF resp: field=%u name=\"%s\" type=%u len=%u",

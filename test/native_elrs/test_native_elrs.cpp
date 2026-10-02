@@ -567,8 +567,15 @@ static void test_transport_raw_frame_dump_requires_explicit_opt_in()
     host.queueFrame(makeDeviceInfoFrame("RM Ranger Micro", 33));
     loopAt(core, host, 100, 100000);
 
+#ifdef REMOTE_CRSF_NO_RAW_DUMPS
+    TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF RX len=36"));
+    TEST_ASSERT_FALSE(statusOf(core).rawFrameDebugEnabled);
+#else
     TEST_ASSERT_TRUE(logsContain(host, "ELRS/CRSF RX len=36"));
     TEST_ASSERT_TRUE(statusOf(core).rawFrameDebugEnabled);
+#endif
+    TEST_ASSERT_EQUAL_HEX8(0x29, statusOf(core).lastRawFrameType);
+    TEST_ASSERT_EQUAL_UINT8(36, statusOf(core).lastRawFrameLength);
 }
 
 static void test_transport_raw_frame_dump_logs_non_rc_replies_only()
@@ -586,7 +593,11 @@ static void test_transport_raw_frame_dump_logs_non_rc_replies_only()
     host.queueFrame(makeDeviceInfoFrame("RM Ranger Micro", 33));
     loopAt(core, host, 100, 100000);
 
+#ifdef REMOTE_CRSF_NO_RAW_DUMPS
+    TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF RX len=36"));
+#else
     TEST_ASSERT_TRUE(logsContain(host, "ELRS/CRSF RX len=36"));
+#endif
     TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF TX len="));
 }
 
@@ -749,6 +760,32 @@ static void test_gimbal_curve_values_and_bounds()
             TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelApplyExpo(500, strength, centered));
             TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelApplyExpo(2500, strength, centered));
             for(int16_t input = 1000; input <= 2000; input++) TEST_ASSERT_EQUAL_INT16(input, elrsInputModelApplyExpo(input, strength, centered));
+        }
+    }
+}
+
+static void test_gimbal_curve_matches_original_integer_rounding()
+{
+    for(bool centered : {false, true}) {
+        for(int strength = 0; strength <= 255; strength++) {
+            for(int input = 1000; input <= 2000; input++) {
+                const int16_t origin = centered ? 1500 : 1000;
+                const int64_t span = centered ? 500 : 1000;
+                int64_t magnitude = (int64_t)input - origin;
+                const bool negative = magnitude < 0;
+                if(negative) magnitude = -magnitude;
+                const int64_t denominator = 100 * span * span;
+                const int64_t numerator = (100 - strength) * magnitude * span * span +
+                                          strength * magnitude * magnitude * magnitude;
+                const int16_t shaped = (int16_t)((numerator + denominator / 2) / denominator);
+                const int16_t expected = !strength || strength > 100 ? input :
+                    origin + (negative ? -shaped : shaped);
+                TEST_ASSERT_EQUAL_INT16(expected, elrsInputModelApplyExpo(input, strength, centered));
+            }
+            for(int16_t input : {-32768, 999, 2001, 32767}) {
+                TEST_ASSERT_EQUAL_INT16(input < 1000 ? 1000 : 2000,
+                                       elrsInputModelApplyExpo(input, strength, centered));
+            }
         }
     }
 }
@@ -3147,6 +3184,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_fault_and_self_test_keep_remapped_throttle_neutral);
     RUN_TEST(test_hysteresis_returns_to_neutral_for_all_profile_directions);
     RUN_TEST(test_gimbal_curve_values_and_bounds);
+    RUN_TEST(test_gimbal_curve_matches_original_integer_rounding);
     RUN_TEST(test_throttle_curves_preserve_idle_center_and_endpoints);
     RUN_TEST(test_gimbal_curves_keep_direct_safe_outputs_and_reseed_on_recovery);
     RUN_TEST(test_gimbal_curves_preserve_neutral_direction_and_deadbands);
