@@ -2970,7 +2970,7 @@ void WiFiManager::_handleParamSave(int aidx, const char *title)
     doParamSave(_params[aidx], _paramsCount[aidx]);
 
     if(_saveparamscallback && !_saveparamscallback(aidx)) {
-        server->send(400, "text/html", "<p>Settings were not saved. Check the values and storage, then try again.</p><a href='/'>Return to portal</a>");
+        server->send(500, "text/html", "<p>Settings could not be saved to storage. Please try again.</p><a href='/'>Return to portal</a>");
         return;
     }
 
