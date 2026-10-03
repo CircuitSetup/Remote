@@ -2523,6 +2523,7 @@ static void handleUploadDone()
 
     if(!haveSD && numUploads) {
       
+        haveErrs = true;
         buflen += (STRLEN(acul_part71) + strlen(acul_errs[1]));
         
     } else {
@@ -2610,8 +2611,7 @@ static void handleUploadDone()
     }
     */
     
-    String str(buf);
-    wm.server->send(200, "text/html", str);
+    wm.server->send_P(200, "text/html", buf);
 
     // Reboot required even for mp3 upload, because for most files, we check
     // during boot if they exist (to avoid repeatedly failing open() calls)
