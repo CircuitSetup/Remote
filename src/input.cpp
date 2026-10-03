@@ -59,6 +59,9 @@
 
 #include "input.h"
 #include "remote_audio.h"
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_input.h"
+#endif
 
 //#define REMOTE_DBG_ADC
 
@@ -183,6 +186,9 @@ REMRotEnc::REMRotEnc(int numTypes, const uint8_t *addrArr)
 
 bool REMRotEnc::begin(bool forSpeed, bool newBoard)
 {
+    #ifdef HAVE_CRSF
+    _useSampledPosition = false;
+    #endif
     bool foundSt = false;
     union {
         uint8_t buf[4];
@@ -474,6 +480,9 @@ int32_t newRead = 0, oldRead = 0;
 
 int32_t REMRotEnc::getEncPos()
 {
+    #ifdef HAVE_CRSF
+    if(_useSampledPosition) return _sampledPosition;
+    #endif
     uint8_t buf[4];
 
     switch(_st) {
@@ -639,9 +648,13 @@ void RemButton::attachELongPressStop(void (*newFunction)(void))
 // Check input of the pin and advance the state machine
 void RemButton::scan()
 {
+    scanState(digitalRead(_pin) == _buttonPressed);
+}
+
+void RemButton::scanState(bool active)
+{
     unsigned long now = millis();
     unsigned long waitTime = now - _startTime;
-    bool active = (digitalRead(_pin) == _buttonPressed);
     
     switch(_state) {
     case REMBUS_IDLE:
@@ -861,9 +874,7 @@ int ButtonPack::getPackSize()
 void ButtonPack::scan()
 {
     unsigned long now = millis();
-    unsigned long waitTime; 
     uint8_t  port;
-    bool     active;
 
     if(millis() - _lastScan < _scanInterval)
         return;
@@ -881,10 +892,17 @@ void ButtonPack::scan()
         return;
     }
 
-    for(int i = 0; i < _pack_size; i++) {
+    scanStates((uint8_t)~port, 0xff, now);
+}
 
-        waitTime = now - _startTime[i];
-        active = ((port & (1 << i)) == 0);
+void ButtonPack::scanStates(uint8_t states, uint8_t validMask, unsigned long now)
+{
+    for(int i = 0; i < _pack_size; i++) {
+        #ifdef HAVE_CRSF
+        if(!(validMask & (1 << i))) continue;
+        #endif
+        unsigned long waitTime = now - _startTime[i];
+        bool active = (states & (1 << i)) != 0;
     
         switch(_state[i]) {
         case REMBUS_IDLE:

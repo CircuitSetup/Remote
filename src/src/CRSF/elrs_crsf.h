@@ -38,7 +38,9 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT,
             uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT,
             const ELRSSwitchRouting *switchRouting = NULL,
-            const ELRSOutputLimits *outputLimits = NULL
+            const ELRSOutputLimits *outputLimits = NULL,
+            const uint8_t *localActions = NULL,
+            bool propControls = false
         );
 
         void loop(int battWarn);
@@ -72,6 +74,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool readButtonB() override;
         bool readCalibrationButton() override;
         bool samplePackStates(uint8_t &states) override;
+        void scanLocalSwitches(uint16_t states, uint16_t validMask) override;
 
         void displayOn() override;
         void displaySetText(const char *text) override;

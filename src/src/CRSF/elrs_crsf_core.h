@@ -57,6 +57,7 @@ class ELRSCrsfHost : public ELRSCrsfTransportHal {
         virtual bool readButtonB() = 0;
         virtual bool readCalibrationButton() = 0;
         virtual bool samplePackStates(uint8_t &states) = 0;
+        virtual void scanLocalSwitches(uint16_t states, uint16_t validMask) {}
 
         virtual void displayOn() = 0;
         virtual void displaySetText(const char *text) = 0;
@@ -74,6 +75,7 @@ class ELRSCrsfHost : public ELRSCrsfTransportHal {
 };
 
 struct ELRSCrsfCoreConfig {
+    bool propControls = false;
     bool haveButtonPack = false;
     bool usePowerLed = false;
     bool useLevelMeter = false;
@@ -89,6 +91,7 @@ struct ELRSCrsfCoreConfig {
     ELRSOutputLimits outputLimits[ELRS_GIMBAL_AXIS_COUNT] = {};
     ELRSGimbalRouting inputRouting = elrsDefaultGimbalRouting();
     ELRSSwitchRouting switchRouting = elrsDefaultSwitchRouting();
+    uint8_t localActions[ELRS_SWITCH_INPUT_COUNT] = {};
     ELRSCrsfTransportConfig transport;
 };
 
@@ -155,6 +158,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         const char *getCalibrationPrompt() const;
 
         void updateChannels(unsigned long now, bool fakePowerOn, bool stopOn, bool buttonAOn, bool buttonBOn, uint8_t packStates);
+        void updateLocalSwitches(ELRSCrsfHost &host, uint16_t states);
         void resetChannels(uint16_t defaultTicks);
         void writeGimbalChannels(bool safeOutputs);
         void writeGimbalChannel(uint8_t channel, uint16_t ticks);
@@ -255,6 +259,8 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ELRSInputAxisProfile _axisProfiles[ELRS_GIMBAL_AXIS_COUNT];
         ELRSGimbalRouting _inputRouting;
         uint8_t _lastPackStates = 0;
+        uint16_t _localInputsInitialized = 0;
+        uint16_t _localNeedsRelease = 0;
 
         uint8_t _linkQuality = 0;
         uint8_t _remoteBattery = 0;
@@ -264,6 +270,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         uint16_t _airspeed10 = 0;
         SpeedSource _activeSpeedSource = SPEED_SOURCE_NONE;
         bool _hasValidPackState = false;
+        bool _localPackSampleValid = false;
         bool _haveLinkStats = false;
         bool _haveGpsSpeed = false;
         bool _haveAirspeed = false;

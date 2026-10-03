@@ -87,6 +87,11 @@ bool      crsf_begin(
 
 void      crsf_loop(int battWarn);
 
+extern bool opModePropCRSF;
+bool      crsfLocalActionsEnabled();
+void      serviceCRSF(bool withLocalActions = true);
+void      queueCRSFLocalSwitches(uint16_t states, uint16_t validMask);
+
 void      csrf_query_status(bool &FPBUnitIsOn);
 
 #endif // HAVE_CRSF

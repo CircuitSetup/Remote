@@ -161,6 +161,13 @@ class FakeHost : public ELRSCrsfHost {
             return true;
         }
 
+        void scanLocalSwitches(uint16_t states, uint16_t validMask) override
+        {
+            localScanCount++;
+            localStates = states;
+            localValidMask = validMask;
+        }
+
         void displayOn() override
         {
             displayOnCalled = true;
@@ -242,6 +249,8 @@ class FakeHost : public ELRSCrsfHost {
         bool calibrationButton = false;
         bool packAvailable = true;
         uint8_t packStates = 0;
+        uint16_t localStates = 0, localValidMask = 0;
+        int localScanCount = 0;
 
         bool driverEnabled = false;
         unsigned long fakeMicros = 0;
@@ -1179,7 +1188,7 @@ static void test_input_model_invalid_routing_normalizes_to_default()
     ELRSGimbalRouting routing = elrsDefaultGimbalRouting();
     ELRSGimbalRouting normalized;
 
-    routing.aileronChannel = 0;
+    routing.aileronChannel = 255;
     routing.elevatorChannel = 17;
 
     normalized = elrsSanitizeGimbalRouting(routing);
@@ -3417,7 +3426,7 @@ static void test_switch_mapping_rejects_duplicates_and_invalid_channels()
     ELRSSwitchRouting routing = elrsDefaultSwitchRouting();
     TEST_ASSERT_TRUE(elrsIsValidSwitchRouting(routing));
     for(int i = 0; i < 12; i++) TEST_ASSERT_EQUAL_UINT8(5 + i, routing.channels[i]);
-    const uint8_t invalid[] = {0, 17, 255, 6};
+    const uint8_t invalid[] = {17, 255, 6};
     for(uint8_t channel : invalid) {
         routing = elrsDefaultSwitchRouting();
         routing.channels[0] = channel;
@@ -3467,6 +3476,247 @@ static void test_all_inputs_can_use_every_channel_without_collisions()
     }
 }
 
+static void test_local_actions_require_release_after_startup_and_suppression()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    for(uint8_t &enabled : config.localActions) enabled = 1;
+    host.stop = host.fakePower = host.buttonA = host.buttonB = true;
+    host.packStates = 255;
+    core.begin(host, config, 1000);
+    core.loop(host, 1100, 0);
+    TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask);
+    host.stop = host.fakePower = host.buttonA = host.buttonB = false;
+    host.packStates = 0;
+    core.loop(host, 1110, 0);
+    TEST_ASSERT_EQUAL_UINT16(0xfff, host.localValidMask);
+    host.stop = host.fakePower = host.buttonA = host.buttonB = true;
+    host.packStates = 255;
+    core.loop(host, 1120, 0);
+    TEST_ASSERT_EQUAL_UINT16(0xfff, host.localStates);
+    TEST_ASSERT_EQUAL_UINT16(0xfff, host.localValidMask);
+    for(int input = 0; input < ELRS_SWITCH_INPUT_COUNT; input++) {
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[input] - 1));
+    }
+    host.stop = host.fakePower = host.buttonA = host.buttonB = false;
+    host.packStates = 0;
+    core.loop(host, 1200, 0);
+    core.startSelfTest(1300, 100);
+    host.buttonA = true;
+    core.loop(host, 1390, 0); // A press near self-test expiry must remain blocked after expiry.
+    core.loop(host, 1450, 0);
+    TEST_ASSERT_EQUAL_UINT16(0xffb, host.localValidMask);
+    host.buttonA = false;
+    core.loop(host, 1460, 0);
+    TEST_ASSERT_EQUAL_UINT16(0xfff, host.localValidMask);
+}
+
+static void test_local_actions_opt_in_and_ignore_failed_pack_reads()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.localActions[4] = 1;
+    config.localActions[2] = 1;
+    config.localActions[0] = 255;
+    host.packAvailable = false;
+    core.begin(host, config, 1000);
+    TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
+    host.packStates = 1;
+    host.packAvailable = true;
+    core.loop(host, 1100, 0);
+    TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask); // Held on initial successful read.
+    host.packStates = 0;
+    core.loop(host, 1110, 0);
+    TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
+    host.packStates = 1;
+    core.loop(host, 1120, 0);
+    TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
+    host.packAvailable = false;
+    core.loop(host, 1120, 0); // Two loops can share millis(); this read still failed.
+    TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
+    core.loop(host, 1170, 0);
+    TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
+    host.packAvailable = true;
+    core.loop(host, 1200, 0);
+    TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask); // Recovery cannot continue a pending press.
+    host.packStates = 0;
+    core.loop(host, 1210, 0);
+    TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
+    core.begin(host, defaultConfig(), 1300);
+    TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask); // None enabled by default.
+}
+
+static void test_local_actions_require_release_after_calibration()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.localActions[2] = 1;
+    unsigned long now = 1000;
+    core.begin(host, config, now);
+    calibrationPress(core, host, now, true);
+    TEST_ASSERT_TRUE(core.isCalibrating());
+    host.buttonA = true;
+    core.loop(host, ++now, 0);
+    TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask);
+    calibrationPress(core, host, now, true); // Cancel, with O.O still held.
+    TEST_ASSERT_FALSE(core.isCalibrating());
+    core.loop(host, ++now, 0);
+    TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask);
+    host.buttonA = false;
+    core.loop(host, ++now, 0);
+    TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
+}
+
+static void test_prop_controls_keep_display_leds_and_calibration_while_transmitting()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.propControls = true;
+    config.usePowerLed = config.useLevelMeter = true;
+    for(uint8_t &enabled : config.localActions) enabled = 1;
+    host.powerLed = host.levelMeter = host.stopLed = true;
+    core.begin(host, config, 1000);
+    TEST_ASSERT_TRUE(host.powerLed && host.levelMeter && host.stopLed);
+    host.axes[AXIS_AILERON] = 2047;
+    host.stop = true;
+    loopAt(core, host, 1300, 1300000);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[0] - 1));
+    TEST_ASSERT_TRUE(!host.writes.empty());
+    TEST_ASSERT_EQUAL_INT(0, host.displayShows);
+    unsigned long now = 1300;
+    calibrationPress(core, host, now, true);
+    core.loop(host, now + 1000, 1); // Battery alerts also belong to the prop loop.
+    TEST_ASSERT_FALSE(core.isCalibrating());
+    TEST_ASSERT_EQUAL_INT(0, host.displayShows);
+    TEST_ASSERT_EQUAL_INT(0, host.localScanCount);
+    TEST_ASSERT_TRUE(host.powerLed && host.levelMeter && host.stopLed);
+    host.axesAvailable = false;
+    core.loop(host, now + 1200, 0);
+    TEST_ASSERT_TRUE(core.getStatus().faultFlags & ELRS_FAULT_ADC_STALE);
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.aileronChannel - 1));
+}
+
+static void test_none_routing_preserves_multiple_disabled_inputs()
+{
+    ELRSGimbalRouting gimbals = {0, 2, 0, 4};
+    ELRSSwitchRouting switches = elrsDefaultSwitchRouting();
+    switches.channels[0] = switches.channels[1] = 0;
+    TEST_ASSERT_TRUE(elrsIsValidInputRouting(gimbals, switches));
+    elrsSanitizeInputRouting(gimbals, switches);
+    TEST_ASSERT_EQUAL_UINT8(0, gimbals.aileronChannel);
+    TEST_ASSERT_EQUAL_UINT8(0, gimbals.throttleChannel);
+    TEST_ASSERT_EQUAL_UINT8(2, gimbals.elevatorChannel);
+    TEST_ASSERT_EQUAL_UINT8(4, gimbals.rudderChannel);
+    TEST_ASSERT_EQUAL_UINT8(0, switches.channels[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, switches.channels[1]);
+    // Assigned duplicates remain invalid, including across input types.
+    switches.channels[1] = 2;
+    TEST_ASSERT_FALSE(elrsIsValidInputRouting(gimbals, switches));
+    switches.channels[1] = 7;
+    TEST_ASSERT_FALSE(elrsIsValidInputRouting(gimbals, switches));
+    for(int channel = 17; channel <= 255; channel++) {
+        gimbals = {0, 2, 0, (uint8_t)channel};
+        switches = elrsDefaultSwitchRouting();
+        TEST_ASSERT_FALSE(elrsIsValidGimbalRouting(gimbals));
+        switches.channels[0] = channel;
+        TEST_ASSERT_FALSE(elrsIsValidSwitchRouting(switches));
+    }
+}
+
+static void test_none_switch_keeps_local_actions_and_other_channels_independent()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.switchRouting.channels[2] = 0;
+    config.switchRouting.channels[4] = 0;
+    config.localActions[2] = config.localActions[4] = 1;
+    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    host.buttonA = true;
+    host.packStates = 1;
+    host.buttonB = true;
+    core.loop(host, 1020, 0);
+    TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
+    TEST_ASSERT_EQUAL_UINT16(28, host.localStates);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(6));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(7));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+}
+
+static void test_none_gimbals_leave_free_channels_and_preserve_assigned_axes()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.inputRouting = {0, 2, 0, 4};
+    host.axes[AXIS_AILERON] = host.axes[AXIS_ELEVATOR] = 2047;
+    host.axes[AXIS_RUDDER] = host.axes[AXIS_THROTTLE] = 0;
+    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(1));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(3));
+    core.startSelfTest(1000, 100);
+    core.loop(host, 1020, 0);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    core.loop(host, 1200, 0);
+    unsigned long now = 1200;
+    calibrationPress(core, host, now, true);
+    TEST_ASSERT_TRUE(core.isCalibrating());
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+}
+
+static void test_none_frees_channels_for_other_input_types()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.inputRouting.aileronChannel = 0;
+    config.inputRouting.throttleChannel = 5;
+    config.switchRouting.channels[0] = 1;
+    host.stop = true;
+    host.axes[AXIS_THROTTLE] = 2047;
+    TEST_ASSERT_TRUE(elrsIsValidInputRouting(config.inputRouting, config.switchRouting));
+    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
+}
+
+static void test_all_none_configuration_survives_sanitizing_and_core_modes()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.inputRouting = {0, 0, 0, 0};
+    for(uint8_t &channel : config.switchRouting.channels) channel = 0;
+    TEST_ASSERT_TRUE(elrsIsValidInputRouting(config.inputRouting, config.switchRouting));
+    elrsSanitizeInputRouting(config.inputRouting, config.switchRouting);
+    TEST_ASSERT_EQUAL_UINT8(0, elrsSanitizeGimbalRouting(config.inputRouting).throttleChannel);
+    for(uint8_t channel : elrsSanitizeSwitchRouting(config.switchRouting).channels) TEST_ASSERT_EQUAL_UINT8(0, channel);
+    host.stop = host.fakePower = host.buttonA = host.buttonB = true;
+    host.packStates = 255;
+    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
+    core.startSelfTest(1000, 100);
+    core.loop(host, 1020, 0);
+    for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
+    host.fakePower = false;
+    core.loop(host, 1200, 0);
+    unsigned long now = 1200;
+    calibrationPress(core, host, now, true);
+    TEST_ASSERT_TRUE(core.isCalibrating());
+    for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -3474,6 +3724,15 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_none_routing_preserves_multiple_disabled_inputs);
+    RUN_TEST(test_none_switch_keeps_local_actions_and_other_channels_independent);
+    RUN_TEST(test_none_gimbals_leave_free_channels_and_preserve_assigned_axes);
+    RUN_TEST(test_none_frees_channels_for_other_input_types);
+    RUN_TEST(test_all_none_configuration_survives_sanitizing_and_core_modes);
+    RUN_TEST(test_local_actions_require_release_after_startup_and_suppression);
+    RUN_TEST(test_local_actions_opt_in_and_ignore_failed_pack_reads);
+    RUN_TEST(test_local_actions_require_release_after_calibration);
+    RUN_TEST(test_prop_controls_keep_display_leds_and_calibration_while_transmitting);
     RUN_TEST(test_adc_fault_and_self_test_keep_remapped_throttle_neutral);
     RUN_TEST(test_hysteresis_returns_to_neutral_for_all_profile_directions);
     RUN_TEST(test_gimbal_curve_values_and_bounds);

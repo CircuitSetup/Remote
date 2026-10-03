@@ -22,6 +22,7 @@ struct ELRSInputAxisProfile {
 };
 
 struct ELRSGimbalRouting {
+    // 0 disables CRSF output; assigned channels are unique values from 1 through 16.
     uint8_t aileronChannel;
     uint8_t elevatorChannel;
     uint8_t throttleChannel;
@@ -35,7 +36,7 @@ struct ELRSOutputLimits {
 
 constexpr uint8_t ELRS_SWITCH_INPUT_COUNT = 12;
 struct ELRSSwitchRouting {
-    uint8_t channels[ELRS_SWITCH_INPUT_COUNT]; // Stop, FakePower, O.O, RESET, ButtonPack 1-8.
+    uint8_t channels[ELRS_SWITCH_INPUT_COUNT]; // Stop, FakePower, O.O, RESET, ButtonPack 1-8; 0 = None.
 };
 
 constexpr uint16_t ELRS_INPUT_TOLERANCE_DEFAULT = 5;

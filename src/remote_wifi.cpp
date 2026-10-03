@@ -64,7 +64,11 @@
 #include "remote_wifi.h"
 #include "remote_main.h"
 #ifdef HAVE_CRSF
+#include "src/CRSF/crsf_kludge.h"
 #include "src/CRSF/crsf_settings.h"
+#ifdef HAVE_MQTT
+#include "src/CRSF/crsf_mqtt.h"
+#endif
 #endif
 #ifdef HAVE_MQTT
 #include "mqtt.h"
@@ -80,7 +84,12 @@ WiFiManager wm;
 bool wifiSetupDone = false;
 
 #ifdef HAVE_MQTT
+#ifdef HAVE_CRSF
+CRSFClient mqttWClient;
+static bool mqttLooperActive = false;
+#else
 WiFiClient mqttWClient;
+#endif
 PubSubClient mqttClient(mqttWClient);
 #endif
 
@@ -852,7 +861,7 @@ void wifi_setup()
 #ifdef HAVE_MQTT
     if((!settings.mqttServer[0]) || // No server -> no MQTT
        #ifdef HAVE_CRSF
-       (opModeCRSF)              || // CRSF mode -> no MQTT
+       (opModeCRSF && !opModePropCRSF && !crsfLocalActionsEnabled()) || // Local button callbacks use configured MQTT
        #endif
        (wifiInAPMode))              // WiFi in AP mode -> no MQTT
         useMQTT = false;  
@@ -916,6 +925,10 @@ void wifi_setup()
 
         mqttClient.setCallback(mqttCallback);
         mqttClient.setLooper(mqttLooper);
+        #ifdef HAVE_CRSF
+        mqttWClient.setCooperative(opModeCRSF);
+        mqttWClient.setLooper(mqttLooper);
+        #endif
 
         if(*settings.mqttUser) {
             if((t = strchr(settings.mqttUser, ':'))) {
@@ -1822,6 +1835,17 @@ static bool preWiFiScanCallback()
 
 static void wifiDelayReplacement(unsigned int mydel)
 {
+    #ifdef HAVE_CRSF
+    if(opModeCRSF) {
+        unsigned long startNow = millis();
+        while(millis() - startNow < mydel) {
+            serviceCRSF(false);
+            if(audioInitDone) audio_loop();
+            delay(1);
+        }
+        return;
+    }
+    #endif
     if((mydel > 30) && audioInitDone) {
         unsigned long startNow = millis();
         while(millis() - startNow < mydel) {
@@ -1840,6 +1864,9 @@ void gpCallback(int reason)
     // HTTPSend().
     // MUST NOT call wifi_loop() !!!
     
+    #ifdef HAVE_CRSF
+    if(opModeCRSF) serviceCRSF(false);
+    #endif
     if(audioInitDone) {
         switch(reason) {
         case WM_LP_PREHTTPSEND:
@@ -2855,7 +2882,15 @@ static void handleMQTTTopMsg(int idx)
 
 static void mqttLooper()
 {
+    #ifdef HAVE_CRSF
+    bool wasActive = mqttLooperActive;
+    mqttLooperActive = true;
+    if(opModeCRSF) serviceCRSF(false);
+    #endif
     audio_loop();
+    #ifdef HAVE_CRSF
+    mqttLooperActive = wasActive;
+    #endif
 }
 
 static uint16_t a2i(char *p)
@@ -3179,6 +3214,10 @@ bool mqttConnected()
 
 bool mqttPublish(const char *topic, const char *pl, unsigned int len)
 {
+    #ifdef HAVE_CRSF
+    // CRSF/audio service can run while PubSubClient owns its packet buffer.
+    if(mqttLooperActive) return false;
+    #endif
     if(useMQTT) {
         return mqttClient.publish(topic, (uint8_t *)pl, len, false);
     }

@@ -6,6 +6,16 @@
 
 namespace {
 
+static bool claimRoutingChannel(uint8_t channel, uint16_t &used)
+{
+    if(channel > 16) return false;
+    if(channel == 0) return true;
+    const uint16_t bit = (uint16_t)1 << (channel - 1);
+    if(used & bit) return false;
+    used |= bit;
+    return true;
+}
+
 static long clampLong(long value, long lo, long hi)
 {
     return (value < lo) ? lo : ((value > hi) ? hi : value);
@@ -234,16 +244,13 @@ ELRSInputAxisProfile elrsSanitizeInputAxisProfile(const ELRSInputAxisProfile &pr
 
 bool elrsIsValidGimbalRouting(const ELRSGimbalRouting &routing)
 {
-    return (routing.aileronChannel >= 1 && routing.aileronChannel <= 16) &&
-           (routing.elevatorChannel >= 1 && routing.elevatorChannel <= 16) &&
-           (routing.throttleChannel >= 1 && routing.throttleChannel <= 16) &&
-           (routing.rudderChannel >= 1 && routing.rudderChannel <= 16) &&
-           (routing.aileronChannel != routing.elevatorChannel) &&
-           (routing.aileronChannel != routing.throttleChannel) &&
-           (routing.aileronChannel != routing.rudderChannel) &&
-           (routing.elevatorChannel != routing.throttleChannel) &&
-           (routing.elevatorChannel != routing.rudderChannel) &&
-           (routing.throttleChannel != routing.rudderChannel);
+    uint16_t used = 0;
+    const uint8_t channels[] = {routing.aileronChannel, routing.elevatorChannel,
+                              routing.throttleChannel, routing.rudderChannel};
+    for(uint8_t channel : channels) {
+        if(!claimRoutingChannel(channel, used)) return false;
+    }
+    return true;
 }
 
 ELRSGimbalRouting elrsSanitizeGimbalRouting(const ELRSGimbalRouting &routing)
@@ -266,10 +273,7 @@ bool elrsIsValidSwitchRouting(const ELRSSwitchRouting &routing)
 {
     uint16_t used = 0;
     for(uint8_t channel : routing.channels) {
-        if(channel < 1 || channel > 16) return false;
-        uint16_t bit = (uint16_t)1 << (channel - 1);
-        if(used & bit) return false;
-        used |= bit;
+        if(!claimRoutingChannel(channel, used)) return false;
     }
     return true;
 }
@@ -283,6 +287,7 @@ bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchR
 {
     if(!elrsIsValidGimbalRouting(gimbals) || !elrsIsValidSwitchRouting(switches)) return false;
     for(uint8_t channel : switches.channels) {
+        if(channel == 0) continue;
         if(channel == gimbals.aileronChannel || channel == gimbals.elevatorChannel ||
            channel == gimbals.throttleChannel || channel == gimbals.rudderChannel) return false;
     }
