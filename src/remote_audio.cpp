@@ -70,6 +70,9 @@
 #include "remote_audio.h"
 #include "remote_wifi.h"
 #include "remote_click.h"
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_kludge.h"
+#endif
 
 static AudioGeneratorMP3 *mp3;
 static AudioGeneratorWAVLoop *wav;

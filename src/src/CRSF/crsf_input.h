@@ -5,8 +5,8 @@
  * https://github.com/realA10001986/Remote
  * https://remote.out-a-ti.me
  *
- * Main
- *
+ * CRSF sampled inputs for the existing prop controls
+ * 
  * -------------------------------------------------------------------
  * License: Modified MIT NON-AI
  * 
@@ -50,117 +50,41 @@
  * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * -------------------------------------------------------------------
  */
 
-#ifndef _REMOTE_MAIN_H
-#define _REMOTE_MAIN_H
-
-#include "display.h"
-#include "input.h"
-#ifdef HAVE_PM
-#include "power.h"
-#endif
-
-void main_boot();
-void main_boot2();
-void main_setup();
-void main_loop();
-
-void flushDelayedSave();
-void increaseVolume();
-void decreaseVolume();
-
-void disectOldVisMode();
-void updateVisMode();
-
-void setAutoThrottle(bool isOn);
-void setCoast(bool isOn);
-void setMovieMode(bool isOn);
-void setDisplayTCDS(bool isOn);
-
-void showWaitSequence();
-void endWaitSequence();
-void showCopyError();
-void showNumber(int num);
-
-void allOff();
-void prepareReboot();
-
-void waitAudioDone(bool withBTTFN = false);
-
-void mydelay(unsigned long mydel, bool withBTTFN = false);
-unsigned long millisNonZero();
-
-void addCmdQueue(uint32_t command);
-void bttfn_loop();
-void bttfn_remote_unregister();
-
-extern unsigned long powerupMillis;
-
-extern bool haveNewBoard;
+#ifndef _CRSF_INPUT_H
+#define _CRSF_INPUT_H
 
 #ifdef HAVE_CRSF
-extern bool opModeCRSF;
-#endif
+// Included only by input.cpp; reuse its calibrated input and debounce state.
 
-extern uint32_t csf;
-#define CSF_OFF           0x00000001
-#define CSF_TCDINP0       0x00000002
-#define CSF_TCDINP0O      0x00000004
-#define CSF_INTP0         0x00000008
-#define CSF_TT            0x00000010
-#define CSF_CALIBMD       0x00000020
-#define CSF_KEEPCOUNTING  0x00000040
-#define CSF_MISSEDTT      0x00000080
+void REMRotEnc::useSampledPosition(int32_t position, bool valid)
+{
+    _useSampledPosition = true;
+    _sampledPosition = valid ? position : rotEncZeroPos;
+}
 
-#define CSF_TCDINP0T      0x00001000
-#define CSF_TUFIRST       0x00002000
+void RemButton::scan(bool active, bool valid)
+{
+    if(!valid) {
+        reset();
+        return;
+    }
+    scanState(active);
+}
 
-#define CSF_TTP0          0x01000000
-#define CSF_TTP1          0x02000000
-#define CSF_TTP2          0x04000000
+void ButtonPack::scan(uint8_t states, uint8_t validMask)
+{
+    // Cancel immediately, even when the next regular scan is not due yet.
+    for(int i = 0; i < _pack_size; i++) {
+        if(!(validMask & (1 << i))) reset(i);
+    }
+    unsigned long now = millis();
+    if(now - _lastScan < _scanInterval) return;
+    _lastScan = now;
+    scanStates(states, validMask, now);
+}
 
-extern uint32_t myRemID;
-extern bool     remoteAllowed;
-
-extern REMRotEnc rotEnc;
-
-extern remDisplay remdisplay;
-extern remLED remledPwr;
-extern remLED remledStop;
-
-extern bool showUpdAvail;
-
-extern bool useRotEnc;
-
-extern bool havePwrMon;
-
-extern uint16_t visMode;
-extern bool autoThrottle;
-extern bool doCoast;
-extern bool movieMode;
-extern bool displayTCDSMode;
-extern bool powerMaster;
-
-extern bool bttfnTT;
-
-extern bool networkTimeTravel;
-extern bool networkReentry;
-extern bool networkAbort;
-extern bool networkAlarm;
-extern uint16_t networkLead;
-extern uint16_t networkP1;
-
-extern bool doPrepareTT;
-extern bool doWakeup;
-
-extern int32_t  throttlePos;
-
-extern int remBusy;
-extern int blockScan;
-
-extern int     bttfnHaveTCDSSID;
-extern char    TCDSSID[];
-extern uint8_t TCDpwMarker;
-
-#endif
+#endif // HAVE_CRSF
+#endif // _CRSF_INPUT_H

@@ -9,8 +9,8 @@
 #endif
 
 #include "elrs_crsf.h"
+#include "crsf_kludge.h"
 #include "crsf_settings.h"
-#include "../../remote_main.h"
 
 namespace {
 

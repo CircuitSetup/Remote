@@ -17,8 +17,11 @@ COMPILER = shutil.which('g++') or str(Path.home() / '.platformio/packages/toolch
 def function(source, name):
     match = re.search(r'^(?:static )?(?:void|bool) ' + name + r'\([^;]*?\)\s*\{', source, re.M)
     assert match, f'CRSF Settings dispatch missing: {name}'
-    start = match.start()
-    brace = source.index('{', match.start())
+    return block(source, match.start())
+
+
+def block(source, start):
+    brace = source.index('{', start)
     depth = 1
     end = brace + 1
     while depth:
@@ -259,9 +262,12 @@ int main() {
 
 if __name__ == '__main__':
     source = (ROOT / 'src/remote_main.cpp').read_text()
+    main_loop = function(source, 'main_loop')
+    source += '\n' + (ROOT / 'src/src/CRSF/crsf_main.h').read_text()
     input_header = (ROOT / 'src/input.h').read_text()
     button_class = input_header[input_header.index('typedef enum {'):input_header.index('/*\n * ButtonPack class')]
     input_source = (ROOT / 'src/input.cpp').read_text()
+    input_source += '\n' + (ROOT / 'src/src/CRSF/crsf_input.h').read_text()
     scanner = button_class + 'RemButton::RemButton() {}\n'
     for name in ['scan', 'scanState', 'reset', 'transitionTo', 'setTiming', 'attachLongPressStart', 'attachLongPressStop']:
         if name == 'scan':
@@ -272,12 +278,21 @@ if __name__ == '__main__':
     scanner += 'RemButton powerswitch, brake;\n'
     names = ['mqtt_send_button_on', 'mqtt_send_button_off', 'buttonPackActionPress',
              'buttonPackActionLongPress', 'butPackKeyPressed', 'butPackKeyPressStop',
-             'butPackKeyLongPressed', 'butPackKeyLongPressStop', 'handleButtonAEvent',
-             'handleButtonBEvent', 'handleButtonPackEvents', 'updateDelayedSave',
+             'butPackKeyLongPressed', 'butPackKeyLongPressStop',
              'powKeyPressed', 'powKeyLongPressStop', 'brakeKeyPressed', 'brakeKeyLongPressStop',
              'processCRSFLocalSwitches', 'crsfLocalActionsEnabled', 'serviceCRSF',
              'queueCRSFLocalSwitches', 'myloop', 'mydelay']
     production = '\n\n'.join(function(source, name) for name in names)
+    # Execute the exact inline event bodies restored to the normal prop loop.
+    for name, marker in [('handleButtonAEvent', 'if(isbuttonAKeyChange)'),
+                         ('handleButtonBEvent', 'if(isbuttonBKeyChange)'),
+                         ('handleButtonPackEvents', 'for(int i = 0; i < butPack.getPackSize(); i++)'),
+                         ('updateDelayedSave', '// Save on-the-fly settings')]:
+        start = main_loop.index(marker)
+        if name == 'updateDelayedSave':
+            start = main_loop.rfind('    if(', 0, start)
+        body = block(main_loop, start)
+        production += f'\nvoid {name}() {{\nconst bool crsfStandalone = opModeCRSF && !opModePropCRSF;\n{body}\n}}\n'
     with tempfile.TemporaryDirectory(prefix='crsf-local-actions-') as work:
         work = Path(work)
         cpp = work / 'check.cpp'

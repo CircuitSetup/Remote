@@ -59,6 +59,9 @@
 
 #include "input.h"
 #include "remote_audio.h"
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_input.h"
+#endif
 
 //#define REMOTE_DBG_ADC
 
@@ -355,14 +358,6 @@ void REMRotEnc::setZeroPos(int32_t num)
     rotEncZeroPos = num;
 }
 
-#ifdef HAVE_CRSF
-void REMRotEnc::useSampledPosition(int32_t position, bool valid)
-{
-    _useSampledPosition = true;
-    _sampledPosition = valid ? position : rotEncZeroPos;
-}
-#endif
-
 bool REMRotEnc::setMaxStepsUp(int32_t num)
 {
     int32_t t = (num != 0) ? num : getEncPos() - rotEncZeroPos;
@@ -656,17 +651,6 @@ void RemButton::scan()
     scanState(digitalRead(_pin) == _buttonPressed);
 }
 
-#ifdef HAVE_CRSF
-void RemButton::scan(bool active, bool valid)
-{
-    if(!valid) {
-        reset();
-        return;
-    }
-    scanState(active);
-}
-#endif
-
 void RemButton::scanState(bool active)
 {
     unsigned long now = millis();
@@ -910,20 +894,6 @@ void ButtonPack::scan()
 
     scanStates((uint8_t)~port, 0xff, now);
 }
-
-#ifdef HAVE_CRSF
-void ButtonPack::scan(uint8_t states, uint8_t validMask)
-{
-    // Cancel immediately, even when the next regular scan is not due yet.
-    for(int i = 0; i < _pack_size; i++) {
-        if(!(validMask & (1 << i))) reset(i);
-    }
-    unsigned long now = millis();
-    if(now - _lastScan < _scanInterval) return;
-    _lastScan = now;
-    scanStates(states, validMask, now);
-}
-#endif
 
 void ButtonPack::scanStates(uint8_t states, uint8_t validMask, unsigned long now)
 {

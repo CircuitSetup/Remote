@@ -65,10 +65,6 @@
 #include "lwip/sys.h"
 #include "lwip/netdb.h"
 #include "lwip/dns.h"
-#ifdef HAVE_CRSF
-#include <fcntl.h>
-#include <errno.h>
-#endif
 
 #define MPL 500
 static uint8_t mytt5_connect_props[8] = {
@@ -192,15 +188,11 @@ bool PubSubClient::connect(const char *user, const char *pass, bool cleanSession
         if(_client->connected()) {
             result = 1;
         } else {
-            #ifdef HAVE_CRSF
-            result = connectTCP();
-            #else
             if(domain) {
                 result = _client->connect(this->domain, this->port, (int)5000);
             } else {
                 result = _client->connect(this->ip, this->port, (int)5000);
             }
-            #endif
         }
 
         if(result == 1) {
@@ -277,86 +269,6 @@ bool PubSubClient::connect(const char *user, const char *pass, bool cleanSession
     
     return true;
 }
-
-#ifdef HAVE_CRSF
-void PubSubClient::runLooper()
-{
-    inLooper = true;
-    looper();
-    inLooper = false;
-}
-
-bool PubSubClient::connectTCP()
-{
-    if(!cooperative) {
-        return domain ? _client->connect(domain, port, (int)5000) : _client->connect(ip, port, (int)5000);
-    }
-    // Cooperative operation requires the IP resolved during WiFi setup.
-    if(domain) return false;
-    _client->stop();
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(fd < 0) return false;
-    int flags = fcntl(fd, F_GETFL, 0);
-    if(flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        close(fd);
-        return false;
-    }
-    sockaddr_in address = {};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = (uint32_t)ip;
-    address.sin_port = htons(port);
-    int result = lwip_connect(fd, (sockaddr *)&address, sizeof(address));
-    if(result < 0 && errno == EINPROGRESS) {
-        unsigned long start = millis();
-        do {
-            runLooper();
-            fd_set writable;
-            FD_ZERO(&writable);
-            FD_SET(fd, &writable);
-            timeval wait = {0, 1000};
-            result = select(fd + 1, NULL, &writable, NULL, &wait);
-        } while(result == 0 && millis() - start < 5000);
-        if(result > 0) {
-            int error = 0;
-            socklen_t length = sizeof(error);
-            result = getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0 && error == 0 ? 0 : -1;
-        } else {
-            result = -1;
-        }
-    }
-    timeval timeout = {5, 0};
-    if(result != 0 || setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0 ||
-       setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0 ||
-       fcntl(fd, F_SETFL, flags) < 0) {
-        close(fd);
-        return false;
-    }
-    *_client = WiFiClient(fd);
-    return true;
-}
-
-size_t PubSubClient::writeClient(const uint8_t *data, size_t size)
-{
-    if(!cooperative) return _client->write(data, size);
-    size_t written = 0;
-    unsigned long start = millis();
-    while(written < size && millis() - start < 5000) {
-        runLooper();
-        int count = send(_client->fd(), data + written, size - written, MSG_DONTWAIT);
-        if(count > 0) {
-            written += count;
-        } else if(count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-            delay(1);
-        } else {
-            break;
-        }
-    }
-    if(written == size) return size;
-    // A partial MQTT packet cannot be retried on the same byte stream.
-    _client->stop();
-    return 0;
-}
-#endif
 
 bool PubSubClient::connected()
 {
@@ -517,11 +429,7 @@ bool PubSubClient::loop()
             } else {
                 this->buffer[0] = MQTTPINGREQ;
                 this->buffer[1] = 0;
-                #ifdef HAVE_CRSF
-                writeClient(this->buffer, 2);
-                #else
                 _client->write(this->buffer, 2);
-                #endif
                 lastOutActivity = t;
                 lastInActivity = t;
                 pingOutstanding = true;
@@ -594,11 +502,7 @@ bool PubSubClient::loop()
                                     this->buffer[1] = 2;
                                     this->buffer[2] = msgId1;
                                     this->buffer[3] = msgId2;
-                                    #ifdef HAVE_CRSF
-                                    writeClient(this->buffer, 4);
-                                    #else
                                     _client->write(this->buffer, 4);
-                                    #endif
                                     lastOutActivity = t;
         
                                 } else {
@@ -615,11 +519,7 @@ bool PubSubClient::loop()
                 case MQTTPINGREQ:
                     this->buffer[0] = MQTTPINGRESP;
                     this->buffer[1] = 0;
-                    #ifdef HAVE_CRSF
-                    writeClient(this->buffer, 2);
-                    #else
                     _client->write(this->buffer, 2);
-                    #endif
                     break;
                     
                 case MQTTPINGRESP:
@@ -672,10 +572,6 @@ bool PubSubClient::loop()
 
 bool PubSubClient::publish(const char* topic, const uint8_t* payload, unsigned int plength, bool retained)
 {
-    #ifdef HAVE_CRSF
-    // Audio status can publish from the wait callback; defer it to protect this packet buffer.
-    if(inLooper) return false;
-    #endif
     if(connected()) {
         if(this->bufferSize < mqtt_max_header_size + 2+strnlen(topic, this->bufferSize) + plength) {
             // Too long
@@ -724,20 +620,12 @@ void PubSubClient::disconnect()
 
     if(_v3) {
         this->buffer[1] = 0;
-        #ifdef HAVE_CRSF
-        writeClient(this->buffer, 2);
-        #else
         _client->write(this->buffer, 2);
-        #endif
     } else {
         this->buffer[1] = 2;
         this->buffer[2] = 0;
         this->buffer[3] = 0;
-        #ifdef HAVE_CRSF
-        writeClient(this->buffer, 4);
-        #else
         _client->write(this->buffer, 4);
-        #endif
     }
 
     _state = MQTT_DISCONNECTED;
@@ -820,20 +708,12 @@ bool PubSubClient::readByte(uint8_t *result)
         if(currentMillis - previousMillis >= this->socketTimeout)
             return false;
         
-        #ifdef HAVE_CRSF
-        if(cooperative || currentMillis - mnow > 20) {
-            runLooper();
-            mnow = millis();
-        }
-
-        delay(cooperative ? 1 : 2);
-        #else
         if(currentMillis - mnow > 20) {
             looper();
             mnow = millis();
         }
+        
         delay(2);
-        #endif
 
     }
     
@@ -948,11 +828,7 @@ bool PubSubClient::write(uint8_t header, uint8_t *buf, uint16_t length)
     
     while((bytesRemaining > 0) && result) {
         bytesToWrite = (bytesRemaining > MQTT_MAX_TRANSFER_SIZE) ? MQTT_MAX_TRANSFER_SIZE : bytesRemaining;
-        #ifdef HAVE_CRSF
-        rc = writeClient(writeBuf, bytesToWrite);
-        #else
         rc = _client->write(writeBuf, bytesToWrite);
-        #endif
         result = (rc == bytesToWrite);
         bytesRemaining -= rc;
         writeBuf += rc;
@@ -962,11 +838,7 @@ bool PubSubClient::write(uint8_t header, uint8_t *buf, uint16_t length)
     
 #else
 
-    #ifdef HAVE_CRSF
-    rc = writeClient(buf + (mqtt_max_header_size - hlen), length + hlen);
-    #else
     rc = _client->write(buf + (mqtt_max_header_size - hlen), length + hlen);
-    #endif
 
     /*#ifdef MQTT_DBG
     for(int i = 0; i < length + hlen; i++) {

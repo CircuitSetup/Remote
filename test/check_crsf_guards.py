@@ -14,6 +14,11 @@ with tempfile.TemporaryDirectory(prefix='crsf-guards-') as work:
     (work / 'Arduino.h').write_text('#include <cstdint>\n#include <cstddef>\n')
     (work / 'IPAddress.h').write_text('#pragma once\nclass IPAddress {};\n')
     (work / 'WiFiClient.h').write_text('#pragma once\nclass WiFiClient {};\n')
+    for header in ('crsf_input.h', 'crsf_main.h', 'crsf_mqtt.h'):
+        source = f'#include "src/CRSF/{header}"\n' * 2
+        result = subprocess.run([COMPILER, '-std=gnu++11', '-fmax-errors=1', '-I' + str(work), '-I' + str(ROOT / 'src'),
+                                 '-x', 'c++', '-fsyntax-only', '-'], input=source, capture_output=True, text=True)
+        assert result.returncode == 0, f'{header} must be empty when disabled:\n{result.stderr}'
     for enabled in (False, True):
         flags = [COMPILER, '-std=gnu++11', '-fmax-errors=1', '-I' + str(work), '-I' + str(ROOT / 'src')]
         if enabled:
@@ -25,13 +30,6 @@ with tempfile.TemporaryDirectory(prefix='crsf-guards-') as work:
             if result.returncode:
                 print(f'{header}, HAVE_CRSF={enabled}:\n{result.stderr}')
                 failed = True
-
-        for name in ('setCooperative', 'connectTCP', 'writeClient', 'runLooper', 'cooperative', 'inLooper'):
-            source = '#define private public\n#include "mqtt.h"\n#include "mqtt.h"\n'
-            source += f'auto guarded = &PubSubClient::{name};\n'
-            result = subprocess.run(flags + ['-x', 'c++', '-fsyntax-only', '-'],
-                                    input=source, capture_output=True, text=True)
-            assert (result.returncode == 0) == enabled, f'MQTT {name} guard failed: HAVE_CRSF={enabled}\n{result.stderr}'
 
         obj = str(Path(work) / f'input-model-{enabled}.o')
         subprocess.run(flags + ['-c', str(ROOT / 'src/src/CRSF/elrs_input_model.cpp'),
@@ -45,4 +43,4 @@ with tempfile.TemporaryDirectory(prefix='crsf-guards-') as work:
 
 assert not failed, 'CRSF feature guard checks failed'
 print('CRSF headers compile twice with feature on/off; disabled input model exports no functions')
-print('CRSF-only MQTT APIs and fields are absent with HAVE_CRSF disabled')
+print('Disabled CRSF input, main, and MQTT headers export no code')

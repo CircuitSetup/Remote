@@ -64,7 +64,11 @@
 #include "remote_wifi.h"
 #include "remote_main.h"
 #ifdef HAVE_CRSF
+#include "src/CRSF/crsf_kludge.h"
 #include "src/CRSF/crsf_settings.h"
+#ifdef HAVE_MQTT
+#include "src/CRSF/crsf_mqtt.h"
+#endif
 #endif
 #ifdef HAVE_MQTT
 #include "mqtt.h"
@@ -80,7 +84,12 @@ WiFiManager wm;
 bool wifiSetupDone = false;
 
 #ifdef HAVE_MQTT
+#ifdef HAVE_CRSF
+CRSFClient mqttWClient;
+static bool mqttLooperActive = false;
+#else
 WiFiClient mqttWClient;
+#endif
 PubSubClient mqttClient(mqttWClient);
 #endif
 
@@ -917,7 +926,8 @@ void wifi_setup()
         mqttClient.setCallback(mqttCallback);
         mqttClient.setLooper(mqttLooper);
         #ifdef HAVE_CRSF
-        mqttClient.setCooperative(opModeCRSF);
+        mqttWClient.setCooperative(opModeCRSF);
+        mqttWClient.setLooper(mqttLooper);
         #endif
 
         if(*settings.mqttUser) {
@@ -2873,9 +2883,14 @@ static void handleMQTTTopMsg(int idx)
 static void mqttLooper()
 {
     #ifdef HAVE_CRSF
+    bool wasActive = mqttLooperActive;
+    mqttLooperActive = true;
     if(opModeCRSF) serviceCRSF(false);
     #endif
     audio_loop();
+    #ifdef HAVE_CRSF
+    mqttLooperActive = wasActive;
+    #endif
 }
 
 static uint16_t a2i(char *p)
@@ -3199,6 +3214,10 @@ bool mqttConnected()
 
 bool mqttPublish(const char *topic, const char *pl, unsigned int len)
 {
+    #ifdef HAVE_CRSF
+    // CRSF/audio service can run while PubSubClient owns its packet buffer.
+    if(mqttLooperActive) return false;
+    #endif
     if(useMQTT) {
         return mqttClient.publish(topic, (uint8_t *)pl, len, false);
     }

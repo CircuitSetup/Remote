@@ -136,9 +136,6 @@ class PubSubClient {
         void setServer(const char *domain, uint16_t port) { this->domain = domain; this->port = port; }
         void setCallback(void (*callback)(char *, uint8_t *, unsigned int)) { this->callback = callback; }
         void setLooper(void (*looper)()) { this->looper = looper; }
-        #ifdef HAVE_CRSF
-        void setCooperative(bool enabled) { cooperative = enabled; }
-        #endif
     
         bool connect();
         bool connect(const char *user, const char *pass);
@@ -167,11 +164,6 @@ class PubSubClient {
         uint32_t readPacket(uint8_t *);
         bool readByte(uint8_t *result);
         bool readByte(uint8_t *result, uint16_t *index);
-        #ifdef HAVE_CRSF
-        bool connectTCP();
-        size_t writeClient(const uint8_t *data, size_t size);
-        void runLooper();
-        #endif
         
         size_t buildHeader(uint8_t header, uint8_t* buf, uint16_t length);
         bool write(uint8_t header, uint8_t *buf, uint16_t length);
@@ -192,10 +184,6 @@ class PubSubClient {
         bool pingOutstanding;
         void (*callback)(char *, uint8_t *, unsigned int);
         void (*looper)();
-        #ifdef HAVE_CRSF
-        bool cooperative = false;
-        bool inLooper = false;
-        #endif
 
         IPAddress ip;
         const char* domain;
