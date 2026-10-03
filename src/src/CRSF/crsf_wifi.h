@@ -26,13 +26,13 @@ static void crsfReadInputParam(const char *name, char *destBuf, size_t length, i
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
 static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel);
 
-static const char * const cOpModeCustHTMLSrc[4] = {
+static const char *cOpModeCustHTMLSrc[4] = {
     "'>Operation mode",
     "copm",
     ">Legacy%s1'",
     ">ELRS/CRSF%s"
 };
-static const char * const cPktRateCustHTMLSrc[7] = {
+static const char *cPktRateCustHTMLSrc[7] = {
     "'>ELRS Packet rate",
     "cpktr",
     ">50 Hz%s1'",
@@ -41,13 +41,13 @@ static const char * const cPktRateCustHTMLSrc[7] = {
     ">250 Hz%s4'",
     ">500 Hz%s"
 };
-static const char * const cSpdUnitCustHTMLSrc[4] = {
+static const char *cSpdUnitCustHTMLSrc[4] = {
     "'>Speed units",
     "cspdu",
     ">km/h%s1'",
     ">mph%s"
 };
-static const char * const cTlmRatioCustHTMLSrc[9] = {
+static const char *cTlmRatioCustHTMLSrc[9] = {
     "'>Telemetry Ratio",
     "ctlmr",
     ">Std%s1'",
@@ -58,7 +58,7 @@ static const char * const cTlmRatioCustHTMLSrc[9] = {
     ">1:32%s6'",
     ">Off%s"
 };
-static const char * const cMaxPowerCustHTMLSrc[8] = {
+static const char *cMaxPowerCustHTMLSrc[8] = {
     "'>Max Power",
     "cmpwr",
     ">10 mW%s1'",
@@ -68,13 +68,13 @@ static const char * const cMaxPowerCustHTMLSrc[8] = {
     ">500 mW%s5'",
     ">1000 mW%s"
 };
-static const char * const cDynPowerCustHTMLSrc[4] = {
+static const char *cDynPowerCustHTMLSrc[4] = {
     "'>Dynamic Power",
     "cdynp",
     ">Off%s1'",
     ">Dyn%s"
 };
-static const char * const cChannelCustHTMLSrc[16] = {
+static const char *cChannelCustHTMLSrc[16] = {
     ">CH1%s1'",
     ">CH2%s2'",
     ">CH3%s3'",
@@ -104,12 +104,12 @@ enum CRSFSelectFieldId : uint8_t {
 };
 
 struct CRSFSelectField {
-    const char * const *html;
+    const char **html;
     int count;
     char *setting;
 };
 
-static const CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
+static CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
     { cOpModeCustHTMLSrc, 4, settings.opMode },
     { cPktRateCustHTMLSrc, 7, settings.elrsPktRate },
     { cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit },
@@ -129,7 +129,7 @@ struct CRSFAxisSettings {
     char *expo;
 };
 
-static const CRSFAxisSettings crsfAxisSettings[] = {
+static CRSFAxisSettings crsfAxisSettings[] = {
     { ELRS_GIMBAL_INPUT_AILERON, settings.elrsRollCh, settings.elrsRollRev, settings.elrsRollLow, settings.elrsRollCtr, settings.elrsRollHigh, "crlexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_AILERON] },
     { ELRS_GIMBAL_INPUT_ELEVATOR, settings.elrsPitchCh, settings.elrsPitchRev, settings.elrsPitchLow, settings.elrsPitchCtr, settings.elrsPitchHigh, "cptexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_ELEVATOR] },
     { ELRS_GIMBAL_INPUT_THROTTLE, settings.elrsThrCh, settings.elrsThrRev, settings.elrsThrLow, settings.elrsThrCtr, settings.elrsThrHigh, "cthexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_THROTTLE] },
@@ -184,7 +184,7 @@ WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
 WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
-WiFiManagerParameter * const crsfParmArray[] = {
+WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsfom,
       &custom_ss_crsf,
       &custom_crsfstatus,
@@ -471,7 +471,7 @@ static void crsf_wifi_updateConfigPortalValues()
     // all others done on-the-fly
 }
 
-static const char *wmBuildSelectOneBased(const char *dest, int op, const char * const *src, int count, char *setting, bool indent = false)
+static const char *wmBuildSelectOneBased(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)
 {
     char tempSetting[3];
     int selectValue = atoi(setting);

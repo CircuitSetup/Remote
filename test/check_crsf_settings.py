@@ -4,6 +4,8 @@ from check_crsf_adc import ROOT, compile_and_run
 
 def function(path, signature):
     source = (ROOT / path).read_text()
+    if signature + '\n{' not in source:
+        signature = signature.replace('const char * const *', 'const char **')
     start = source.index(signature + '\n{')
     end = source.index('\n}', start) + 2
     return source[start:end] + '\n'
@@ -120,7 +122,8 @@ switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchPa
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
 select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
 select_page += wifi_source[wifi_source.index('static const char custHTMLSelFmt[]'):wifi_source.index('\n', wifi_source.index('static const char custHTMLSelFmt[]'))] + '\n'
-select_page += portal[portal.index('static const char * const cChannelCustHTMLSrc['):portal.index('enum CRSFSelectFieldId')]
+channel_start = portal.rfind('\n', 0, portal.index('cChannelCustHTMLSrc[')) + 1
+select_page += portal[channel_start:portal.index('enum CRSFSelectFieldId')]
 select_page += '#define STRLEN(s) (sizeof(s)-1)\n'
 select_page += ''.join(function('src/remote_wifi.cpp', signature) for signature in [
     'static unsigned int calcSelectMenu(const char * const *theHTML, int cnt, char *setting, bool indent = false)',
