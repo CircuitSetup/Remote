@@ -1,5 +1,32 @@
 """Run the real button scanners with sampled input and cancellation."""
-from check_crsf_adc import HEADERS, compile_and_run
+from pathlib import Path
+import os
+import shutil
+import subprocess
+import tempfile
+
+from check_crsf_adc import COMPILER, HEADERS, ROOT
+
+NM = shutil.which('nm') or str(Path(COMPILER).with_name('nm.exe'))
+
+
+def compile_and_run(source, flags=(), forbidden_symbols=()):
+    with tempfile.TemporaryDirectory(prefix='crsf-local-inputs-') as work:
+        work = Path(work)
+        for name, contents in HEADERS.items():
+            (work / name).write_text(contents)
+        (work / 'check.cpp').write_text(source)
+        binary = work / ('check.exe' if os.name == 'nt' else 'check')
+        command = [COMPILER, '-std=gnu++11', '-I' + str(work), '-I' + str(ROOT / 'src')]
+        command += list(flags)
+        command += [str(ROOT / 'src/input.cpp'), str(work / 'check.cpp'), '-o', str(binary)]
+        subprocess.run(command, check=True)
+        environment = os.environ.copy()
+        environment['PATH'] = str(Path(COMPILER).parent) + os.pathsep + environment.get('PATH', '')
+        subprocess.run([str(binary)], check=True, env=environment)
+        symbols = subprocess.check_output([NM, '-C', '--defined-only', str(binary)], text=True)
+        for symbol in forbidden_symbols:
+            assert symbol not in symbols, f'CRSF-only symbol exported without HAVE_CRSF: {symbol}'
 
 HEADERS['Arduino.h'] = r'''
 #pragma once
@@ -171,5 +198,47 @@ int main() {
 }
 '''
 
+LEGACY_TEST = r'''
+#include <cassert>
+#include <vector>
+#include "Arduino.h"
+#include "input.h"
+unsigned long testNow = 0;
+uint64_t testPinLevels = UINT64_MAX;
+TwoWire Wire;
+std::vector<int> events;
+void down() { events.push_back(1); }
+void shortEnd() { events.push_back(2); }
+void packDown(int i) { events.push_back(10 * i + 1); }
+void packShort(int i) { events.push_back(10 * i + 2); }
+int main() {
+    RemButton button;
+    button.begin(1); button.setTiming(50, 300);
+    button.attachPressDown(down); button.attachPressEnd(shortEnd);
+    testNow = 100; testPinLevels &= ~(uint64_t(1) << 1); button.scan();
+    testNow = 160; button.scan();
+    testNow = 200; testPinLevels |= uint64_t(1) << 1; button.scan();
+    testNow = 260; button.scan();
+    assert((events == std::vector<int>{1, 2}));
+
+    const uint8_t addresses[] = {0x20, REM_BP_TYPE_PCA8574};
+    ButtonPack pack(1, addresses);
+    assert(pack.begin()); pack.setScanInterval(50); pack.setTiming(0, 50, 300);
+    pack.attachPressDown(packDown); pack.attachPressEnd(packShort);
+    events.clear();
+    testNow = 300; Wire.port = 0xfe; pack.scan();
+    testNow = 350; pack.scan();
+    testNow = 400; Wire.port = 0xff; pack.scan();
+    testNow = 450; pack.scan();
+    assert((events == std::vector<int>{1, 2}));
+    puts("Legacy GPIO and I2C scanners check passed");
+}
+'''
+
 if __name__ == '__main__':
-    compile_and_run(TEST, ['../../input.cpp'])
+    compile_and_run(TEST, ['-DHAVE_CRSF'])
+    compile_and_run(LEGACY_TEST, forbidden_symbols=(
+        'REMRotEnc::useSampledPosition',
+        'RemButton::scan(bool, bool)',
+        'ButtonPack::scan(unsigned char, unsigned char)',
+    ))

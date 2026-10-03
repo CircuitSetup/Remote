@@ -138,9 +138,9 @@ production = function('src/mqtt.cpp', 'bool PubSubClient::connect(const char *us
 production += function('src/mqtt.cpp', 'bool PubSubClient::write(uint8_t header, uint8_t *buf, uint16_t length)')
 production += function('src/mqtt.cpp', 'bool PubSubClient::readByte(uint8_t *result)')
 production += function('src/mqtt.cpp', 'bool PubSubClient::publish(const char* topic, const uint8_t* payload, unsigned int plength, bool retained)')
-for signature in ['bool PubSubClient::connectTCP()', 'size_t PubSubClient::writeClient(const uint8_t *data, size_t size)', 'void PubSubClient::runLooper()']:
-    if signature + '\n{' in (ROOT / 'src/mqtt.cpp').read_text():
-        production += function('src/mqtt.cpp', signature)
+mqtt_source = (ROOT / 'src/mqtt.cpp').read_text()
+helper_start = mqtt_source.index('#ifdef HAVE_CRSF\nvoid PubSubClient::runLooper()')
+production += mqtt_source[helper_start:mqtt_source.index('\n#endif', helper_start) + len('\n#endif')] + '\n'
 production += function('src/remote_wifi.cpp', 'static void wifiDelayReplacement(unsigned int mydel)')
 production += function('src/remote_wifi.cpp', 'void gpCallback(int reason)')
 production += function('src/remote_wifi.cpp', 'static void mqttLooper()')
@@ -207,3 +207,19 @@ int main() {
 }
 '''
 compile_and_run(fixture + production + cases, [])
+legacy_cases = r'''
+int main() {
+    PubSubClient mqtt; mqtt.looper = mqttLooper;
+    reset(TIMEOUT);
+    assert(!mqtt.connect(nullptr, nullptr, true));
+    assert(nativeConnects == 1 && services == 0);
+    reset(OK);
+    uint8_t bytes[8] = {};
+    assert(mqtt.write(16, bytes, 3));
+    assert(nativeWrites == 1 && services == 0);
+    reset(OK); wifiDelayReplacement(100);
+    assert(now == 100 && services == 0 && audioCalls == 5);
+    puts("CRSF-disabled MQTT and WiFi waits preserve legacy connect/send/audio behavior");
+}
+'''
+compile_and_run(fixture + production + legacy_cases, [], flags=['-UHAVE_CRSF'])

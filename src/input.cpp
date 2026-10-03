@@ -183,7 +183,9 @@ REMRotEnc::REMRotEnc(int numTypes, const uint8_t *addrArr)
 
 bool REMRotEnc::begin(bool forSpeed, bool newBoard)
 {
+    #ifdef HAVE_CRSF
     _useSampledPosition = false;
+    #endif
     bool foundSt = false;
     union {
         uint8_t buf[4];
@@ -353,11 +355,13 @@ void REMRotEnc::setZeroPos(int32_t num)
     rotEncZeroPos = num;
 }
 
+#ifdef HAVE_CRSF
 void REMRotEnc::useSampledPosition(int32_t position, bool valid)
 {
     _useSampledPosition = true;
     _sampledPosition = valid ? position : rotEncZeroPos;
 }
+#endif
 
 bool REMRotEnc::setMaxStepsUp(int32_t num)
 {
@@ -481,7 +485,9 @@ int32_t newRead = 0, oldRead = 0;
 
 int32_t REMRotEnc::getEncPos()
 {
+    #ifdef HAVE_CRSF
     if(_useSampledPosition) return _sampledPosition;
+    #endif
     uint8_t buf[4];
 
     switch(_st) {
@@ -647,15 +653,22 @@ void RemButton::attachELongPressStop(void (*newFunction)(void))
 // Check input of the pin and advance the state machine
 void RemButton::scan()
 {
-    scan(digitalRead(_pin) == _buttonPressed);
+    scanState(digitalRead(_pin) == _buttonPressed);
 }
 
+#ifdef HAVE_CRSF
 void RemButton::scan(bool active, bool valid)
 {
     if(!valid) {
         reset();
         return;
     }
+    scanState(active);
+}
+#endif
+
+void RemButton::scanState(bool active)
+{
     unsigned long now = millis();
     unsigned long waitTime = now - _startTime;
     
@@ -898,6 +911,7 @@ void ButtonPack::scan()
     scanStates((uint8_t)~port, 0xff, now);
 }
 
+#ifdef HAVE_CRSF
 void ButtonPack::scan(uint8_t states, uint8_t validMask)
 {
     // Cancel immediately, even when the next regular scan is not due yet.
@@ -909,11 +923,14 @@ void ButtonPack::scan(uint8_t states, uint8_t validMask)
     _lastScan = now;
     scanStates(states, validMask, now);
 }
+#endif
 
 void ButtonPack::scanStates(uint8_t states, uint8_t validMask, unsigned long now)
 {
     for(int i = 0; i < _pack_size; i++) {
+        #ifdef HAVE_CRSF
         if(!(validMask & (1 << i))) continue;
+        #endif
         unsigned long waitTime = now - _startTime[i];
         bool active = (states & (1 << i)) != 0;
     

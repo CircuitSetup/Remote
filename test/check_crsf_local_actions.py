@@ -262,11 +262,12 @@ if __name__ == '__main__':
     input_header = (ROOT / 'src/input.h').read_text()
     button_class = input_header[input_header.index('typedef enum {'):input_header.index('/*\n * ButtonPack class')]
     input_source = (ROOT / 'src/input.cpp').read_text()
-    scanner_start = input_source.index('void RemButton::scan(bool active, bool valid)')
-    scanner_end = input_source.index('/*\n * Buttonpack Class', scanner_start)
     scanner = button_class + 'RemButton::RemButton() {}\n'
-    scanner += input_source[scanner_start:scanner_end]
-    for name in ['setTiming', 'attachLongPressStart', 'attachLongPressStop']:
+    for name in ['scan', 'scanState', 'reset', 'transitionTo', 'setTiming', 'attachLongPressStart', 'attachLongPressStop']:
+        if name == 'scan':
+            normalized_source = input_source[input_source.index('void RemButton::scan(bool active, bool valid)'):]
+            scanner += function(normalized_source, 'RemButton::scan') + '\n'
+            continue
         scanner += function(input_source, 'RemButton::' + name) + '\n'
     scanner += 'RemButton powerswitch, brake;\n'
     names = ['mqtt_send_button_on', 'mqtt_send_button_off', 'buttonPackActionPress',
