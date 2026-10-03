@@ -30,7 +30,12 @@ inline void delayMicroseconds(unsigned long) {}
 'HardwareSerial.h': r'''
 #pragma once
 #include "Arduino.h"
+#include <stdarg.h>
+#include <string>
+#include <vector>
 extern uint8_t lastRcFrame[26];
+extern std::vector<std::string> adcLogs;
+extern std::vector<std::string> probeLogs;
 struct HardwareSerial {
     HardwareSerial(int = 0) {}
     void begin(unsigned long, int, int, int, bool) {}
@@ -40,8 +45,29 @@ struct HardwareSerial {
     size_t write(const uint8_t *data, size_t n) { if(n == 26 && data[2] == 0x16) memcpy(lastRcFrame, data, n); return n; }
     void flush() {}
     void println(const char *) {}
+    void printf(const char *format, ...) {
+        char text[256];
+        va_list args;
+        va_start(args, format);
+        vsnprintf(text, sizeof(text), format, args);
+        va_end(args);
+        if(strncmp(text, "ELRS/CRSF ADC raw:", 18) == 0) adcLogs.emplace_back(text);
+        if(strncmp(text, "ELRS/CRSF ADC: ADS1015 probe", 26) == 0) probeLogs.emplace_back(text);
+    }
 };
 extern HardwareSerial Serial;
+''',
+'WiFi.h': r'''
+#pragma once
+#include <string>
+struct TestIP { std::string toString() { return "0.0.0.0"; } };
+struct TestWiFi {
+    int getMode() { return 0; }
+    int status() { return 0; }
+    TestIP localIP() { return {}; }
+    TestIP softAPIP() { return {}; }
+};
+static TestWiFi WiFi;
 ''',
 'Wire.h': r'''
 #pragma once
@@ -67,6 +93,8 @@ TEST = r'''
 unsigned long testNow = 0;
 HardwareSerial Serial;
 uint8_t lastRcFrame[26] = {};
+std::vector<std::string> adcLogs;
+std::vector<std::string> probeLogs;
 TwoWire Wire;
 void remDisplay::on() {}
 void remDisplay::setText(const char *) {}
@@ -208,9 +236,99 @@ int main() {
         }
     }
     puts("CRSF adapter output limits and raw calibration check passed");
+#ifdef REMOTE_DBG
+    // The real adapter must print at most once per 200ms during rapid motion.
+    auto resetLogging = [&](uint32_t now) {
+        testNow = now;
+        adcLogs.clear();
+        probeLogs.clear();
+        for(int i = 0; i < 4; i++) Wire.values[i] = 1000;
+        assert(mode.begin(250, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
+                          nullptr, false, nullptr, nullptr, nullptr, nullptr,
+                          false, false, false, false, nullptr));
+        assert(adcLogs.size() == (Wire.connected ? 1U : 0U)); // First valid sample prints at millis()==0.
+        assert(probeLogs.size() == 1); // First probe/rebegin logs immediately.
+    };
+    resetLogging(0);
+    for(testNow = 4; testNow <= 400; testNow += 4) {
+        for(int i = 0; i < 4; i++) Wire.values[i] = (testNow / 4) % 2 ? 0 : (testNow <= 200 ? 2047 : 1000);
+        mode.loop(0);
+        assert(adcLogs.size() == 1 + testNow / 200);
+    }
+    assert(mode.readCurrentRawAxes(axes));
+    char latest[100];
+    snprintf(latest, sizeof(latest), "ELRS/CRSF ADC raw: A0=%d A1=%d A2=%d A3=%d\n",
+             axes[0], axes[1], axes[2], axes[3]);
+    assert(adcLogs.back() == latest);
+    // Suppressed changes stay relative to the last printed sample.
+    resetLogging(0);
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1100;
+    testNow = 4; mode.loop(0); // Filtered 1025: a qualifying but suppressed change.
+    assert(adcLogs.size() == 1);
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1025;
+    testNow = 8; mode.loop(0);
+    testNow = 200; mode.loop(0);
+    assert(adcLogs.size() == 2);
+    // Unchanged and exactly-threshold samples do not print at the deadline.
+    resetLogging(0);
+    testNow = 200; mode.loop(0);
+    assert(adcLogs.size() == 1);
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1080;
+    testNow = 400; mode.loop(0); // Filtered 1020, threshold is strictly >20.
+    assert(adcLogs.size() == 1);
+    testNow = 600; mode.loop(0); // Filtered 1035, cumulative delta now qualifies.
+    assert(adcLogs.size() == 2);
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1035;
+    testNow = 800; mode.loop(0);
+    assert(adcLogs.size() == 2);
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1075;
+    testNow = 1000; mode.loop(0); // Filtered 1045, ten counts since last print.
+    assert(adcLogs.size() == 2);
+    // Millis wrap must preserve the elapsed interval.
+    resetLogging(UINT32_MAX - 99);
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1400;
+    testNow = 96; mode.loop(0); // 196ms elapsed across wrap.
+    assert(adcLogs.size() == 1);
+    testNow = 100; mode.loop(0); // 200ms elapsed across wrap.
+    assert(adcLogs.size() == 2);
+    puts("CRSF adapter ADC diagnostic rate limit check passed");
+    // Disconnected retries must not flood Serial, including two probes in begin().
+    Wire.connected = false;
+    resetLogging(0);
+    assert(probeLogs.back().find("failed") != std::string::npos);
+    for(testNow = 4; testNow <= 204; testNow += 4) {
+        mode.loop(0);
+        assert(probeLogs.size() == 1 + testNow / 200);
+    }
+    Wire.connected = true;
+    testNow = 208; mode.loop(0); // Probe-ok may be suppressed; controls must recover.
+    assert(probeLogs.size() == 2);
+    assert(adcLogs.size() == 1);
+    assert(mode.readCurrentRawAxes(axes));
+    for(int i = 0; i < 4; i++) assert(axes[i] == 1000);
+    assert(!(mode.getStatus().faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE)));
+    for(int i = 0; i < 4; i++) Wire.values[i] = 1400;
+    testNow = 212; mode.loop(0);
+    assert(adcLogs.size() == 1);
+    testNow = 408; mode.loop(0);
+    assert(adcLogs.size() == 2);
+    resetLogging(408); // Rebegin permits another first probe at the same timestamp.
+    assert(probeLogs.back().find("ok") != std::string::npos);
+    Wire.connected = false;
+    resetLogging(UINT32_MAX - 99);
+    testNow = 96; mode.loop(0);
+    assert(probeLogs.size() == 1);
+    testNow = 100; mode.loop(0);
+    assert(probeLogs.size() == 2);
+    Wire.connected = true;
+    puts("CRSF adapter ADC probe rate limit and recovery check passed");
+#else
+    assert(adcLogs.empty());
+    assert(probeLogs.empty());
+#endif
 }
 '''
-def compile_and_run(source, sources):
+def compile_and_run(source, sources, flags=()):
     with tempfile.TemporaryDirectory(prefix='crsf-check-') as work:
         work = Path(work)
         for name, contents in HEADERS.items():
@@ -218,6 +336,7 @@ def compile_and_run(source, sources):
         (work / 'check.cpp').write_text(source)
         binary = work / ('check.exe' if os.name == 'nt' else 'check')
         command = [COMPILER, '-std=gnu++11', '-DHAVE_CRSF', '-I' + str(work), '-I' + str(ROOT / 'src')]
+        command += list(flags)
         command += [str(ROOT / 'src/src/CRSF' / name) for name in sources]
         command += [str(work / 'check.cpp'), '-o', str(binary)]
         subprocess.run(command, check=True)
@@ -227,4 +346,6 @@ def compile_and_run(source, sources):
 
 
 if __name__ == '__main__':
-    compile_and_run(TEST, ['elrs_crsf.cpp', 'elrs_crsf_core.cpp', 'elrs_crsf_transport.cpp', 'elrs_input_model.cpp'])
+    sources = ['elrs_crsf.cpp', 'elrs_crsf_core.cpp', 'elrs_crsf_transport.cpp', 'elrs_input_model.cpp']
+    compile_and_run(TEST, sources)
+    compile_and_run(TEST, sources, ['-DREMOTE_DBG'])

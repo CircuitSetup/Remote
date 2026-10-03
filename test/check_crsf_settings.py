@@ -4,6 +4,8 @@ from check_crsf_adc import ROOT, compile_and_run
 
 def function(path, signature):
     source = (ROOT / path).read_text()
+    if signature + '\n{' not in source:
+        signature = signature.replace('const char * const *', 'const char **')
     start = source.index(signature + '\n{')
     end = source.index('\n}', start) + 2
     return source[start:end] + '\n'
@@ -120,14 +122,15 @@ switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchPa
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
 select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
 select_page += wifi_source[wifi_source.index('static const char custHTMLSelFmt[]'):wifi_source.index('\n', wifi_source.index('static const char custHTMLSelFmt[]'))] + '\n'
-select_page += portal[portal.index('static const char *cChannelCustHTMLSrc['):portal.index('enum CRSFSelectFieldId')]
+channel_start = portal.rfind('\n', 0, portal.index('cChannelCustHTMLSrc[')) + 1
+select_page += portal[channel_start:portal.index('enum CRSFSelectFieldId')]
 select_page += '#define STRLEN(s) (sizeof(s)-1)\n'
 select_page += ''.join(function('src/remote_wifi.cpp', signature) for signature in [
-    'static unsigned int calcSelectMenu(const char **theHTML, int cnt, char *setting, bool indent = false)',
-    'static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting, bool indent = false)',
-    'static const char *wmBuildSelect(const char *dest, int op, const char **src, int count, char *setting, bool indent)',
+    'static unsigned int calcSelectMenu(const char * const *theHTML, int cnt, char *setting, bool indent = false)',
+    'static void buildSelectMenu(char *target, const char * const *theHTML, int cnt, char *setting, bool indent = false)',
+    'static const char *wmBuildSelect(const char *dest, int op, const char * const *src, int count, char *setting, bool indent)',
 ])
-select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildSelectOneBased(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)')
+select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildSelectOneBased(const char *dest, int op, const char * const *src, int count, char *setting, bool indent = false)')
 select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)')
 post_parser = '\n'.join(line for line in (ROOT / 'src/remote_settings.h').read_text().splitlines() if line.startswith('#define DEF_ELRS')) + '\n'
 post_parser += function('src/remote_wifi.cpp', 'static bool isNumString(char *s)')
@@ -288,8 +291,21 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
     assert(hysteresis == 32 && idle == 32);
-    hysteresis = 65535; idle = 65535;
-    assert(saveELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle));
+    const auto beforeToleranceSave = stored;
+    const auto beforeToleranceInputs = crsfSettings;
+    const auto beforeToleranceHash = crsfSettingsHash;
+    ELRSInputAxisProfile changedProfiles[4];
+    memcpy(changedProfiles, profiles, sizeof(profiles));
+    changedProfiles[0].minimum = 301;
+    for(uint16_t invalid : {33, 999, 65535}) {
+        for(int field = 0; field < 2; field++) {
+            hysteresis = field ? 7 : invalid;
+            idle = field ? invalid : 7;
+            assert(!saveELRSInputConfig(changedProfiles, 4, nullptr, &hysteresis, &idle));
+            assert(stored == beforeToleranceSave && crsfSettingsHash == beforeToleranceHash);
+            assert(memcmp(&crsfSettings, &beforeToleranceInputs, sizeof(crsfSettings)) == 0);
+        }
+    }
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
     assert(hysteresis == 32 && idle == 32);
@@ -639,7 +655,8 @@ int main() {
     auto preparePost = [&]() {
         syncCRSFPortalBuffers();
         server.name.clear();
-        server.args = {{"copm","1"}, {"cpktr","3"}, {"cspdu","0"}, {"ctlmr","0"}, {"cmpwr","3"}, {"cdynp","0"}};
+        server.args = {{"copm","1"}, {"cpktr","3"}, {"cspdu","0"}, {"ctlmr","0"}, {"cmpwr","3"}, {"cdynp","0"},
+                       {"chyst",settings.elrsAdcHysteresis}, {"cthid",settings.elrsThrIdleDeadband}};
         for(int axis = 0; axis < 4; axis++) {
             const auto &fields = crsfAxisSettings[axis];
             server.args[channelNames[axis]] = std::to_string(atoi(fields.channel) - 1);
@@ -1229,9 +1246,13 @@ integration_callbacks = function('src/remote_wifi.cpp', 'static void evalCB(char
 integration_callbacks += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
 integration_callbacks += post_parser
 integration_cases = r'''
-// Submit the required routing/calibration fields while allowing curve fields to be omitted.
-void submitCurveRequest(WiFiManager &manager) {
+// Submit required input fields while allowing curve fields to be omitted.
+void submitCurveRequest(WiFiManager &manager, bool includeTolerances = true) {
     server.args["copm"] = "1";
+    if(includeTolerances) {
+        server.args.emplace("chyst", settings.elrsAdcHysteresis);
+        server.args.emplace("cthid", settings.elrsThrIdleDeadband);
+    }
     const char *channelNames[] = {"crlch", "cptch", "cthch", "cywch"};
     const char *pointNames[][3] = {{"crrlo","crrct","crrhi"}, {"cptlo","cptct","cpthi"},
                                  {"cthlo","cthct","cthhi"}, {"cywlo","cywct","cywhi"}};
@@ -1242,6 +1263,46 @@ void submitCurveRequest(WiFiManager &manager) {
         for(int point = 0; point < 3; point++) server.args[pointNames[axis][point]] = points[point];
     }
     manager._handleParamSave(3, "ELRS");
+}
+
+void test_filtering_request_validation(WiFiManager &manager) {
+    syncCRSFPortalBuffers();
+    const auto saved = stored;
+    const auto savedInputs = crsfSettings;
+    const auto savedHash = crsfSettingsHash;
+    const auto savedSettings = settings;
+    const std::string invalid[] = {"", "x", "32junk", "999", "33", "-1", "4294967296",
+                                  "99999999999999999999", std::string("32\0junk", 7)};
+    for(const char *field : {"chyst", "cthid"}) {
+        for(const auto &value : invalid) {
+            wifiLoopSaveAction = 0;
+            server.args = {{"chyst","7"}, {"cthid","8"}, {"crlexp","90"}};
+            server.args[field] = value;
+            submitCurveRequest(manager, false);
+            assert(server.status == 400 && server.body.find("Settings saved.") == String::npos);
+            assert(wifiLoopSaveAction == 0 && stored == saved && crsfSettingsHash == savedHash);
+            assert(memcmp(&crsfSettings, &savedInputs, sizeof(crsfSettings)) == 0);
+            assert(memcmp(&settings, &savedSettings, sizeof(settings)) == 0);
+        }
+        wifiLoopSaveAction = 0;
+        server.args = {{"chyst","7"}, {"cthid","8"}};
+        server.args.erase(field);
+        submitCurveRequest(manager, false);
+        assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == saved);
+        assert(crsfSettingsHash == savedHash && memcmp(&crsfSettings, &savedInputs, sizeof(crsfSettings)) == 0);
+    }
+    // Every supported ADC count must survive a successful HTTP save and reload.
+    for(int value = 0; value <= 32; value++) {
+        wifiLoopSaveAction = 0;
+        server.args = {{"chyst",std::to_string(value)}, {"cthid",std::to_string(32 - value)}};
+        submitCurveRequest(manager, false);
+        assert(server.status == 200 && wifiLoopSaveAction == 32);
+        crsf_load_settings();
+        uint16_t hysteresis, idle;
+        loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
+        assert(hysteresis == value && idle == 32 - value);
+    }
+    puts("CRSF filtering HTTP rejects malformed/missing tolerances atomically and saves all counts 0..32");
 }
 
 // Rejected edits must not become the next request's omitted defaults.
@@ -1320,6 +1381,7 @@ int main() {
     puts("CRSF real four-curve HTTP rejection, atomic write failure and successful reboot retry check passed");
     test_rejected_curve_request_preserves_saved_omissions(manager);
     test_failed_curve_write_preserves_saved_omissions(manager);
+    test_filtering_request_validation(manager);
 }
 '''
 compile_and_run(integration_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + integration_callbacks + http_callbacks + integration_cases, ['elrs_input_model.cpp'])

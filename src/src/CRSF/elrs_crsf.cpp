@@ -19,7 +19,10 @@ constexpr uint8_t CRSF_OE_PIN = 0;
 constexpr uint8_t ADS1015_ADDR = 0x48;
 constexpr uint8_t ADS_REG_CONVERT = 0x00;
 constexpr uint8_t ADS_REG_CONFIG = 0x01;
+#ifdef REMOTE_DBG
 constexpr int16_t ADS_LOG_DELTA_THRESHOLD = 20;
+constexpr uint32_t ADS_LOG_INTERVAL_MS = 200;
+#endif
 constexpr uint8_t ADS_FILTER_SHIFT = 2;
 
 }
@@ -68,12 +71,18 @@ bool ELRSCrsfMode::begin(
     _levelMeterOnFakePower = levelMeterOnFakePower;
     _haveAds = false;
     _oeActiveLow = true;
+    #ifdef REMOTE_DBG
     _haveLoggedAxes = false;
+    _lastAxesLogAt = 0;
+    _lastProbeLogAt = (uint32_t)millis() - ADS_LOG_INTERVAL_MS;
+    #endif
     _haveFilteredAxes = false;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = 1024;
         _filteredAxes[i] = 1024;
+        #ifdef REMOTE_DBG
         _lastLoggedAxes[i] = 1024;
+        #endif
     }
 
     _fpOnWifiHandler = fpOnWifiHandler;
@@ -185,7 +194,11 @@ bool ELRSCrsfMode::initAds1015()
     Wire.beginTransmission(ADS1015_ADDR);
     bool ok = (Wire.endTransmission(true) == 0);
     #ifdef REMOTE_DBG
-    Serial.printf("ELRS/CRSF ADC: ADS1015 probe %s @0x%02X\n", ok ? "ok" : "failed", ADS1015_ADDR);
+    const uint32_t now = millis();
+    if((uint32_t)(now - _lastProbeLogAt) >= ADS_LOG_INTERVAL_MS) {
+        _lastProbeLogAt = now;
+        Serial.printf("ELRS/CRSF ADC: ADS1015 probe %s @0x%02X\n", ok ? "ok" : "failed", ADS1015_ADDR);
+    }
     #endif
     return ok;
 }
@@ -324,9 +337,12 @@ bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
     _haveFilteredAxes = true;
 
     #ifdef REMOTE_DBG
-    if(!_haveLoggedAxes || elrsAxesChanged(_rawAxes, _lastLoggedAxes, ELRS_GIMBAL_AXIS_COUNT, ADS_LOG_DELTA_THRESHOLD)) {
+    const uint32_t now = millis();
+    if(!_haveLoggedAxes || ((uint32_t)(now - _lastAxesLogAt) >= ADS_LOG_INTERVAL_MS &&
+       elrsAxesChanged(_rawAxes, _lastLoggedAxes, ELRS_GIMBAL_AXIS_COUNT, ADS_LOG_DELTA_THRESHOLD))) {
         memcpy(_lastLoggedAxes, _rawAxes, sizeof(_lastLoggedAxes));
         _haveLoggedAxes = true;
+        _lastAxesLogAt = now;
         Serial.printf("ELRS/CRSF ADC raw: A0=%d A1=%d A2=%d A3=%d\n",
                       _rawAxes[0], _rawAxes[1], _rawAxes[2], _rawAxes[3]);
     }

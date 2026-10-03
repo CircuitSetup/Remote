@@ -126,6 +126,9 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _fakePowerOn = false;
     _selfTestActive = false;
     _hasValidPackState = false;
+    _haveLinkStats = false;
+    _haveGpsSpeed = false;
+    _haveAirspeed = false;
     _lastPackStates = 0;
     _adcFaultActive = false;
     _buttonPackFaultActive = false;
@@ -218,7 +221,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     sampleAxes(host, now);
     updateInputFaults(host, now);
 
-    if(_selfTestActive && _selfTestUntil && now >= _selfTestUntil) {
+    if(_selfTestActive && (int32_t)(now - _selfTestUntil) >= 0) {
         stopSelfTest();
         log(host, "ELRS/CRSF: self-test stopped");
     }
@@ -461,20 +464,22 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
         if(payloadLen >= 10) {
             _linkQuality = payload[2];
             _lastLinkStats = now;
+            _haveLinkStats = true;
             supportedTelemetry = true;
         }
         break;
     case CRSF_FRAME_BATTERY:
         if(payloadLen >= 8) {
-            _remoteBatteryVoltage = (float)readBE16(payload) * 0.00001f;
+            _remoteBatteryVoltage = (float)readBE16(payload) * 0.1f;
             _remoteBattery = payload[7];
             supportedTelemetry = true;
         }
         break;
     case CRSF_FRAME_GPS:
         if(payloadLen >= 15) {
-            _gpsSpeed10 = readBE16(payload + 8) / 10;
+            _gpsSpeed10 = readBE16(payload + 8);
             _lastGpsSpeed = now;
+            _haveGpsSpeed = true;
             supportedTelemetry = true;
         }
         break;
@@ -482,6 +487,7 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
         if(payloadLen >= 2) {
             _airspeed10 = readBE16(payload);
             _lastAirspeed = now;
+            _haveAirspeed = true;
             supportedTelemetry = true;
         }
         break;
@@ -821,6 +827,10 @@ void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
     SpeedSource speedSource = SPEED_SOURCE_NONE;
     uint8_t commCode = transportStatus.commCode;
 
+    if(now - _lastLinkStats >= _config.transport.telemetryTimeoutMs) _haveLinkStats = false;
+    if(now - _lastGpsSpeed >= _config.transport.telemetryTimeoutMs) _haveGpsSpeed = false;
+    if(now - _lastAirspeed >= _config.transport.telemetryTimeoutMs) _haveAirspeed = false;
+
     getDisplaySpeed10(now, &speedSource);
 
     if(commCode != _lastCommCode) {
@@ -836,7 +846,7 @@ void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
     if(speedSource != _activeSpeedSource) {
         _activeSpeedSource = speedSource;
         if(speedSource == SPEED_SOURCE_NONE) {
-            if(_lastLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) {
+            if(_haveLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) {
                 log(host, "ELRS/CRSF: no speed telemetry, displaying LQ");
             }
         } else {
@@ -851,7 +861,10 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
     SpeedSource speedSource = SPEED_SOURCE_NONE;
     uint16_t speed10 = 0;
 
-    if(_overlayUntil > now) {
+    if(_overlayText[0] && (int32_t)(now - _overlayUntil) >= 0) _overlayText[0] = 0;
+    if(_commOverlayText[0] && (int32_t)(now - _commOverlayUntil) >= 0) _commOverlayText[0] = 0;
+
+    if(_overlayText[0]) {
         host.displayOn();
         host.displaySetText(_overlayText);
         host.displayShow();
@@ -872,7 +885,7 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
         return;
     }
 
-    if(_commOverlayUntil > now) {
+    if(_commOverlayText[0]) {
         host.displayOn();
         host.displaySetText(_commOverlayText);
         host.displayShow();
@@ -889,7 +902,7 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
     if(speedSource != SPEED_SOURCE_NONE) {
         host.displaySetSpeed((int)getDisplaySpeed10ForUnits(speed10));
     } else {
-        snprintf(buf, sizeof(buf), "%3d", (_lastLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) ? _linkQuality : 0);
+        snprintf(buf, sizeof(buf), "%3d", (_haveLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) ? _linkQuality : 0);
         host.displaySetText(buf);
     }
     host.displayShow();
@@ -936,10 +949,10 @@ uint16_t ELRSCrsfCore::getDisplaySpeed10(unsigned long now, SpeedSource *source)
     SpeedSource activeSource = SPEED_SOURCE_NONE;
     uint16_t speed10 = 0;
 
-    if(_lastGpsSpeed && (now - _lastGpsSpeed < _config.transport.telemetryTimeoutMs)) {
+    if(_haveGpsSpeed && (now - _lastGpsSpeed < _config.transport.telemetryTimeoutMs)) {
         activeSource = SPEED_SOURCE_GPS;
         speed10 = _gpsSpeed10;
-    } else if(_lastAirspeed && (now - _lastAirspeed < _config.transport.telemetryTimeoutMs)) {
+    } else if(_haveAirspeed && (now - _lastAirspeed < _config.transport.telemetryTimeoutMs)) {
         activeSource = SPEED_SOURCE_AIRSPEED;
         speed10 = _airspeed10;
     }
@@ -971,6 +984,7 @@ void ELRSCrsfCore::resetModuleParameters()
     _moduleChunkActive = false;
     _moduleChunkFieldId = 0;
     _moduleChunkNextIndex = 0;
+    _moduleChunksRemain = 0;
     _moduleChunkLen = 0;
     memset(_moduleChunkData, 0, sizeof(_moduleChunkData));
     _moduleTelemetryRatio = ModuleParameterInfo();
@@ -1143,28 +1157,26 @@ void ELRSCrsfCore::handleParameterSettingsEntry(const uint8_t *payload, size_t p
     if(!_moduleChunkActive || _moduleChunkFieldId != fieldId) {
         _moduleChunkActive = true;
         _moduleChunkFieldId = fieldId;
-        _moduleChunkNextIndex = 1;
         _moduleChunkLen = 0;
+    } else if(!_moduleChunksRemain || chunksRemain != _moduleChunksRemain - 1) {
+        // Retried reads can return the same chunk after we have already accepted it.
+        return;
     }
 
     if(_moduleChunkLen + chunkLen > sizeof(_moduleChunkData)) {
         _moduleChunkActive = false;
+        _moduleChunkNextIndex = 0;
         _moduleChunkLen = 0;
         return;
     }
 
     memcpy(_moduleChunkData + _moduleChunkLen, chunkData, chunkLen);
     _moduleChunkLen += chunkLen;
+    _moduleChunksRemain = chunksRemain;
 
     if(chunksRemain) {
-        if(_moduleConfigState == MODULECFG_WAIT_PARAMETER &&
-           fieldId == _moduleFieldIndex &&
-           !_transport.hasPendingServiceFrame() &&
-           queueParameterRead(fieldId, _moduleChunkNextIndex)) {
-            _moduleChunkNextIndex++;
-            _moduleParameterRetryCount = 0;
-            _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
-        }
+        _moduleChunkNextIndex++;
+        _moduleConfigState = MODULECFG_READ_PARAMETER;
     } else {
         finishParameterChunk(fieldId, _moduleChunkData, _moduleChunkLen, now);
         _moduleChunkActive = false;
@@ -1177,10 +1189,8 @@ void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, si
 {
     const char *name;
     const char *options;
-    const char *currentOption = NULL;
     size_t nameLen;
     size_t optionsLen;
-    size_t currentOptionLen = 0;
     uint8_t type;
     uint8_t currentValue;
 
@@ -1205,6 +1215,9 @@ void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, si
             return;
         }
         currentValue = (uint8_t)options[optionsLen + 1];
+#ifdef REMOTE_DBG
+        const char *currentOption = NULL;
+        size_t currentOptionLen = 0;
         if(!readOptionAt(options, currentValue, &currentOption, &currentOptionLen)) {
             currentOption = NULL;
             currentOptionLen = 0;
@@ -1214,6 +1227,7 @@ void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, si
                   name,
                   (int)currentOptionLen,
                   currentOption ? currentOption : "");
+#endif
         applyDiscoveredParameter(fieldId, name, type, options, currentValue);
     } else {
         debugLogf("ELRS/CRSF resp: field=%u name=\"%s\" type=%u len=%u",
@@ -1332,7 +1346,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
 
     switch(_moduleConfigState) {
     case MODULECFG_WAIT_START:
-        if(now < _moduleConfigNextAt || _transport.hasPendingServiceFrame()) {
+        if((int32_t)(now - _moduleConfigNextAt) < 0 || _transport.hasPendingServiceFrame()) {
             return;
         }
         if(queueModulePing()) {
@@ -1343,7 +1357,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         break;
 
     case MODULECFG_WAIT_DEVICE_INFO:
-        if(_moduleConfigDeadlineAt && now >= _moduleConfigDeadlineAt) {
+        if((int32_t)(now - _moduleConfigDeadlineAt) >= 0) {
             if(_moduleProbeRetryCount < CRSF_MODULE_CONFIG_MAX_PROBE_RETRIES) {
                 _moduleProbeRetryCount++;
                 _moduleConfigState = MODULECFG_WAIT_START;
@@ -1365,8 +1379,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         if(_transport.hasPendingServiceFrame()) {
             return;
         }
-        if(queueParameterRead(_moduleFieldIndex, 0)) {
-            _moduleChunkNextIndex = 1;
+        if(queueParameterRead(_moduleFieldIndex, _moduleChunkNextIndex)) {
             _moduleParameterRetryCount = 0;
             _moduleConfigState = MODULECFG_WAIT_PARAMETER;
             _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
@@ -1374,13 +1387,14 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         break;
 
     case MODULECFG_WAIT_PARAMETER:
-        if(_moduleConfigDeadlineAt && now >= _moduleConfigDeadlineAt) {
+        if((int32_t)(now - _moduleConfigDeadlineAt) >= 0) {
+            if(_transport.hasPendingServiceFrame()) {
+                return;
+            }
             const uint8_t retryChunkIndex = (_moduleChunkActive &&
-                                             _moduleChunkFieldId == _moduleFieldIndex &&
-                                             _moduleChunkNextIndex) ? (uint8_t)(_moduleChunkNextIndex - 1) : 0;
+                                             _moduleChunkFieldId == _moduleFieldIndex) ? _moduleChunkNextIndex : 0;
 
             if(_moduleParameterRetryCount < CRSF_MODULE_CONFIG_MAX_PARAMETER_RETRIES &&
-               !_transport.hasPendingServiceFrame() &&
                queueParameterRead(_moduleFieldIndex, retryChunkIndex)) {
                 _moduleParameterRetryCount++;
                 _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
@@ -1440,7 +1454,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
     }
 
     case MODULECFG_WAIT_WRITE:
-        if(now >= _moduleConfigDeadlineAt) {
+        if((int32_t)(now - _moduleConfigDeadlineAt) >= 0) {
             _moduleTargetIndex++;
             _moduleConfigState = MODULECFG_APPLY_SETTING;
             _moduleConfigNextAt = now;

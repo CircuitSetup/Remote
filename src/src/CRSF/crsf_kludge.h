@@ -49,6 +49,12 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef _CRSF_KLUDGE_H
+#define _CRSF_KLUDGE_H
+
+#ifdef HAVE_CRSF
+#include <stdint.h>
+
 class ButtonPack;
 class remDisplay;
 class remLED;
@@ -82,3 +88,6 @@ bool      crsf_begin(
 void      crsf_loop(int battWarn);
 
 void      csrf_query_status(bool &FPBUnitIsOn);
+
+#endif // HAVE_CRSF
+#endif // _CRSF_KLUDGE_H

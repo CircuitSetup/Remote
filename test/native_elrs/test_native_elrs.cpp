@@ -567,8 +567,15 @@ static void test_transport_raw_frame_dump_requires_explicit_opt_in()
     host.queueFrame(makeDeviceInfoFrame("RM Ranger Micro", 33));
     loopAt(core, host, 100, 100000);
 
+#ifdef REMOTE_CRSF_NO_RAW_DUMPS
+    TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF RX len=36"));
+    TEST_ASSERT_FALSE(statusOf(core).rawFrameDebugEnabled);
+#else
     TEST_ASSERT_TRUE(logsContain(host, "ELRS/CRSF RX len=36"));
     TEST_ASSERT_TRUE(statusOf(core).rawFrameDebugEnabled);
+#endif
+    TEST_ASSERT_EQUAL_HEX8(0x29, statusOf(core).lastRawFrameType);
+    TEST_ASSERT_EQUAL_UINT8(36, statusOf(core).lastRawFrameLength);
 }
 
 static void test_transport_raw_frame_dump_logs_non_rc_replies_only()
@@ -586,7 +593,11 @@ static void test_transport_raw_frame_dump_logs_non_rc_replies_only()
     host.queueFrame(makeDeviceInfoFrame("RM Ranger Micro", 33));
     loopAt(core, host, 100, 100000);
 
+#ifdef REMOTE_CRSF_NO_RAW_DUMPS
+    TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF RX len=36"));
+#else
     TEST_ASSERT_TRUE(logsContain(host, "ELRS/CRSF RX len=36"));
+#endif
     TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF TX len="));
 }
 
@@ -749,6 +760,32 @@ static void test_gimbal_curve_values_and_bounds()
             TEST_ASSERT_EQUAL_INT16(1000, elrsInputModelApplyExpo(500, strength, centered));
             TEST_ASSERT_EQUAL_INT16(2000, elrsInputModelApplyExpo(2500, strength, centered));
             for(int16_t input = 1000; input <= 2000; input++) TEST_ASSERT_EQUAL_INT16(input, elrsInputModelApplyExpo(input, strength, centered));
+        }
+    }
+}
+
+static void test_gimbal_curve_matches_original_integer_rounding()
+{
+    for(bool centered : {false, true}) {
+        for(int strength = 0; strength <= 255; strength++) {
+            for(int input = 1000; input <= 2000; input++) {
+                const int16_t origin = centered ? 1500 : 1000;
+                const int64_t span = centered ? 500 : 1000;
+                int64_t magnitude = (int64_t)input - origin;
+                const bool negative = magnitude < 0;
+                if(negative) magnitude = -magnitude;
+                const int64_t denominator = 100 * span * span;
+                const int64_t numerator = (100 - strength) * magnitude * span * span +
+                                          strength * magnitude * magnitude * magnitude;
+                const int16_t shaped = (int16_t)((numerator + denominator / 2) / denominator);
+                const int16_t expected = !strength || strength > 100 ? input :
+                    origin + (negative ? -shaped : shaped);
+                TEST_ASSERT_EQUAL_INT16(expected, elrsInputModelApplyExpo(input, strength, centered));
+            }
+            for(int16_t input : {-32768, 999, 2001, 32767}) {
+                TEST_ASSERT_EQUAL_INT16(input < 1000 ? 1000 : 2000,
+                                       elrsInputModelApplyExpo(input, strength, centered));
+            }
         }
     }
 }
@@ -1734,8 +1771,8 @@ static void test_telemetry_parsing_and_bad_crc_rejection()
     TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
-    host.queueFrame(makeFrame(0x08, std::vector<uint8_t>{ 0x30, 0x39, 0, 0, 0, 0, 0, 77 }));
-    host.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0xCE, 0, 0, 0, 0, 0 }));
+    host.queueFrame(makeFrame(0x08, std::vector<uint8_t>{ 0, 126, 0, 0, 0, 0, 0, 77 }));
+    host.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 126, 0, 0, 0, 0, 0 }));
     host.queueFrame(makeFrame(0x0A, std::vector<uint8_t>{ 0x00, 0x4D }));
 
     core.loop(host, 100, 0);
@@ -1744,8 +1781,9 @@ static void test_telemetry_parsing_and_bad_crc_rejection()
     TEST_ASSERT_TRUE(core.telemetryActive());
     TEST_ASSERT_EQUAL_UINT8(88, core.linkQuality());
     TEST_ASSERT_EQUAL_UINT8(77, core.remoteBatteryPercent());
-    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.12345f, core.remoteBatteryVoltage());
-    TEST_ASSERT_EQUAL_UINT16(123, core.gpsSpeed10());
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 12.6f, core.remoteBatteryVoltage());
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 12.6f, core.getStatus().remoteBatteryVoltage);
+    TEST_ASSERT_EQUAL_UINT16(126, core.gpsSpeed10());
     TEST_ASSERT_EQUAL_UINT16(77, core.airspeed10());
 
     badLink = makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 5, 0, 0, 0, 0, 0, 0, 0 });
@@ -1929,7 +1967,7 @@ static void test_display_policy_prefers_gps_then_airspeed_then_link_quality()
     host.queueFrame(makeFrame(0x0A, std::vector<uint8_t>{ 0x00, 0x4D }));
     core.loop(host, 1500, 0);
     TEST_ASSERT_EQUAL(DISPLAY_SPEED, host.displayMode);
-    TEST_ASSERT_EQUAL_INT(123, host.displaySpeed);
+    TEST_ASSERT_EQUAL_INT(1230, host.displaySpeed);
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_GPS, core.activeSpeedSource());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
@@ -1979,9 +2017,9 @@ static void test_speed_display_can_convert_kmh_to_mph()
     coreMph.loop(hostMph, 1500, 0);
 
     TEST_ASSERT_EQUAL(DISPLAY_SPEED, hostKmh.displayMode);
-    TEST_ASSERT_EQUAL_INT(123, hostKmh.displaySpeed);
+    TEST_ASSERT_EQUAL_INT(1230, hostKmh.displaySpeed);
     TEST_ASSERT_EQUAL(DISPLAY_SPEED, hostMph.displayMode);
-    TEST_ASSERT_EQUAL_INT(76, hostMph.displaySpeed);
+    TEST_ASSERT_EQUAL_INT(764, hostMph.displaySpeed);
 }
 
 static void test_battery_overlay_beats_comm_overlay()
@@ -2092,6 +2130,111 @@ static void test_battery_overlay_and_calibration_prompt_still_override_normal_di
     TEST_ASSERT_TRUE(core.isCalibrating());
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
+}
+
+static void test_expired_overlays_do_not_return_after_millis_rollover()
+{
+    // Run both the ADC fault overlay and the communication-only overlay paths.
+    for(int adcFault = 0; adcFault < 2; adcFault++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0, 0));
+        host.axesAvailable = !adcFault;
+        core.loop(host, 3600000UL, 1000, 0);
+        TEST_ASSERT_EQUAL_STRING(adcFault ? "ADC" : "NRY", host.displayText.c_str());
+
+        host.axesAvailable = true;
+        const unsigned long times[] = {3600200UL, 3602000UL, 0xffffff00UL, 100UL};
+        for(unsigned long now : times) {
+            host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+            core.loop(host, now, 2000, 0);
+            if(now != 3600200UL) TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+        }
+        TEST_ASSERT_EQUAL_UINT8(ELRS_FAULT_NONE, core.getStatus().faultFlags);
+    }
+}
+
+static void test_adc_overlay_expires_across_millis_rollover()
+{
+    // The second start makes the expiry deadline exactly zero after rollover.
+    const unsigned long starts[] = {0xfffffe00UL, 0xfffffc18UL};
+    for(unsigned long start : starts) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), start - 2000, 0));
+        host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+        core.loop(host, start - 300, 1000, 0);
+        TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+
+        host.axesAvailable = false;
+        host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+        core.loop(host, start, 2000, 0);
+        TEST_ASSERT_EQUAL_STRING("ADC", host.displayText.c_str());
+        host.axesAvailable = true;
+        const unsigned long offsets[] = {200, 700, 1000, 1200};
+        for(unsigned long offset : offsets) {
+            host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+            const uint32_t now = (uint32_t)(start + offset);
+            core.loop(host, now, 2000 + offset, 0);
+            TEST_ASSERT_EQUAL_STRING(offset < 1000 ? "ADC" : " 88", host.displayText.c_str());
+        }
+        TEST_ASSERT_EQUAL_UINT8(ELRS_FAULT_NONE, core.getStatus().faultFlags);
+    }
+}
+
+static void test_comm_overlay_expires_across_millis_rollover()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xfffff000UL, 0));
+    core.loop(host, 0xfffffe00UL, 1000, 0);
+    TEST_ASSERT_EQUAL_STRING("NRY", host.displayText.c_str());
+    const unsigned long times[] = {0xffffff00UL, 100UL, 1000UL};
+    for(unsigned long now : times) {
+        host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+        core.loop(host, now, 2000, 0);
+        TEST_ASSERT_EQUAL_STRING(now == 1000UL ? " 88" : "NRY", host.displayText.c_str());
+    }
+}
+
+static void test_telemetry_received_at_millis_zero_is_fresh()
+{
+    for(int source = 0; source < 5; source++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xffffff00UL, 0));
+        if(source == 0) host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
+        if(source == 1 || source == 3) host.queueFrame(makeFrame(0x02, {0, 0, 0, 0, 0, 0, 0, 0, 0, (uint8_t)(source == 1 ? 126 : 0), 0, 0, 0, 0, 0}));
+        if(source == 2 || source == 4) host.queueFrame(makeFrame(0x0A, {0, (uint8_t)(source == 2 ? 77 : 0)}));
+        core.loop(host, 0, 1000, 0);
+        core.loop(host, 1000, 2000, 0);
+        if(source == 0) {
+            TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+        } else {
+            TEST_ASSERT_EQUAL(DISPLAY_SPEED, host.displayMode);
+            TEST_ASSERT_EQUAL_INT(source == 1 ? 126 : (source == 2 ? 77 : 0), host.displaySpeed);
+        }
+        core.loop(host, 2501, 3000, 0);
+        TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
+        core.loop(host, 0xffffff00UL, 4000, 0);
+        core.loop(host, 1000, 5000, 0);
+        TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
+    }
+}
+
+static void test_self_test_expires_across_millis_rollover()
+{
+    const unsigned long starts[] = {0xfffffe00UL, 0xfffffc18UL};
+    for(unsigned long start : starts) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), start - 2000, 0));
+        core.startSelfTest(start, 1000);
+        for(unsigned long offset : {0UL, 200UL, 999UL, 1000UL}) {
+            core.loop(host, (uint32_t)(start + offset), 1000 + offset, 0);
+            TEST_ASSERT_EQUAL(offset < 1000, core.getStatus().selfTestActive);
+        }
+    }
 }
 
 static void test_module_settings_are_discovered_and_written()
@@ -2338,6 +2481,193 @@ static void test_module_settings_retry_timed_out_chunk_before_scan_backoff()
     loopAt(core, host, 1890, 1890000);
     loopAt(core, host, 1990, 1990000);
 
+    TEST_ASSERT_FALSE(logsContain(host, "parameter scan timed out"));
+}
+
+static void moduleTimerLoopAt(ELRSCrsfCore &core, FakeHost &host, uint32_t start, uint32_t elapsed)
+{
+    loopAt(core, host, (uint32_t)(start + elapsed), elapsed * 1000UL);
+}
+
+static void test_module_start_and_save_delay_survive_millis_rollover()
+{
+    for(uint32_t start : {(uint32_t)0xffffff00UL, (uint32_t)(0UL - 1000UL)}) {
+        for(bool save : {false, true}) {
+            FakeHost host;
+            ELRSCrsfCore core;
+            const ELRSCrsfCoreConfig config = defaultConfig();
+            core.begin(host, config, save ? 0 : start, 0);
+            if(save) core.requestModuleConfigUpdate(config.telemetryRatio, config.maxPower, config.dynamicPower, start);
+            moduleTimerLoopAt(core, host, start, 20);
+            moduleTimerLoopAt(core, host, start, 980);
+            TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x28));
+            TEST_ASSERT_FALSE(logsContain(host, "probing module settings"));
+            moduleTimerLoopAt(core, host, start, 1000);
+            TEST_ASSERT_TRUE(logsContain(host, "probing module settings"));
+            moduleTimerLoopAt(core, host, start, 1020);
+            TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+        }
+    }
+}
+
+static void test_module_probe_zero_deadline_still_retries_after_500ms()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    const uint32_t start = 0UL - 1500UL;
+    core.begin(host, defaultConfig(), start, 0);
+    moduleTimerLoopAt(core, host, start, 1000); // Probe deadline is exactly zero.
+    moduleTimerLoopAt(core, host, start, 1020);
+    moduleTimerLoopAt(core, host, start, 1499);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+    moduleTimerLoopAt(core, host, start, 1500);
+    moduleTimerLoopAt(core, host, start, 2480);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+    moduleTimerLoopAt(core, host, start, 2500);
+    moduleTimerLoopAt(core, host, start, 2520);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x28));
+    TEST_ASSERT_FALSE(logsContain(host, "module settings probe timed out"));
+}
+
+static void test_module_parameter_zero_deadline_still_retries_after_500ms()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    const uint32_t start = 0UL - 1540UL;
+    core.begin(host, defaultConfig(), start, 0);
+    moduleTimerLoopAt(core, host, start, 1000);
+    moduleTimerLoopAt(core, host, start, 1020);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    moduleTimerLoopAt(core, host, start, 1040); // Parameter deadline is exactly zero.
+    moduleTimerLoopAt(core, host, start, 1120);
+    moduleTimerLoopAt(core, host, start, 1539);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
+    moduleTimerLoopAt(core, host, start, 1540);
+    moduleTimerLoopAt(core, host, start, 1560);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
+    const std::vector<uint8_t> *retry = findWrittenFrameType(host, 0x2C, 1);
+    TEST_ASSERT_EQUAL_UINT8(1, (*retry)[5]);
+    TEST_ASSERT_EQUAL_UINT8(0, (*retry)[6]);
+    TEST_ASSERT_FALSE(logsContain(host, "parameter scan timed out"));
+}
+
+static void test_module_write_delay_survives_zero_deadline()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    const uint32_t start = 0UL - 1600UL;
+    core.begin(host, config, start, 0);
+    moduleTimerLoopAt(core, host, start, 1000);
+    moduleTimerLoopAt(core, host, start, 1020);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    moduleTimerLoopAt(core, host, start, 1040);
+    moduleTimerLoopAt(core, host, start, 1120);
+    host.queueFrame(makeTextSelectionEntryFrame(1, "Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4));
+    moduleTimerLoopAt(core, host, start, 1300); // Write's 300ms delay ends at zero.
+    for(uint32_t elapsed = 1320; elapsed < 1600; elapsed += 20) moduleTimerLoopAt(core, host, start, elapsed);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
+    TEST_ASSERT_FALSE(logsContain(host, "module settings apply complete"));
+    for(uint32_t elapsed = 1600; elapsed <= 1660; elapsed += 20) moduleTimerLoopAt(core, host, start, elapsed);
+    TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
+}
+
+static void test_module_settings_ignore_duplicate_chunk_after_retry()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.transport.packetRateHz = 50;
+    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    core.begin(host, config, 0, 0);
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    loopAt(core, host, 1030, 1030000);
+    loopAt(core, host, 1120, 1120000);
+    loopAt(core, host, 1530, 1530000);
+    loopAt(core, host, 1540, 1540000);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(0, (*findWrittenFrameType(host, 0x2C, 1))[6]);
+
+    const std::vector<uint8_t> data = makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4);
+    const std::vector<uint8_t> first(data.begin(), data.begin() + data.size() / 2);
+    const std::vector<uint8_t> last(data.begin() + data.size() / 2, data.end());
+    host.queueFrame(makeParameterChunkFrame(1, 1, first));
+    loopAt(core, host, 1550, 1550000);
+    host.queueFrame(makeParameterChunkFrame(1, 1, first));
+    loopAt(core, host, 1560, 1560000);
+    loopAt(core, host, 1640, 1640000);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
+    host.queueFrame(makeParameterChunkFrame(1, 0, last));
+    for(unsigned long now = 1660; now <= 2400; now += 20) loopAt(core, host, now, now * 1000UL);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
+    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2D, 0))[5]);
+    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2D, 0))[6]);
+    TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
+}
+
+static void test_module_settings_preserve_chunks_when_retry_read_is_still_queued()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.transport.packetRateHz = 50;
+    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    core.begin(host, config, 0, 0);
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    loopAt(core, host, 1020, 1020000);
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    loopAt(core, host, 1030, 1030000);
+    loopAt(core, host, 1120, 1120000);
+    loopAt(core, host, 1530, 1530000); // Retry chunk zero is queued, but not sent yet.
+    const std::vector<uint8_t> data = makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4);
+    const std::vector<uint8_t> first(data.begin(), data.begin() + 18);
+    const std::vector<uint8_t> middle(data.begin() + 18, data.begin() + 30);
+    const std::vector<uint8_t> last(data.begin() + 30, data.end());
+    host.queueFrame(makeParameterChunkFrame(1, 2, first));
+    loopAt(core, host, 1531, 1531000);
+    host.queueFrame(makeParameterChunkFrame(1, 2, first));
+    loopAt(core, host, 1532, 1532000);
+    loopAt(core, host, 1540, 1540000);
+    host.queueFrame(makeParameterChunkFrame(1, 2, first));
+    loopAt(core, host, 1550, 1550000);
+    loopAt(core, host, 1640, 1640000);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
+
+    // Skipping a chunk, an increased remaining count, and another field cannot alter progress.
+    host.queueFrame(makeParameterChunkFrame(1, 0, last));
+    host.queueFrame(makeParameterChunkFrame(1, 3, first));
+    host.queueFrame(makeParameterChunkFrame(2, 1, middle));
+    loopAt(core, host, 1660, 1660000);
+    for(unsigned long now = 1680; now <= 2020; now += 20) {
+        const size_t before = host.writes.size();
+        loopAt(core, host, now, now * 1000UL);
+        TEST_ASSERT_EQUAL_INT(before + 1, host.writes.size());
+        TEST_ASSERT_EQUAL_HEX8(0x16, host.writes.back()[2]);
+    }
+    loopAt(core, host, 2040, 2040000);
+    loopAt(core, host, 2060, 2060000);
+    TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 3))[6]);
+    host.queueFrame(makeParameterChunkFrame(1, 1, middle));
+    loopAt(core, host, 2070, 2070000);
+    host.queueFrame(makeParameterChunkFrame(1, 2, first));
+    host.queueFrame(makeParameterChunkFrame(1, 1, middle));
+    loopAt(core, host, 2080, 2080000);
+    loopAt(core, host, 2160, 2160000);
+    TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2C, 4))[6]);
+    host.queueFrame(makeParameterChunkFrame(1, 0, last));
+    for(unsigned long now = 2180; now <= 2800; now += 20) loopAt(core, host, now, now * 1000UL);
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
+    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2D, 0))[6]);
+    TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
     TEST_ASSERT_FALSE(logsContain(host, "parameter scan timed out"));
 }
 
@@ -3147,6 +3477,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_fault_and_self_test_keep_remapped_throttle_neutral);
     RUN_TEST(test_hysteresis_returns_to_neutral_for_all_profile_directions);
     RUN_TEST(test_gimbal_curve_values_and_bounds);
+    RUN_TEST(test_gimbal_curve_matches_original_integer_rounding);
     RUN_TEST(test_throttle_curves_preserve_idle_center_and_endpoints);
     RUN_TEST(test_gimbal_curves_keep_direct_safe_outputs_and_reseed_on_recovery);
     RUN_TEST(test_gimbal_curves_preserve_neutral_direction_and_deadbands);
@@ -3238,11 +3569,22 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_overlay_beats_comm_overlay);
     RUN_TEST(test_button_pack_overlay_beats_comm_overlay);
     RUN_TEST(test_battery_overlay_and_calibration_prompt_still_override_normal_display);
+    RUN_TEST(test_expired_overlays_do_not_return_after_millis_rollover);
+    RUN_TEST(test_adc_overlay_expires_across_millis_rollover);
+    RUN_TEST(test_comm_overlay_expires_across_millis_rollover);
+    RUN_TEST(test_telemetry_received_at_millis_zero_is_fresh);
+    RUN_TEST(test_self_test_expires_across_millis_rollover);
     RUN_TEST(test_module_settings_are_discovered_and_written);
     RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
     RUN_TEST(test_unanswered_module_probes_stop_until_reconnect_or_save);
     RUN_TEST(test_module_settings_request_remaining_chunks_before_advancing_field);
     RUN_TEST(test_module_settings_retry_timed_out_chunk_before_scan_backoff);
+    RUN_TEST(test_module_settings_ignore_duplicate_chunk_after_retry);
+    RUN_TEST(test_module_start_and_save_delay_survive_millis_rollover);
+    RUN_TEST(test_module_probe_zero_deadline_still_retries_after_500ms);
+    RUN_TEST(test_module_parameter_zero_deadline_still_retries_after_500ms);
+    RUN_TEST(test_module_write_delay_survives_zero_deadline);
+    RUN_TEST(test_module_settings_preserve_chunks_when_retry_read_is_still_queued);
     RUN_TEST(test_module_settings_retry_probe_before_long_backoff);
     RUN_TEST(test_module_probe_does_not_lower_configured_500hz_runtime_rate);
     RUN_TEST(test_bootstrap_probe_waits_long_enough_for_late_first_module_reply);

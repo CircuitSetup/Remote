@@ -264,6 +264,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         uint16_t _airspeed10 = 0;
         SpeedSource _activeSpeedSource = SPEED_SOURCE_NONE;
         bool _hasValidPackState = false;
+        bool _haveLinkStats = false;
+        bool _haveGpsSpeed = false;
+        bool _haveAirspeed = false;
         bool _adcFaultActive = false;
         bool _buttonPackFaultActive = false;
         uint8_t _lastCommCode = ELRS_COMM_NONE;
@@ -280,6 +283,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool _moduleChunkActive = false;
         uint8_t _moduleChunkFieldId = 0;
         uint8_t _moduleChunkNextIndex = 0;
+        uint8_t _moduleChunksRemain = 0;
         size_t _moduleChunkLen = 0;
         uint8_t _moduleChunkData[192];
         ModuleParameterInfo _moduleTelemetryRatio;

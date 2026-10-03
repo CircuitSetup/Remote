@@ -433,6 +433,8 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
                          const ELRSSwitchRouting *switchRouting, const ELRSOutputLimits *outputLimits)
 {
     count = clampProfileCount(count);
+    if((adcHysteresis && *adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) ||
+       (throttleIdleDeadband && *throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX)) return false;
     if(profiles) {
         for(int i = 0; i < count; i++) {
             if(!elrsIsValidInputAxisProfile(profiles[i])) return false;
@@ -537,9 +539,7 @@ void crsf_loop(int battWarn)
 
 void csrf_query_status(bool &FPBUnitIsOn)
 {
-    ELRSCrsfStatus elrsStatus = elrsMode.getStatus();
-    FPBUnitIsOn = elrsStatus.fakePowerOn;
-    //calibMode = elrsStatus.calibrating;
+    FPBUnitIsOn = elrsMode.fakePowerOn();
 }
 
 #endif
