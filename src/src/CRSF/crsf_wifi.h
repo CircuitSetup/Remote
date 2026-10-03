@@ -361,27 +361,20 @@ static bool saveCRSFPortalInputSettings()
             char *end;
             bounds[side] = strtol(values[side], &end, 10);
             if(strlen(values[side]) != 4 || strspn(values[side], "0123456789") != 4 || *end ||
-               bounds[side] < ELRS_INPUT_US_MIN || bounds[side] > ELRS_INPUT_US_MAX) return false;
+               bounds[side] < (side ? ELRS_INPUT_US_MID : ELRS_INPUT_US_MIN) ||
+               bounds[side] > (side ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MID)) {
+                bounds[side] = side ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MIN;
+            }
         }
         limits[i] = {(uint16_t)bounds[0], (uint16_t)bounds[1]};
-        if(!elrsIsValidOutputLimits(limits[i])) return false;
     }
 
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         const char *value = settings.elrsSwitchCh[i];
         char *end;
         long channel = strtol(value, &end, 10);
-        if(!*value || *end || channel < 1 || channel > 16) return false;
+        if(!*value || *end || channel < 1 || channel > 16) channel = 0;
         switches.channels[i] = (uint8_t)channel;
-    }
-    if(!elrsIsValidSwitchRouting(switches)) return false;
-
-    for(const CRSFAxisSettings &axis : crsfAxisSettings) {
-        const char *value = axis.expo;
-        size_t length = strlen(value);
-        if(length < 1 || length > 3) return false;
-        for(size_t i = 0; i < length; i++) if(value[i] < '0' || value[i] > '9') return false;
-        if(atoi(value) > 100) return false;
     }
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
@@ -395,12 +388,25 @@ static bool saveCRSFPortalInputSettings()
         profile.minimum = (int16_t)atoi(axis.low);
         profile.center = (int16_t)atoi(axis.center);
         profile.maximum = (int16_t)atoi(axis.high);
-        profile.expo = (uint8_t)atoi(axis.expo);
+        if(!elrsIsValidInputAxisProfile(profile)) {
+            const ELRSInputAxisProfile defaults = elrsDefaultInputAxisProfile();
+            profile.minimum = defaults.minimum;
+            profile.center = defaults.center;
+            profile.maximum = defaults.maximum;
+        }
+        const size_t length = strlen(axis.expo);
+        profile.expo = length >= 1 && length <= 3 && strspn(axis.expo, "0123456789") == length &&
+            atoi(axis.expo) <= 100 ? (uint8_t)atoi(axis.expo) : 0;
     }
 
-    const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
-    const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
+    elrsSanitizeInputRouting(routing, switches);
+    uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
+    uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
+    if(adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
+    if(throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
+    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits)) return false;
+    syncCRSFPortalBuffers();
+    return true;
 }
 
 static void crsfReadOutputLimitParams()
@@ -876,7 +882,7 @@ static void crsfReadInputParam(const char *name, char *destBuf, size_t length, i
     long parsed = strtol(text, &end, 10);
     bool valid = *text && !*end && value.length() == strlen(text) &&
         parsed >= minval - offset && parsed <= maxval - offset;
-    // Keep invalid submissions invalid until the atomic input validator rejects them.
+    // Mark invalid input for replacement with defaults at save time.
     snprintf(destBuf, length + 1, "%ld", valid ? parsed + offset : -1L);
 }
 
