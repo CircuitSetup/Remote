@@ -483,7 +483,7 @@ uint8_t WiFiManager::connectWifi(const char *ssid, const char *pass, const char 
     _badBSSID = false;
 
     if(bssid && *bssid) {
-        if(sscanf(bssid, "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) == 6) {
+        if(siscanf(bssid, "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) == 6) {
             int j = 0;
             for(int i = 0; i < 6; i++) {
                 if(b[i] <= 255) br[i] = b[i];
