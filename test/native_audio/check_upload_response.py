@@ -63,20 +63,18 @@ namespace mime {enum{html};struct Entry{const char *mimeType;};static Entry mime
 struct Socket {
     std::string bytes;
     size_t write(const char *p,size_t n){check_blocks(); if(n){assert(p);bytes.append(p,n);}events.push_back("write");return n;}
-    size_t write_P(const char *p,size_t n){return write(p,n);}
 };
 struct WebServer {
     Socket _currentClient;String _responseHeaders;size_t _contentLength=CONTENT_LENGTH_NOT_SET;
     bool _chunked=false,_corsEnabled=false;int _currentVersion=1;
     size_t _currentClientWrite(const char*b,size_t n){return _currentClient.write(b,n);}
-    size_t _currentClientWrite_P(const char*b,size_t n){return _currentClient.write_P(b,n);}
     void sendHeader(const String&,const String&,bool first=false);
     void _prepareHeader(String&,int,const char*,size_t);
     String _responseCodeToString(int);
+    void setContentLength(size_t);
     void send(int,const char*,const String&);
-    void send_P(int,PGM_P,PGM_P);
+    void send(int,const char*,const char*);
     void sendContent(const String&);void sendContent(const char*,size_t);
-    void sendContent_P(PGM_P);void sendContent_P(PGM_P,size_t);
 };
 // WEB_METHODS
 // HTML_CONSTANTS
@@ -149,18 +147,17 @@ def main():
     args=parser.parse_args(); project=args.project.resolve(); core=args.framework/'cores/esp32'
     app=(project/'src/remote_wifi.cpp').read_text(); web=(args.framework/'libraries/WebServer/src/WebServer.cpp').read_text()
     target=function(app,'static void handleUploadDone()')
-    oldsend='String str(buf);\n    wm.server->send(200, "text/html", str);'
-    new='wm.server->send_P(200, "text/html", buf);'
+    oldsend='wm.server->send(200, "text/html", buf);'
+    new='wm.server->setContentLength(strlen(buf));\n    wm.server->send(200, "text/html", "");\n    wm.server->sendContent(buf, strlen(buf));'
     baseline=target.replace(new,oldsend)
     methods=[ 'void WebServer::sendHeader(const String& name, const String& value, bool first)',
               'void WebServer::_prepareHeader(String& response, int code, const char* content_type, size_t contentLength)',
               'String WebServer::_responseCodeToString(int code)',
+              'void WebServer::setContentLength(const size_t contentLength)',
               'void WebServer::send(int code, const char* content_type, const String& content)',
-              'void WebServer::send_P(int code, PGM_P content_type, PGM_P content)',
+              'void WebServer::send(int code, const char* content_type, const char* content)',
               'void WebServer::sendContent(const String& content)',
-              'void WebServer::sendContent(const char* content, size_t contentLength)',
-              'void WebServer::sendContent_P(PGM_P content)',
-              'void WebServer::sendContent_P(PGM_P content, size_t size)' ]
+              'void WebServer::sendContent(const char* content, size_t contentLength)' ]
     html='\n'.join(re.findall(r'^#define AA_(?:TITLE|ICON) .*$',app,re.M))+'\n'
     html+=app[app.index('static const char acul_part1[]'):app.index('static const char tcdList[]')]
     for name in ('myTitle','myHead'):html+=re.search(r'^static const char '+name+r'\[\].*$',app,re.M)[0]+'\n'

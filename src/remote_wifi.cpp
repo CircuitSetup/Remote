@@ -2611,7 +2611,9 @@ static void handleUploadDone()
     }
     */
     
-    wm.server->send_P(200, "text/html", buf);
+    wm.server->setContentLength(strlen(buf));
+    wm.server->send(200, "text/html", "");
+    wm.server->sendContent(buf, strlen(buf));
 
     // Reboot required even for mp3 upload, because for most files, we check
     // during boot if they exist (to avoid repeatedly failing open() calls)
