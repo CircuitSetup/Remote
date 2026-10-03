@@ -103,12 +103,16 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool _levelMeterOnFakePower = false;
         bool _haveAds = false;
         bool _oeActiveLow = true;
-        bool _haveLoggedAxes = false;
         bool _haveFilteredAxes = false;
 
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
         int16_t _filteredAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
+        #ifdef REMOTE_DBG
+        bool _haveLoggedAxes = false;
+        uint32_t _lastAxesLogAt = 0;
+        uint32_t _lastProbeLogAt = 0;
         int16_t _lastLoggedAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
+        #endif
 };
 
 extern ELRSCrsfMode elrsMode;

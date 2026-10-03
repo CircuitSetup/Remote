@@ -73,7 +73,11 @@ void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransport
     _status.packetRateHz = _config.packetRateHz;
     _status.invertLine = _config.invertLine;
     _status.debugEnabled = _config.debugEnabled;
+#ifndef REMOTE_CRSF_NO_RAW_DUMPS
     _status.rawFrameDebugEnabled = _config.rawFrameDebugEnabled;
+#else
+    _status.rawFrameDebugEnabled = false;
+#endif
     _status.oeActiveLow = _config.oeActiveLow;
     _status.telemetryActive = false;
     _status.replyActive = false;
@@ -183,12 +187,14 @@ void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *fram
         return;
     }
 
+#ifndef REMOTE_CRSF_NO_RAW_DUMPS
     bool logRawFrame = shouldLogRawFrame(frame, frameLen, resetReplyWindow);
 
     if(logRawFrame) {
         logf(hal, "ELRS/CRSF transport: OE on @%luus", nowUs);
         logFrame(hal, prefix, frame, frameLen, true);
     }
+#endif
 
     hal.setDriverEnabled(true);
     hal.serialWrite(frame, frameLen);
@@ -208,9 +214,11 @@ void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *fram
         _echoSuppressUntil = now + ((replyTimeoutMs > 5U) ? replyTimeoutMs : 5U);
     }
 
+#ifndef REMOTE_CRSF_NO_RAW_DUMPS
     if(logRawFrame) {
         logf(hal, "ELRS/CRSF transport: OE off @%luus", nowUs);
     }
+#endif
 
     _status.lastTxAt = now;
     if(resetReplyWindow) {
@@ -270,6 +278,7 @@ unsigned long ELRSCrsfTransport::effectiveReplyTimeoutMs(bool resetReplyWindow) 
     return _config.replyTimeoutMs;
 }
 
+#ifndef REMOTE_CRSF_NO_RAW_DUMPS
 bool ELRSCrsfTransport::shouldLogRawFrame(const uint8_t *frame, size_t frameLen, bool resetReplyWindow) const
 {
     if(!_status.rawFrameDebugEnabled || !frame || frameLen < 3) {
@@ -282,6 +291,7 @@ bool ELRSCrsfTransport::shouldLogRawFrame(const uint8_t *frame, size_t frameLen,
 
     return (frame[2] != CRSF_FRAME_RC_CHANNELS_PACKED);
 }
+#endif
 
 const ELRSCrsfTransportConfig &ELRSCrsfTransport::config() const
 {
@@ -352,9 +362,11 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
                 _status.lastRawFrame.length = (uint8_t)expectLen;
                 _status.lastRawFrame.crcValid = crcValid;
 
+#ifndef REMOTE_CRSF_NO_RAW_DUMPS
                 if(shouldLogRawFrame(_rxFrame, expectLen, false)) {
                     logFrame(hal, "ELRS/CRSF RX", _rxFrame, expectLen, crcValid);
                 }
+#endif
 
                 if(crcValid) {
                     // These are handset-to-module frames, including delayed
@@ -543,6 +555,7 @@ void ELRSCrsfTransport::logf(ELRSCrsfTransportHal &hal, const char *fmt, ...) co
     hal.logMessage(buffer);
 }
 
+#ifndef REMOTE_CRSF_NO_RAW_DUMPS
 void ELRSCrsfTransport::logFrame(ELRSCrsfTransportHal &hal, const char *prefix, const uint8_t *frame, size_t frameSize, bool crcValid) const
 {
     char buffer[256];
@@ -566,6 +579,7 @@ void ELRSCrsfTransport::logFrame(ELRSCrsfTransportHal &hal, const char *prefix, 
 
     hal.logMessage(buffer);
 }
+#endif
 
 uint8_t ELRSCrsfTransport::crc8D5(const uint8_t *data, size_t len)
 {

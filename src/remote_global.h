@@ -65,6 +65,10 @@
 
 #ifdef HAVE_CRSF
 #define V_CRSF "C"
+// Firmware raw dumps require an explicit debug build; native tests can opt in at runtime.
+#if defined(ARDUINO) && !defined(REMOTE_DBG_CRSF_RAW)
+#define REMOTE_CRSF_NO_RAW_DUMPS
+#endif
 #else
 #define V_CRSF ""
 #endif 
