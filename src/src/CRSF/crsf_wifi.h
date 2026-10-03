@@ -253,8 +253,8 @@ static void crsf_wifi_saveParamsCallback()
     crsfReadOutputLimitParams();
     crsfReadExpoParams();
     if(opModeCRSF) {
-        getServerParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
-        getServerParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, ELRS_INPUT_TOLERANCE_DEFAULT);
+        crsfReadInputParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, 0);
+        crsfReadInputParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, 0);
         crsfReadInputParam("crrlo", settings.elrsRollLow, 5, 0, 2047, 0);
         crsfReadInputParam("crrct", settings.elrsRollCtr, 5, 0, 2047, 0);
         crsfReadInputParam("crrhi", settings.elrsRollHigh, 5, 0, 2047, 0);
