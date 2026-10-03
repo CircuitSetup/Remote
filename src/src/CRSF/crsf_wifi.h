@@ -26,13 +26,13 @@ static void crsfReadInputParam(const char *name, char *destBuf, size_t length, i
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
 static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel);
 
-static const char *cOpModeCustHTMLSrc[4] = {
+static const char * const cOpModeCustHTMLSrc[4] = {
     "'>Operation mode",
     "copm",
     ">Legacy%s1'",
     ">ELRS/CRSF%s"
 };
-static const char *cPktRateCustHTMLSrc[7] = {
+static const char * const cPktRateCustHTMLSrc[7] = {
     "'>ELRS Packet rate",
     "cpktr",
     ">50 Hz%s1'",
@@ -41,13 +41,13 @@ static const char *cPktRateCustHTMLSrc[7] = {
     ">250 Hz%s4'",
     ">500 Hz%s"
 };
-static const char *cSpdUnitCustHTMLSrc[4] = {
+static const char * const cSpdUnitCustHTMLSrc[4] = {
     "'>Speed units",
     "cspdu",
     ">km/h%s1'",
     ">mph%s"
 };
-static const char *cTlmRatioCustHTMLSrc[9] = {
+static const char * const cTlmRatioCustHTMLSrc[9] = {
     "'>Telemetry Ratio",
     "ctlmr",
     ">Std%s1'",
@@ -58,7 +58,7 @@ static const char *cTlmRatioCustHTMLSrc[9] = {
     ">1:32%s6'",
     ">Off%s"
 };
-static const char *cMaxPowerCustHTMLSrc[8] = {
+static const char * const cMaxPowerCustHTMLSrc[8] = {
     "'>Max Power",
     "cmpwr",
     ">10 mW%s1'",
@@ -68,13 +68,13 @@ static const char *cMaxPowerCustHTMLSrc[8] = {
     ">500 mW%s5'",
     ">1000 mW%s"
 };
-static const char *cDynPowerCustHTMLSrc[4] = {
+static const char * const cDynPowerCustHTMLSrc[4] = {
     "'>Dynamic Power",
     "cdynp",
     ">Off%s1'",
     ">Dyn%s"
 };
-static const char *cChannelCustHTMLSrc[16] = {
+static const char * const cChannelCustHTMLSrc[16] = {
     ">CH1%s1'",
     ">CH2%s2'",
     ">CH3%s3'",
@@ -104,12 +104,12 @@ enum CRSFSelectFieldId : uint8_t {
 };
 
 struct CRSFSelectField {
-    const char **html;
+    const char * const *html;
     int count;
     char *setting;
 };
 
-static CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
+static const CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
     { cOpModeCustHTMLSrc, 4, settings.opMode },
     { cPktRateCustHTMLSrc, 7, settings.elrsPktRate },
     { cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit },
@@ -129,7 +129,7 @@ struct CRSFAxisSettings {
     char *expo;
 };
 
-static CRSFAxisSettings crsfAxisSettings[] = {
+static const CRSFAxisSettings crsfAxisSettings[] = {
     { ELRS_GIMBAL_INPUT_AILERON, settings.elrsRollCh, settings.elrsRollRev, settings.elrsRollLow, settings.elrsRollCtr, settings.elrsRollHigh, "crlexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_AILERON] },
     { ELRS_GIMBAL_INPUT_ELEVATOR, settings.elrsPitchCh, settings.elrsPitchRev, settings.elrsPitchLow, settings.elrsPitchCtr, settings.elrsPitchHigh, "cptexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_ELEVATOR] },
     { ELRS_GIMBAL_INPUT_THROTTLE, settings.elrsThrCh, settings.elrsThrRev, settings.elrsThrLow, settings.elrsThrCtr, settings.elrsThrHigh, "cthexp", settings.elrsAxisExpo[ELRS_GIMBAL_INPUT_THROTTLE] },
@@ -184,7 +184,7 @@ WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
 WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
-WiFiManagerParameter *crsfParmArray[] = {
+WiFiManagerParameter * const crsfParmArray[] = {
       &custom_crsfom,
       &custom_ss_crsf,
       &custom_crsfstatus,
@@ -361,27 +361,20 @@ static bool saveCRSFPortalInputSettings()
             char *end;
             bounds[side] = strtol(values[side], &end, 10);
             if(strlen(values[side]) != 4 || strspn(values[side], "0123456789") != 4 || *end ||
-               bounds[side] < ELRS_INPUT_US_MIN || bounds[side] > ELRS_INPUT_US_MAX) return false;
+               bounds[side] < (side ? ELRS_INPUT_US_MID : ELRS_INPUT_US_MIN) ||
+               bounds[side] > (side ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MID)) {
+                bounds[side] = side ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MIN;
+            }
         }
         limits[i] = {(uint16_t)bounds[0], (uint16_t)bounds[1]};
-        if(!elrsIsValidOutputLimits(limits[i])) return false;
     }
 
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         const char *value = settings.elrsSwitchCh[i];
         char *end;
         long channel = strtol(value, &end, 10);
-        if(!*value || *end || channel < 1 || channel > 16) return false;
+        if(!*value || *end || channel < 1 || channel > 16) channel = 0;
         switches.channels[i] = (uint8_t)channel;
-    }
-    if(!elrsIsValidSwitchRouting(switches)) return false;
-
-    for(const CRSFAxisSettings &axis : crsfAxisSettings) {
-        const char *value = axis.expo;
-        size_t length = strlen(value);
-        if(length < 1 || length > 3) return false;
-        for(size_t i = 0; i < length; i++) if(value[i] < '0' || value[i] > '9') return false;
-        if(atoi(value) > 100) return false;
     }
 
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing);
@@ -395,12 +388,25 @@ static bool saveCRSFPortalInputSettings()
         profile.minimum = (int16_t)atoi(axis.low);
         profile.center = (int16_t)atoi(axis.center);
         profile.maximum = (int16_t)atoi(axis.high);
-        profile.expo = (uint8_t)atoi(axis.expo);
+        if(!elrsIsValidInputAxisProfile(profile)) {
+            const ELRSInputAxisProfile defaults = elrsDefaultInputAxisProfile();
+            profile.minimum = defaults.minimum;
+            profile.center = defaults.center;
+            profile.maximum = defaults.maximum;
+        }
+        const size_t length = strlen(axis.expo);
+        profile.expo = length >= 1 && length <= 3 && strspn(axis.expo, "0123456789") == length &&
+            atoi(axis.expo) <= 100 ? (uint8_t)atoi(axis.expo) : 0;
     }
 
-    const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
-    const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
+    elrsSanitizeInputRouting(routing, switches);
+    uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
+    uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
+    if(adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
+    if(throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
+    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits)) return false;
+    syncCRSFPortalBuffers();
+    return true;
 }
 
 static void crsfReadOutputLimitParams()
@@ -471,7 +477,7 @@ static void crsf_wifi_updateConfigPortalValues()
     // all others done on-the-fly
 }
 
-static const char *wmBuildSelectOneBased(const char *dest, int op, const char **src, int count, char *setting, bool indent = false)
+static const char *wmBuildSelectOneBased(const char *dest, int op, const char * const *src, int count, char *setting, bool indent = false)
 {
     char tempSetting[3];
     int selectValue = atoi(setting);
@@ -876,7 +882,7 @@ static void crsfReadInputParam(const char *name, char *destBuf, size_t length, i
     long parsed = strtol(text, &end, 10);
     bool valid = *text && !*end && value.length() == strlen(text) &&
         parsed >= minval - offset && parsed <= maxval - offset;
-    // Keep invalid submissions invalid until the atomic input validator rejects them.
+    // Mark invalid input for replacement with defaults at save time.
     snprintf(destBuf, length + 1, "%ld", valid ? parsed + offset : -1L);
 }
 
