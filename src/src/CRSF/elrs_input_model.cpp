@@ -1,3 +1,7 @@
+#include "../../remote_global.h"
+
+#ifdef HAVE_CRSF
+
 #include "elrs_input_model.h"
 
 namespace {
@@ -292,3 +296,5 @@ void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &swi
         switches = elrsDefaultSwitchRouting();
     }
 }
+
+#endif // HAVE_CRSF
