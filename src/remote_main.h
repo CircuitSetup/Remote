@@ -101,6 +101,11 @@ extern bool haveNewBoard;
 
 #ifdef HAVE_CRSF
 extern bool opModeCRSF;
+extern bool opModePropCRSF;
+bool crsfLocalActionsEnabled();
+void serviceCRSF(bool withLocalActions = true);
+void processCRSFLocalSwitches(uint16_t states, uint16_t validMask);
+void queueCRSFLocalSwitches(uint16_t states, uint16_t validMask);
 #endif
 
 extern uint32_t csf;

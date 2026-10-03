@@ -938,10 +938,17 @@ static bool mpren_checkFN(const char *buf)
 static void mpren_looper(bool isSetup, bool checking, int fileNum)
 {
     unsigned long now = millis();
+    #ifdef HAVE_CRSF
+    if(opModeCRSF) serviceCRSF(false);
+    #endif
 
     if(now - renNow1 > 250) {
         wifi_loop();
+        #ifdef HAVE_CRSF
+        delay(opModeCRSF ? 1 : 10);
+        #else
         delay(10);
+        #endif
         renNow1 = now;
     }
     if(!checking && (now - renNow2 > 2000)) {

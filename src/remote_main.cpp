@@ -68,6 +68,7 @@
 #include "remote_wifi.h"
 #ifdef HAVE_CRSF
 #include "src/CRSF/crsf_kludge.h"
+#include "src/CRSF/crsf_settings.h"
 #endif
 
 // i2c slave addresses
@@ -151,6 +152,11 @@ bool showUpdAvail = true;
 
 #ifdef HAVE_CRSF
 bool        opModeCRSF = false;
+bool        opModePropCRSF = false;
+static bool crsfStarted = false;
+static uint16_t crsfLocalStates = 0, crsfLocalValidMask = 0;
+static uint16_t crsfLocalInvalidMask = 0;
+static bool crsfLocalPending = false;
 #endif
 
 bool        remoteAllowed = false;
@@ -495,6 +501,15 @@ static uint32_t commandQueue[16] = { 0 };
     ((a)[(b)+3]) = ((uint32_t)(c)) >> 24; 
 #endif 
 
+#ifdef HAVE_CRSF
+static void setupCRSF();
+#endif
+static void handleButtonAEvent();
+static void handleButtonBEvent();
+static void handleButtonPackEvents();
+static void updateDelayedSave();
+static void setupLocalButtons();
+static void setupButtonPack();
 static void displayVolume();
 static void increaseBrightness();
 static void decreaseBrightness();
@@ -722,7 +737,8 @@ void main_boot2()
 
     #ifdef HAVE_CRSF
     if(haveNewBoard) {
-        opModeCRSF = evalBool(settings.opMode);
+        opModeCRSF = atoi(settings.opMode) != 0;
+        opModePropCRSF = atoi(settings.opMode) == 2;
     }
     #endif
 }
@@ -810,46 +826,37 @@ void main_setup()
         // We never return here. The ESP is rebooted.
     }
 
+    setupLocalButtons();
+    havePOFFsnd = check_file_SD(powerOffSnd);
+    haveBOFFsnd = check_file_SD(brakeOffSnd);
+
+    // Local music actions are available in either control mode.
+    switchMusicFolder(musFolderNum, true);
+
     #ifdef HAVE_CRSF
-    if(opModeCRSF) {
+    if(opModeCRSF && !opModePropCRSF) {
         Serial.println("Control mode: ELRS/CRSF");
 
         showUpd();
 
         if((useBPack = butPack.begin())) {
             butPack.setScanInterval(50);
+            setupButtonPack();
         } else {
             #ifdef REMOTE_DBG
             Serial.println("ButtonPack not detected");
             #endif
         }
 
-        crsf_begin(
-            (uint16_t)crsf_getPacketRate(atoi(settings.elrsPktRate)),
-            crsf_getSpeedUnits(atoi(settings.elrsSpdUnit)),
-            crsf_getTelemetryRatio(atoi(settings.elrsTlmRatio)),
-            crsf_getMaxPower(atoi(settings.elrsMaxPower)),
-            crsf_getDynamicPower(atoi(settings.elrsDynPower)),
-            useBPack ? &butPack : NULL,
-            useBPack,
-            &remdisplay,
-            &pwrled,
-            &bLvLMeter,
-            &remledStop,
-            usePwrLED,
-            useLvlMtr,
-            pwrLEDonFP,
-            LvLMtronFP,
-            wifiOnFakePowerOn
-        );
+        csf |= CSF_OFF;
+        if(crsfLocalActionsEnabled()) bttfn_setup();
+
+        setupCRSF();
         
         return;
     }
     #endif
     
-    // Init music player (don't check for SD here)
-    switchMusicFolder(musFolderNum, true);
-
     if(evalBool(settings.playTUT)) {
         throttleUpSoundThreshold = 860;
         throttleUpSoundThresholdP0 = 86;
@@ -859,8 +866,6 @@ void main_setup()
     }
     playClicks = evalBool(settings.playClick);
 
-    havePOFFsnd = check_file_SD(powerOffSnd);
-    haveBOFFsnd = check_file_SD(brakeOffSnd);
     haveThUp = check_file_SD(throttleUpSnd);
 
     // Initialize throttle
@@ -881,16 +886,7 @@ void main_setup()
     #endif
 
     // Initialize switches and buttons
-    powerswitch.begin(FPOWER_IO_PIN, true, true);  // active low, pullup
-    powerswitch.setTiming(50, 50);
-    powerswitch.attachLongPressStart(powKeyPressed);
-    powerswitch.attachLongPressStop(powKeyLongPressStop);
     powerswitch.scan();
-
-    brake.begin(STOPS_IO_PIN, false, false);       // active high, pulldown on board    
-    brake.setTiming(50, 50);
-    brake.attachLongPressStart(brakeKeyPressed);
-    brake.attachLongPressStop(brakeKeyLongPressStop);
     brake.scan();
 
     calib.begin(CALIBB_IO_PIN, true, true);        // active low, pullup
@@ -902,41 +898,14 @@ void main_setup()
     calib.attachELongPressStart(calibKeyELongPressStart);
     calib.attachELongPressStop(calibKeyELongPressEnd);
 
-    // Button A ("O.O")
-    buttonA.begin(BUTA_IO_PIN, true, true);        // active low, pullup
-    buttonA.setTiming(50, 2000);
-    buttonA.attachPressDown(buttonAKeyPressed);
-    buttonA.attachPressEnd(buttonAKeyPressStop);
-    buttonA.attachLongPressStart(buttonAKeyLongPressed);
-    buttonA.attachLongPressStop(buttonAKeyPressed);
-
-    // Button B ("RESET")
-    buttonB.begin(BUTB_IO_PIN, true, true);            // active low, pullup
-    buttonB.setTiming(50, 2000);
-    buttonB.attachPressDown(buttonBKeyPressed);
-    buttonB.attachPressEnd(buttonBKeyPressStop);
-    buttonB.attachLongPressStart(buttonBKeyLongPressed);
-    buttonB.attachLongPressStop(buttonBKeyPressed);
-
     #ifdef ALLOW_DIS_UB
     if(!evalBool(settings.disBPack)) {
     #endif
         if((useBPack = butPack.begin())) {
             butPack.setScanInterval(50);
-            butPack.attachPressDown(butPackKeyPressed);
-            butPack.attachPressEnd(butPackKeyPressStop);
-            butPack.attachLongPressStart(butPackKeyLongPressed);
-            butPack.attachLongPressStop(butPackKeyLongPressStop);
+            setupButtonPack();
             for(int i = 0; i < butPack.getPackSize(); i++) {
-                isbutPackKeyPressed[i] = false;
-                isbutPackKeyLongPressed[i] = false;
-                isbutPackKeyChange[i] = false;
-                if(buttonPackMomentary[i]) {
-                    butPack.setTiming(i, 50, 2000);
-                } else {
-                    butPack.setTiming(i, 50, 50);
-                    initScanBP = true;
-                }
+                if(!buttonPackMomentary[i]) initScanBP = true;
             }
             if(initScanBP) {
                 butPack.scan();
@@ -1009,6 +978,12 @@ void main_setup()
 
     // Unset busy
     remBusy--;
+    #ifdef HAVE_CRSF
+    if(opModePropCRSF) {
+        Serial.println("Control mode: Prop controls + ELRS/CRSF");
+        setupCRSF();
+    }
+    #endif
 }
 
 void main_loop()
@@ -1017,14 +992,15 @@ void main_loop()
 
     #ifdef HAVE_CRSF
     if(opModeCRSF) {
-        #ifdef HAVE_PM
-        battWarn = pwrMon.loop();
-        #else
-        battWarn = 0;
-        #endif
-        crsf_loop(battWarn);
-        
-        return;
+        serviceCRSF();
+        if(!opModePropCRSF) {
+            updateDelayedSave();
+            if(triggerCompleteUpdate || triggerRefill || (useBTTFN && now - lastCommandSent > 10*1000)) {
+                triggerCompleteUpdate = false;
+                bttfn_remote_send_combined(powerState, brakeState, 0);
+            }
+            return;
+        }
     }
     #endif
 
@@ -1295,171 +1271,9 @@ void main_loop()
     //        Short press: Decrease volume
     //        Long press: Decrease brightness or relinquish Fake-Power control (depending on option)
     buttonA.scan();
-    if(isbuttonAKeyChange) {
-        isbuttonAKeyChange = false;
-        if(!(csf & CSF_OFF)) {
-            if(!(csf & (CSF_TCDINP0|CSF_TT))) {
-                if(useBPack) {
-                    if(isbuttonAKeyPressed) {
-                        if(ooTT) {
-                            brakeWarning = false;
-                            if(!triggerTTonThrottle) {
-                                // Here we only trigger a stand-alone TT
-                                // if we are not connected. If the TCD is
-                                // busy, we refuse. (Different to below
-                                // because when hitting 88 there is no time
-                                // for the TCD to change its busy status
-                                // and therefore not chance for an unwanted
-                                // dual-tt.)
-                                triggerIntTTonThrottle = 0;
-                                if(!bttfn_trigger_tt(true)) {
-                                    triggerTTonThrottle = 1;
-                                    triggerIntTTonThrottle = 1;
-                                } else if(tcdIsBusy) {
-                                    play_bad();
-                                } else {
-                                    triggerTTonThrottle = 1;
-                                }
-                                if(triggerTTonThrottle) {
-                                    play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD);
-                                }
-                            } else if(triggerTTonThrottle == 1) {
-                                triggerTTonThrottle = 0;
-                                play_bad();
-                            }
-                        } else {
-                            if(haveMusic) {
-                                mp_prev(mpActive);
-                            } else {
-                                play_bad();
-                            }
-                        }
-                    } else if(isbuttonAKeyLongPressed) {
-                        if(haveMusic) {
-                            if(mpActive) {
-                                mp_stop();
-                            } else {
-                                mp_play();
-                            }
-                        } else {
-                            play_bad();
-                        }
-                    }
-                #ifdef ALLOW_DIS_UB
-                } else {
-                    if(isbuttonAKeyPressed) {
-                        play_key(3);
-                    } else if(isbuttonAKeyLongPressed) {
-                        if(haveMusic) {
-                            if(mpActive) {
-                                mp_stop();
-                            } else {
-                                mp_play();
-                            }
-                        } else {
-                            play_bad();
-                        }
-                    }
-                #endif  // ALLOW_DIS_UB
-                }
-            }
-        } else if(!(csf & CSF_CALIBMD)) {           // When off, but not in calibMode
-            if(isbuttonAKeyPressed) {
-                if(!useRotEncVol) {
-                    // Do not change, just display on first press (within 10 seconds)
-                    if(volchgtimer && (millis() - volchgtimer < 10*1000)) {
-                        increaseVolume();
-                    }
-                    displayVolume();
-                    offDisplayTimer = true;
-                    offDisplayNow = volchgtimer = millisNonZero();
-                    play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD);
-                }
-            } else if(isbuttonAKeyLongPressed) {
-                if(ooresBri) {
-                    // Do not change, just display on first press (within 10 seconds)
-                    if(brichgtimer && (millis() - brichgtimer < 10*1000)) {
-                        increaseBrightness();
-                    }
-                    displayBrightness();
-                    offDisplayTimer = true;
-                    offDisplayNow = brichgtimer = millisNonZero();
-                } else {
-                    powerMaster = true;
-                    updateVisMode();
-                    triggerSaveVis();
-                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
-                    play_file("/pmon.mp3", PA_INTRMUS|PA_ALLOWSD);
-                }
-            }
-        }
-    }
+    handleButtonAEvent();
     buttonB.scan();
-    if(isbuttonBKeyChange) {
-        isbuttonBKeyChange = false;
-        if(!(csf & CSF_OFF)) {
-            if(!(csf & (CSF_TCDINP0|CSF_TT))) {
-                if(useBPack) {
-                    if(isbuttonBKeyPressed) {
-                        if(haveMusic) {
-                            mp_next(mpActive);
-                        } else {
-                            play_bad();
-                        }
-                    } else if(isbuttonBKeyLongPressed) {
-                        if(resAT) {
-                            toggleAutoThrottle();
-                            play_file(autoThrottle ? "/ok.mp3" : "/cancel.mp3", PA_INTRMUS|PA_ALLOWSD);
-                        } else {
-                            mp_makeShuffle(!aud_state.mpShuffle);
-                            play_file(aud_state.mpShuffle ? "/shufon.mp3" : "/shufoff.mp3", PA_ALLOWSD);
-                        }
-                    }
-                #ifdef ALLOW_DIS_UB
-                } else {
-                    if(isbuttonBKeyPressed) {
-                        play_key(6);
-                    } else if(isbuttonBKeyLongPressed) {
-                        if(haveMusic) {
-                            mp_next(mpActive);
-                        } else {
-                            play_bad();
-                        }
-                    }
-                #endif  // ALLOW_DIS_UB
-                }
-            }
-        } else if(!(csf & CSF_CALIBMD)) {           // When off, but not in calibMode
-            if(isbuttonBKeyPressed) {
-                if(!useRotEncVol) {
-                    // Do not change, just display on first press (within 10 seconds)
-                    if(volchgtimer && (millis() - volchgtimer < 10*1000)) {
-                        decreaseVolume();
-                    }
-                    displayVolume();
-                    offDisplayTimer = true;
-                    offDisplayNow = volchgtimer = millisNonZero();
-                    play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD);
-                }
-            } else if(isbuttonBKeyLongPressed) {
-                if(ooresBri) {
-                    // Do not change, just display on first press (within 10 seconds)
-                    if(brichgtimer && (millis() - brichgtimer < 10*1000)) { 
-                        decreaseBrightness();
-                    }
-                    displayBrightness();
-                    offDisplayTimer = true;
-                    offDisplayNow = brichgtimer = millisNonZero();
-                } else {
-                    powerMaster = false;
-                    updateVisMode();
-                    triggerSaveVis();
-                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
-                    play_file("/pmoff.mp3", PA_INTRMUS|PA_ALLOWSD);
-                }
-            }
-        }
-    }
+    handleButtonBEvent();
 
     // Calibration button:
     //    Fake-power is off: Throttle calibration
@@ -1522,7 +1336,12 @@ void main_loop()
                     remdisplay.setText("CAL");
                     remdisplay.show();
                     remdisplay.on();
-                    delay((pwrLEDonFP || LvLMtronFP) ? 2000 : 200);    // Stabilize voltage after turning on display, LED, level meter
+                    // Stabilize voltage after turning on display, LED, level meter.
+                    #ifdef HAVE_CRSF
+                    if(opModePropCRSF) mydelay((pwrLEDonFP || LvLMtronFP) ? 2000 : 200, true);
+                    else
+                    #endif
+                    delay((pwrLEDonFP || LvLMtronFP) ? 2000 : 200);
                     offDisplayTimer = true;
                     offDisplayNow = millis();
                     if(useRotEnc) {
@@ -1550,6 +1369,10 @@ void main_loop()
                     if(pwrLEDonFP || LvLMtronFP) {
                         showWaitSequence();
                         remdisplay.on();
+                        #ifdef HAVE_CRSF
+                        if(opModePropCRSF) mydelay(2000, true);
+                        else
+                        #endif
                         delay(2000);
                     }
                     remdisplay.setText("UP");
@@ -1606,35 +1429,7 @@ void main_loop()
     // Optional button pack: Up to 8 momentary buttons or maintained switches
     if(useBPack) {
         butPack.scan();
-        for(int i = 0; i < butPack.getPackSize(); i++) {
-            if(isbutPackKeyChange[i]) {
-                isbutPackKeyChange[i] = false;
-                if(!(csf & CSF_OFF)) {
-                    if(!(csf & (CSF_TCDINP0|CSF_TT))) {
-                        if(!buttonPackMomentary[i]) {
-                            // Maintained: 
-                            // If "audio on ON only" checked, play if switched ON, and stop
-                            // on OFF if same sound triggered by ON is still playing.
-                            // If "audio on ON only" unchecked: Every flip triggers keyX 
-                            // playback. A second flip while the same keyX sound is still 
-                            // being played, causes a stop.
-                            buttonPackActionPress(i, (buttonPackMtOnOnly[i] && !isbutPackKeyPressed[i]));
-                        } else {
-                            // Momentary: Press triggers keyX, long press keyXl.
-                            // A second press/longpress while the same keyX(l) 
-                            // sound is still being played, causes a stop.
-                            if(isbutPackKeyPressed[i]) {
-                                buttonPackActionPress(i, false);
-                            } else if(isbutPackKeyLongPressed[i]) {
-                                buttonPackActionLongPress(i);
-                            }
-                        }
-                    }
-                } else {
-                    flushDelayedSave();
-                }
-            } 
-        }
+        handleButtonPackEvents();
     }
 
     // CSF_TCDINP0 is set while CSF_TT is still unset
@@ -2136,9 +1931,351 @@ void main_loop()
     }
     #endif
 
+    updateDelayedSave();
+
+    if(bootFlag) {
+        bootFlag = false;
+        if(sendBootStatus) {
+            bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+            sendBootStatus = false;
+        }
+    }
+}
+
+#ifdef HAVE_CRSF
+static void setupCRSF()
+{
+    crsfStarted = crsf_begin(
+        (uint16_t)crsf_getPacketRate(atoi(settings.elrsPktRate)),
+        crsf_getSpeedUnits(atoi(settings.elrsSpdUnit)),
+        crsf_getTelemetryRatio(atoi(settings.elrsTlmRatio)),
+        crsf_getMaxPower(atoi(settings.elrsMaxPower)),
+        crsf_getDynamicPower(atoi(settings.elrsDynPower)),
+        useBPack ? &butPack : NULL,
+        useBPack,
+        &remdisplay,
+        &pwrled,
+        &bLvLMeter,
+        &remledStop,
+        usePwrLED,
+        useLvlMtr,
+        pwrLEDonFP,
+        LvLMtronFP,
+        wifiOnFakePowerOn
+    );
+}
+
+void serviceCRSF(bool withLocalActions)
+{
+    static bool servicing = false;
+    if(!crsfStarted || servicing) return;
+    servicing = true;
+    if(!opModePropCRSF) {
+        #ifdef HAVE_PM
+        battWarn = pwrMon.loop();
+        #else
+        battWarn = 0;
+        #endif
+    }
+    crsf_loop(battWarn);
+    if(opModePropCRSF) {
+        int16_t axes[4] = { 0 };
+        const bool valid = readELRSCurrentRawAxes(axes);
+        rotEnc.useSampledPosition(axes[3], valid);
+    }
+    servicing = false;
+    if(withLocalActions && crsfLocalPending) {
+        crsfLocalPending = false;
+        const uint16_t validMask = crsfLocalValidMask & ~crsfLocalInvalidMask;
+        crsfLocalInvalidMask = 0;
+        processCRSFLocalSwitches(crsfLocalStates, validMask);
+    }
+}
+
+void queueCRSFLocalSwitches(uint16_t states, uint16_t validMask)
+{
+    // Dispatch after the core returns so network waits can keep serving CRSF.
+    crsfLocalStates = states;
+    crsfLocalValidMask = validMask;
+    // Retain read failures across network waits so pending presses are cancelled.
+    crsfLocalInvalidMask |= ~validMask & 0x0fff;
+    crsfLocalPending = true;
+}
+
+bool crsfLocalActionsEnabled()
+{
+    uint8_t localActions[12];
+    loadELRSInputConfig(NULL, 0, NULL, NULL, NULL, NULL, NULL, localActions);
+    for(int i = 0; i < 12; i++) {
+        if(localActions[i]) return true;
+    }
+    return false;
+}
+
+void processCRSFLocalSwitches(uint16_t states, uint16_t validMask)
+{
+    powerState = (states & (1 << 1)) != 0;
+    brakeState = (states & (1 << 0)) != 0;
+    if(powerState) csf &= ~CSF_OFF;
+    else csf |= CSF_OFF;
+
+    if(!(validMask & (1 << 1))) isFPBKeyChange = false;
+    if(!(validMask & (1 << 0))) isBrakeKeyChange = false;
+    powerswitch.scan(powerState, (validMask & (1 << 1)) != 0);
+    brake.scan(brakeState, (validMask & (1 << 0)) != 0);
+    if(isFPBKeyChange) {
+        isFPBKeyChange = false;
+        triggerCompleteUpdate = true;
+        if(isFPBKeyPressed) {
+            play_file(powerOnSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL);
+        } else {
+            mp_stop(true);
+            stopAudio();
+            flushDelayedSave();
+            if(havePOFFsnd) play_file(powerOffSnd, PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL);
+        }
+    }
+    if(isBrakeKeyChange) {
+        isBrakeKeyChange = false;
+        triggerCompleteUpdate = true;
+        if(powerState) {
+            if(isBrakeKeyPressed) play_file(brakeOnSnd, PA_ALLOWSD|PA_DYNVOL);
+            else if(haveBOFFsnd) play_file(brakeOffSnd, PA_ALLOWSD|PA_DYNVOL);
+        }
+    }
+
+    if(!(validMask & (1 << 2))) isbuttonAKeyChange = false;
+    if(!(validMask & (1 << 3))) isbuttonBKeyChange = false;
+    buttonA.scan((states & (1 << 2)) != 0, (validMask & (1 << 2)) != 0);
+    buttonB.scan((states & (1 << 3)) != 0, (validMask & (1 << 3)) != 0);
+    handleButtonAEvent();
+    handleButtonBEvent();
+
+    for(int i = 0; i < PACK_SIZE; i++) {
+        if(!(validMask & (1 << (i + 4)))) isbutPackKeyChange[i] = false;
+    }
+    butPack.scan((uint8_t)(states >> 4), (uint8_t)(validMask >> 4));
+    handleButtonPackEvents();
+}
+#endif
+
+static void handleButtonAEvent()
+{
+    if(isbuttonAKeyChange) {
+        isbuttonAKeyChange = false;
+        if(!(csf & CSF_OFF)) {
+            if(!(csf & (CSF_TCDINP0|CSF_TT))) {
+                if(useBPack) {
+                    if(isbuttonAKeyPressed) {
+                        if(ooTT) {
+                            #ifdef HAVE_CRSF
+                            if(opModeCRSF && !opModePropCRSF) {
+                                if(!bttfn_trigger_tt(false)) play_bad();
+                            } else
+                            #endif
+                            {
+                                brakeWarning = false;
+                                if(!triggerTTonThrottle) {
+                                    // Here we only trigger a stand-alone TT
+                                    // if we are not connected. If the TCD is
+                                    // busy, we refuse. (Different to below
+                                    // because when hitting 88 there is no time
+                                    // for the TCD to change its busy status
+                                    // and therefore not chance for an unwanted
+                                    // dual-tt.)
+                                    triggerIntTTonThrottle = 0;
+                                    if(!bttfn_trigger_tt(true)) {
+                                        triggerTTonThrottle = 1;
+                                        triggerIntTTonThrottle = 1;
+                                    } else if(tcdIsBusy) {
+                                        play_bad();
+                                    } else {
+                                        triggerTTonThrottle = 1;
+                                    }
+                                    if(triggerTTonThrottle) {
+                                        play_file("/rdy.mp3", PA_INTRMUS|PA_ALLOWSD);
+                                    }
+                                } else if(triggerTTonThrottle == 1) {
+                                    triggerTTonThrottle = 0;
+                                    play_bad();
+                                }
+                            }
+                        } else {
+                            if(haveMusic) {
+                                mp_prev(mpActive);
+                            } else {
+                                play_bad();
+                            }
+                        }
+                    } else if(isbuttonAKeyLongPressed) {
+                        if(haveMusic) {
+                            if(mpActive) {
+                                mp_stop();
+                            } else {
+                                mp_play();
+                            }
+                        } else {
+                            play_bad();
+                        }
+                    }
+                #ifdef ALLOW_DIS_UB
+                } else {
+                    if(isbuttonAKeyPressed) {
+                        play_key(3);
+                    } else if(isbuttonAKeyLongPressed) {
+                        if(haveMusic) {
+                            if(mpActive) {
+                                mp_stop();
+                            } else {
+                                mp_play();
+                            }
+                        } else {
+                            play_bad();
+                        }
+                    }
+                #endif  // ALLOW_DIS_UB
+                }
+            }
+        } else if(!(csf & CSF_CALIBMD)) {           // When off, but not in calibMode
+            if(isbuttonAKeyPressed) {
+                if(!useRotEncVol) {
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(volchgtimer && (millis() - volchgtimer < 10*1000)) {
+                        increaseVolume();
+                    }
+                    displayVolume();
+                    offDisplayTimer = true;
+                    offDisplayNow = volchgtimer = millisNonZero();
+                    play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD);
+                }
+            } else if(isbuttonAKeyLongPressed) {
+                if(ooresBri) {
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(brichgtimer && (millis() - brichgtimer < 10*1000)) {
+                        increaseBrightness();
+                    }
+                    displayBrightness();
+                    offDisplayTimer = true;
+                    offDisplayNow = brichgtimer = millisNonZero();
+                } else {
+                    powerMaster = true;
+                    updateVisMode();
+                    triggerSaveVis();
+                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                    play_file("/pmon.mp3", PA_INTRMUS|PA_ALLOWSD);
+                }
+            }
+        }
+    }
+}
+
+static void handleButtonBEvent()
+{
+    if(isbuttonBKeyChange) {
+        isbuttonBKeyChange = false;
+        if(!(csf & CSF_OFF)) {
+            if(!(csf & (CSF_TCDINP0|CSF_TT))) {
+                if(useBPack) {
+                    if(isbuttonBKeyPressed) {
+                        if(haveMusic) {
+                            mp_next(mpActive);
+                        } else {
+                            play_bad();
+                        }
+                    } else if(isbuttonBKeyLongPressed) {
+                        if(resAT) {
+                            toggleAutoThrottle();
+                            play_file(autoThrottle ? "/ok.mp3" : "/cancel.mp3", PA_INTRMUS|PA_ALLOWSD);
+                        } else {
+                            mp_makeShuffle(!aud_state.mpShuffle);
+                            play_file(aud_state.mpShuffle ? "/shufon.mp3" : "/shufoff.mp3", PA_ALLOWSD);
+                        }
+                    }
+                #ifdef ALLOW_DIS_UB
+                } else {
+                    if(isbuttonBKeyPressed) {
+                        play_key(6);
+                    } else if(isbuttonBKeyLongPressed) {
+                        if(haveMusic) {
+                            mp_next(mpActive);
+                        } else {
+                            play_bad();
+                        }
+                    }
+                #endif  // ALLOW_DIS_UB
+                }
+            }
+        } else if(!(csf & CSF_CALIBMD)) {           // When off, but not in calibMode
+            if(isbuttonBKeyPressed) {
+                if(!useRotEncVol) {
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(volchgtimer && (millis() - volchgtimer < 10*1000)) {
+                        decreaseVolume();
+                    }
+                    displayVolume();
+                    offDisplayTimer = true;
+                    offDisplayNow = volchgtimer = millisNonZero();
+                    play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD);
+                }
+            } else if(isbuttonBKeyLongPressed) {
+                if(ooresBri) {
+                    // Do not change, just display on first press (within 10 seconds)
+                    if(brichgtimer && (millis() - brichgtimer < 10*1000)) {
+                        decreaseBrightness();
+                    }
+                    displayBrightness();
+                    offDisplayTimer = true;
+                    offDisplayNow = brichgtimer = millisNonZero();
+                } else {
+                    powerMaster = false;
+                    updateVisMode();
+                    triggerSaveVis();
+                    bttfn_remote_send_combined(powerState, brakeState, currSpeed);
+                    play_file("/pmoff.mp3", PA_INTRMUS|PA_ALLOWSD);
+                }
+            }
+        }
+    }
+}
+
+static void handleButtonPackEvents()
+{
+    for(int i = 0; i < butPack.getPackSize(); i++) {
+        if(isbutPackKeyChange[i]) {
+            isbutPackKeyChange[i] = false;
+            if(!(csf & CSF_OFF)) {
+                if(!(csf & (CSF_TCDINP0|CSF_TT))) {
+                    if(!buttonPackMomentary[i]) {
+                        // Maintained:
+                        // If "audio on ON only" checked, play if switched ON, and stop
+                        // on OFF if same sound triggered by ON is still playing.
+                        // If "audio on ON only" unchecked: Every flip triggers keyX
+                        // playback. A second flip while the same keyX sound is still
+                        // being played, causes a stop.
+                        buttonPackActionPress(i, (buttonPackMtOnOnly[i] && !isbutPackKeyPressed[i]));
+                    } else {
+                        // Momentary: Press triggers keyX, long press keyXl.
+                        // A second press/longpress while the same keyX(l)
+                        // sound is still being played, causes a stop.
+                        if(isbutPackKeyPressed[i]) {
+                            buttonPackActionPress(i, false);
+                        } else if(isbutPackKeyLongPressed[i]) {
+                            buttonPackActionLongPress(i);
+                        }
+                    }
+                }
+            } else {
+                flushDelayedSave();
+            }
+        }
+    }
+}
+
+static void updateDelayedSave()
+{
     if((!(csf & (CSF_TCDINP0|CSF_TT|CSF_CALIBMD|CSF_KEEPCOUNTING))) && !throttlePos) {
         // Save on-the-fly settings 8/3 seconds after last change
-        now = millis();
+        unsigned long now = millis();
         if(brichgnow && (now - brichgnow > 8000)) {
             brichgnow = 0;
             saveBrightness();
@@ -2150,14 +2287,6 @@ void main_loop()
         if(vischgnow && (now - vischgnow > 3000)) {
             vischgnow = 0;
             saveVis();
-        }
-    }
-
-    if(bootFlag) {
-        bootFlag = false;
-        if(sendBootStatus) {
-            bttfn_remote_send_combined(powerState, brakeState, currSpeed);
-            sendBootStatus = false;
         }
     }
 }
@@ -3073,6 +3202,53 @@ void waitAudioDone(bool withBTTFN)
     }
 }
 
+static void setupLocalButtons()
+{
+    powerswitch.begin(FPOWER_IO_PIN, true, true);  // active low, pullup
+    powerswitch.setTiming(50, 50);
+    powerswitch.attachLongPressStart(powKeyPressed);
+    powerswitch.attachLongPressStop(powKeyLongPressStop);
+
+    brake.begin(STOPS_IO_PIN, false, false);       // active high, pulldown on board
+    brake.setTiming(50, 50);
+    brake.attachLongPressStart(brakeKeyPressed);
+    brake.attachLongPressStop(brakeKeyLongPressStop);
+
+    // Button A ("O.O")
+    buttonA.begin(BUTA_IO_PIN, true, true);        // active low, pullup
+    buttonA.setTiming(50, 2000);
+    buttonA.attachPressDown(buttonAKeyPressed);
+    buttonA.attachPressEnd(buttonAKeyPressStop);
+    buttonA.attachLongPressStart(buttonAKeyLongPressed);
+    buttonA.attachLongPressStop(buttonAKeyPressed);
+
+    // Button B ("RESET")
+    buttonB.begin(BUTB_IO_PIN, true, true);            // active low, pullup
+    buttonB.setTiming(50, 2000);
+    buttonB.attachPressDown(buttonBKeyPressed);
+    buttonB.attachPressEnd(buttonBKeyPressStop);
+    buttonB.attachLongPressStart(buttonBKeyLongPressed);
+    buttonB.attachLongPressStop(buttonBKeyPressed);
+}
+
+static void setupButtonPack()
+{
+    butPack.attachPressDown(butPackKeyPressed);
+    butPack.attachPressEnd(butPackKeyPressStop);
+    butPack.attachLongPressStart(butPackKeyLongPressed);
+    butPack.attachLongPressStop(butPackKeyLongPressStop);
+    for(int i = 0; i < butPack.getPackSize(); i++) {
+        isbutPackKeyPressed[i] = false;
+        isbutPackKeyLongPressed[i] = false;
+        isbutPackKeyChange[i] = false;
+        if(buttonPackMomentary[i]) {
+            butPack.setTiming(i, 50, 2000);
+        } else {
+            butPack.setTiming(i, 50, 50);
+        }
+    }
+}
+
 static void powKeyPressed()
 {
     isFPBKeyPressed = true;
@@ -3310,6 +3486,9 @@ static void re_vol_reset()
  */
 static void myloop(bool withBTTFN)
 {
+    #ifdef HAVE_CRSF
+    if(opModePropCRSF) serviceCRSF();
+    #endif
     wifi_loop();
     audio_loop();
     if(withBTTFN) bttfn_loop_quick();
@@ -3324,7 +3503,11 @@ void mydelay(unsigned long mydel, bool withBTTFN)
     unsigned long startNow = millis();
     myloop(withBTTFN);
     while(millis() - startNow < mydel) {
+        #ifdef HAVE_CRSF
+        delay(opModePropCRSF ? 1 : 10);
+        #else
         delay(10);
+        #endif
         myloop(withBTTFN);
     }
 }

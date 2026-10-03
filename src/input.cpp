@@ -183,6 +183,7 @@ REMRotEnc::REMRotEnc(int numTypes, const uint8_t *addrArr)
 
 bool REMRotEnc::begin(bool forSpeed, bool newBoard)
 {
+    _useSampledPosition = false;
     bool foundSt = false;
     union {
         uint8_t buf[4];
@@ -352,6 +353,12 @@ void REMRotEnc::setZeroPos(int32_t num)
     rotEncZeroPos = num;
 }
 
+void REMRotEnc::useSampledPosition(int32_t position, bool valid)
+{
+    _useSampledPosition = true;
+    _sampledPosition = valid ? position : rotEncZeroPos;
+}
+
 bool REMRotEnc::setMaxStepsUp(int32_t num)
 {
     int32_t t = (num != 0) ? num : getEncPos() - rotEncZeroPos;
@@ -474,6 +481,7 @@ int32_t newRead = 0, oldRead = 0;
 
 int32_t REMRotEnc::getEncPos()
 {
+    if(_useSampledPosition) return _sampledPosition;
     uint8_t buf[4];
 
     switch(_st) {
@@ -639,9 +647,17 @@ void RemButton::attachELongPressStop(void (*newFunction)(void))
 // Check input of the pin and advance the state machine
 void RemButton::scan()
 {
+    scan(digitalRead(_pin) == _buttonPressed);
+}
+
+void RemButton::scan(bool active, bool valid)
+{
+    if(!valid) {
+        reset();
+        return;
+    }
     unsigned long now = millis();
     unsigned long waitTime = now - _startTime;
-    bool active = (digitalRead(_pin) == _buttonPressed);
     
     switch(_state) {
     case REMBUS_IDLE:
@@ -861,9 +877,7 @@ int ButtonPack::getPackSize()
 void ButtonPack::scan()
 {
     unsigned long now = millis();
-    unsigned long waitTime; 
     uint8_t  port;
-    bool     active;
 
     if(millis() - _lastScan < _scanInterval)
         return;
@@ -881,10 +895,27 @@ void ButtonPack::scan()
         return;
     }
 
-    for(int i = 0; i < _pack_size; i++) {
+    scanStates((uint8_t)~port, 0xff, now);
+}
 
-        waitTime = now - _startTime[i];
-        active = ((port & (1 << i)) == 0);
+void ButtonPack::scan(uint8_t states, uint8_t validMask)
+{
+    // Cancel immediately, even when the next regular scan is not due yet.
+    for(int i = 0; i < _pack_size; i++) {
+        if(!(validMask & (1 << i))) reset(i);
+    }
+    unsigned long now = millis();
+    if(now - _lastScan < _scanInterval) return;
+    _lastScan = now;
+    scanStates(states, validMask, now);
+}
+
+void ButtonPack::scanStates(uint8_t states, uint8_t validMask, unsigned long now)
+{
+    for(int i = 0; i < _pack_size; i++) {
+        if(!(validMask & (1 << i))) continue;
+        unsigned long waitTime = now - _startTime[i];
+        bool active = (states & (1 << i)) != 0;
     
         switch(_state[i]) {
         case REMBUS_IDLE:

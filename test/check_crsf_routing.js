@@ -36,4 +36,11 @@ change(aileron, String(Number(originalStop) - 1));
 assert.ok(selects.every(select => !select.validity), 'Completing a cross-input swap must clear validation');
 change(stop, selects.find(select => select.id === 'csw1').value);
 assert.ok(stop.validity && selects.find(select => select.id === 'csw1').validity);
+for (const select of selects) change(select, select.switch ? '0' : '16');
+assert.ok(selects.every(select => !select.validity), 'Any number of None selections must be allowed');
+change(aileron, '0'); // CH1 keeps its original HTTP index.
+change(stop, '1');
+assert.ok(aileron.validity && stop.validity, 'Assigned channels must still reject collisions beside None');
+change(stop, '0');
+assert.ok(selects.every(select => !select.validity));
 console.log('CRSF portal combined channel collision and swap check passed');

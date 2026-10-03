@@ -10,6 +10,7 @@
 
 #include "elrs_crsf.h"
 #include "crsf_settings.h"
+#include "../../remote_main.h"
 
 namespace {
 
@@ -55,9 +56,12 @@ bool ELRSCrsfMode::begin(
     uint16_t adcHysteresis,
     uint16_t throttleIdleDeadband,
     const ELRSSwitchRouting *switchRouting,
-    const ELRSOutputLimits *outputLimits)
+    const ELRSOutputLimits *outputLimits,
+    const uint8_t *localActions,
+    bool propControls)
 {
     ELRSCrsfCoreConfig config;
+    config.propControls = propControls;
 
     _buttonPack = buttonPack;
     _haveButtonPack = haveButtonPack;
@@ -111,6 +115,7 @@ bool ELRSCrsfMode::begin(
     config.adcHysteresis = adcHysteresis;
     config.throttleIdleDeadband = throttleIdleDeadband;
     if(switchRouting) config.switchRouting = *switchRouting;
+    if(localActions) memcpy(config.localActions, localActions, sizeof(config.localActions));
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         if(axisProfiles) {
             config.axisProfiles[i] = elrsSanitizeInputAxisProfile(axisProfiles[i]);
@@ -150,6 +155,11 @@ bool ELRSCrsfMode::begin(
 void ELRSCrsfMode::loop(int battWarn)
 {
     _core.loop(*this, millis(), micros(), battWarn);
+}
+
+void ELRSCrsfMode::scanLocalSwitches(uint16_t states, uint16_t validMask)
+{
+    queueCRSFLocalSwitches(states, validMask);
 }
 
 bool ELRSCrsfMode::isCalibrating() const

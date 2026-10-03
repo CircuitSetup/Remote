@@ -852,7 +852,7 @@ void wifi_setup()
 #ifdef HAVE_MQTT
     if((!settings.mqttServer[0]) || // No server -> no MQTT
        #ifdef HAVE_CRSF
-       (opModeCRSF)              || // CRSF mode -> no MQTT
+       (opModeCRSF && !opModePropCRSF && !crsfLocalActionsEnabled()) || // Local button callbacks use configured MQTT
        #endif
        (wifiInAPMode))              // WiFi in AP mode -> no MQTT
         useMQTT = false;  
@@ -916,6 +916,9 @@ void wifi_setup()
 
         mqttClient.setCallback(mqttCallback);
         mqttClient.setLooper(mqttLooper);
+        #ifdef HAVE_CRSF
+        mqttClient.setCooperative(opModeCRSF);
+        #endif
 
         if(*settings.mqttUser) {
             if((t = strchr(settings.mqttUser, ':'))) {
@@ -1822,6 +1825,17 @@ static bool preWiFiScanCallback()
 
 static void wifiDelayReplacement(unsigned int mydel)
 {
+    #ifdef HAVE_CRSF
+    if(opModeCRSF) {
+        unsigned long startNow = millis();
+        while(millis() - startNow < mydel) {
+            serviceCRSF(false);
+            if(audioInitDone) audio_loop();
+            delay(1);
+        }
+        return;
+    }
+    #endif
     if((mydel > 30) && audioInitDone) {
         unsigned long startNow = millis();
         while(millis() - startNow < mydel) {
@@ -1840,6 +1854,9 @@ void gpCallback(int reason)
     // HTTPSend().
     // MUST NOT call wifi_loop() !!!
     
+    #ifdef HAVE_CRSF
+    if(opModeCRSF) serviceCRSF(false);
+    #endif
     if(audioInitDone) {
         switch(reason) {
         case WM_LP_PREHTTPSEND:
@@ -2855,6 +2872,9 @@ static void handleMQTTTopMsg(int idx)
 
 static void mqttLooper()
 {
+    #ifdef HAVE_CRSF
+    if(opModeCRSF) serviceCRSF(false);
+    #endif
     audio_loop();
 }
 

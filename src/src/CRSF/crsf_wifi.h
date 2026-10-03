@@ -23,14 +23,16 @@ static void crsfReadExpoParams();
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
 static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset);
+static void crsfReadGimbalChannelParam(const char *name, char *destBuf);
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
 static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel);
 
-static const char *cOpModeCustHTMLSrc[4] = {
+static const char *cOpModeCustHTMLSrc[5] = {
     "'>Operation mode",
     "copm",
     ">Legacy%s1'",
-    ">ELRS/CRSF%s"
+    ">ELRS/CRSF%s2'",
+    ">Prop controls + ELRS/CRSF%s"
 };
 static const char *cPktRateCustHTMLSrc[7] = {
     "'>ELRS Packet rate",
@@ -110,7 +112,7 @@ struct CRSFSelectField {
 };
 
 static CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
-    { cOpModeCustHTMLSrc, 4, settings.opMode },
+    { cOpModeCustHTMLSrc, 5, settings.opMode },
     { cPktRateCustHTMLSrc, 7, settings.elrsPktRate },
     { cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit },
     { cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio },
@@ -138,6 +140,7 @@ static CRSFAxisSettings crsfAxisSettings[] = {
 
 static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", "1000"};
 static char crsfOutputMax[ELRS_GIMBAL_AXIS_COUNT][5] = {"2000", "2000", "2000", "2000"};
+static char crsfLocalActions[ELRS_SWITCH_INPUT_COUNT][2] = {};
 
 static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
 {
@@ -163,6 +166,7 @@ CRSF_SELECT_BUILDER(wmBuildCRSFMP, CRSF_SELECT_MAXPOWER)
 CRSF_SELECT_BUILDER(wmBuildCRSFDP, CRSF_SELECT_DYNPOWER)
 
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
+WiFiManagerParameter custom_crsfmodehelp("<p><small>Legacy runs normal prop controls. ELRS/CRSF shows radio telemetry; switch checkboxes also enable their Settings actions. Prop controls + ELRS/CRSF runs all normal prop controls, display/speedometer, MQTT and BTTFN while transmitting all mapped gimbals and switches. The AIN3 Throttle gimbal also controls prop speed; calibrate prop speed with the normal Calibration button and radio output with Gimbal Calibration below. O.O uses its normal Settings behavior, and Time Travel retains its normal throttle condition. Save and restart to apply.</small></p>");
 WiFiManagerParameter custom_ss_crsf("<h3>ELRS/CRSF Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfstatus(wmBuildCRSFStatus);
 WiFiManagerParameter custom_crsfap("Connect to WiFi in ELRS/CRSF mode<br><span>If unchecked, device will remain in AP mode.</span>", settings.crsfap, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
@@ -186,6 +190,7 @@ WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
 WiFiManagerParameter *crsfParmArray[] = {
       &custom_crsfom,
+      &custom_crsfmodehelp,
       &custom_ss_crsf,
       &custom_crsfstatus,
       &custom_crsfap,
@@ -239,16 +244,16 @@ static bool crsf_wifi_loop_settings()
  */
 static void crsf_wifi_saveParamsCallback()
 {
-    getServerParam("copm", settings.opMode, 1, 0, 1, 0);
+    getServerParam("copm", settings.opMode, 1, 0, 2, 0);
     getServerParam("cpktr", settings.elrsPktRate, 1, 0, 4, DEF_ELRSPKTRATE);
     getServerParam("cspdu", settings.elrsSpdUnit, 1, 0, 1, DEF_ELRSSPDUNIT);
     getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
     getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
     getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
-    crsfReadInputParam("crlch", settings.elrsRollCh, 2, 1, 16, 1);
-    crsfReadInputParam("cptch", settings.elrsPitchCh, 2, 1, 16, 1);
-    crsfReadInputParam("cthch", settings.elrsThrCh, 2, 1, 16, 1);
-    crsfReadInputParam("cywch", settings.elrsYawCh, 2, 1, 16, 1);
+    crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
+    crsfReadGimbalChannelParam("cptch", settings.elrsPitchCh);
+    crsfReadGimbalChannelParam("cthch", settings.elrsThrCh);
+    crsfReadGimbalChannelParam("cywch", settings.elrsYawCh);
     crsfReadSwitchParams();
     crsfReadOutputLimitParams();
     crsfReadExpoParams();
@@ -318,7 +323,8 @@ static void syncCRSFPortalBuffers()
         return;
     }
 
-    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
+    uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
+    loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions);
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         snprintf(crsfOutputMin[i], sizeof(crsfOutputMin[i]), "%u", (unsigned)limits[i].minimumUs);
         snprintf(crsfOutputMax[i], sizeof(crsfOutputMax[i]), "%u", (unsigned)limits[i].maximumUs);
@@ -327,6 +333,7 @@ static void syncCRSFPortalBuffers()
     snprintf(settings.elrsThrIdleDeadband, sizeof(settings.elrsThrIdleDeadband), "%u", (unsigned)throttleIdleDeadband);
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         snprintf(settings.elrsSwitchCh[i], sizeof(settings.elrsSwitchCh[i]), "%u", (unsigned)switches.channels[i]);
+        snprintf(crsfLocalActions[i], sizeof(crsfLocalActions[i]), "%u", (unsigned)localActions[i]);
     }
 
     for(size_t i = 0; i < sizeof(crsfAxisSettings) / sizeof(crsfAxisSettings[0]); i++) {
@@ -350,6 +357,14 @@ static bool saveCRSFPortalInputSettings()
     ELRSGimbalRouting routing;
     ELRSSwitchRouting switches;
 
+    uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        const char *value = crsfLocalActions[i];
+        const size_t length = strlen(value);
+        if(length != 1 || (value[0] != '0' && value[0] != '1')) return false;
+        localActions[i] = (uint8_t)atoi(value);
+    }
+
     if(!haveNewBoard) {
         return false;
     }
@@ -371,12 +386,13 @@ static bool saveCRSFPortalInputSettings()
         const char *value = settings.elrsSwitchCh[i];
         char *end;
         long channel = strtol(value, &end, 10);
-        if(!*value || *end || channel < 1 || channel > 16) return false;
+        if(!*value || strspn(value, "0123456789") != strlen(value) || *end || channel < 0 || channel > 16) return false;
         switches.channels[i] = (uint8_t)channel;
     }
     if(!elrsIsValidSwitchRouting(switches)) return false;
 
     for(const CRSFAxisSettings &axis : crsfAxisSettings) {
+        if(!*axis.channel || strspn(axis.channel, "0123456789") != strlen(axis.channel) || atoi(axis.channel) > 16) return false;
         const char *value = axis.expo;
         size_t length = strlen(value);
         if(length < 1 || length > 3) return false;
@@ -400,7 +416,7 @@ static bool saveCRSFPortalInputSettings()
 
     const uint16_t adcHysteresis = (uint16_t)atoi(settings.elrsAdcHysteresis);
     const uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
-    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits);
+    return saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions);
 }
 
 static void crsfReadOutputLimitParams()
@@ -443,6 +459,11 @@ static void crsfReadExpoParams()
 
 static void crsfReadSwitchParams()
 {
+    uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, localActions);
+    const bool localForm = wm.server->hasArg("cslocal");
+    String localMarker = wm.server->arg("cslocal");
+    const bool validLocalForm = !localForm || (localMarker.length() == 1 && localMarker == "1");
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         char name[6];
         snprintf(name, sizeof(name), "csw%d", i);
@@ -451,6 +472,18 @@ static void crsfReadSwitchParams()
             settings.elrsSwitchCh[i][0] = 0;
             if(value.length() < sizeof(settings.elrsSwitchCh[i]) && value.length() == strlen(value.c_str())) {
                 strcpy(settings.elrsSwitchCh[i], value.c_str());
+            }
+        }
+        snprintf(crsfLocalActions[i], sizeof(crsfLocalActions[i]), "%u", (unsigned)localActions[i]);
+        snprintf(name, sizeof(name), "csa%d", i);
+        if(!validLocalForm) {
+            crsfLocalActions[i][0] = 0;
+        } else if(localForm) {
+            strcpy(crsfLocalActions[i], "0");
+            if(wm.server->hasArg(name)) {
+                String value = wm.server->arg(name);
+                crsfLocalActions[i][0] = 0;
+                if(value.length() == 1 && value == "1") strcpy(crsfLocalActions[i], "1");
             }
         }
     }
@@ -476,10 +509,10 @@ static const char *wmBuildSelectOneBased(const char *dest, int op, const char **
     char tempSetting[3];
     int selectValue = atoi(setting);
 
-    if(selectValue < 1) {
-        selectValue = 1;
-    } else if(selectValue > (count - 2)) {
+    if(selectValue == 0) {
         selectValue = count - 2;
+    } else if(selectValue < 1 || selectValue > count - 3) {
+        selectValue = 1;
     }
 
     snprintf(tempSetting, sizeof(tempSetting), "%d", selectValue - 1);
@@ -561,23 +594,31 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
         "ButtonPack 5", "ButtonPack 6", "ButtonPack 7", "ButtonPack 8"
     };
     String html;
-    html.reserve(10000);
-    html += "<div class='cmp0'><h4 style='margin:12px 0 5px'>Switch Channels</h4><p style='margin:0 0 10px;white-space:normal'><small>All inputs can use CH1-CH16. Choose a different channel for each gimbal and switch. ELRS RF mode determines receiver channel availability and resolution. Keep steering and throttle on CH1-CH4 in Hybrid/Wide; use Full Resolution 16ch for all 16 input channels.</small></p>";
+    html.reserve(13000);
+    html += "<div class='cmp0'><h4 style='margin:12px 0 5px'>Switch Channels</h4><p style='margin:0 0 10px;white-space:normal'><small>All inputs can use CH1-CH16 or None. None disables that input's radio output; multiple inputs can use None. Assigned channels must be unique. Unclaimed channels transmit the minimum value. ELRS RF mode determines receiver channel availability and resolution. Keep steering and throttle on CH1-CH4 in Hybrid/Wide; use Full Resolution 16ch for all 16 input channels.</small></p>";
+    html += "<input type='hidden' name='cslocal' value='1'><p style='margin:0 0 10px;white-space:normal'><small>In ELRS/CRSF mode, check a switch to also run its behavior configured on the Settings page. In Prop controls + ELRS/CRSF, all prop controls run regardless of these checkboxes. Unchecked by default. Save and restart to apply.</small></p>";
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
         char name[6];
         snprintf(name, sizeof(name), "csw%d", i);
         html += "<div class='cmp0'><label class='mp0' for='"; html += name; html += "'>"; html += labels[i]; html += " target channel</label><select class='sel0' data-elrs-switch id='";
         html += name; html += "' name='"; html += name; html += "'>";
-        for(int channel = 1; channel <= 16; channel++) {
+        for(int channel = 0; channel <= 16; channel++) {
             char value[3];
             snprintf(value, sizeof(value), "%d", channel);
             html += "<option value='"; html += value; html += "'";
             if(channel == atoi(settings.elrsSwitchCh[i])) html += " selected";
-            html += ">CH"; html += value; html += "</option>";
+            if(channel) { html += ">CH"; html += value; }
+            else html += ">None";
+            html += "</option>";
         }
-        html += "</select></div>";
+        html += "</select>";
+        snprintf(name, sizeof(name), "csa%d", i);
+        html += "<label class='ml20' for='"; html += name; html += "'><input type='checkbox' id='";
+        html += name; html += "' name='"; html += name; html += "' value='1'";
+        if(crsfLocalActions[i][0] == '1') html += " checked";
+        html += "> Also trigger Settings action</label></div>";
     }
-    html += "</div><script>(function(){var s=document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]');function c(e){return Number(e.value)+(e.hasAttribute('data-elrs-switch')?0:1);}function v(){var n={};for(var i=0;i<s.length;i++)n[c(s[i])]=(n[c(s[i])]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[c(s[i])]>1?'Choose a different channel for each input.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
+    html += "</div><script>(function(){var s=document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]');function c(e){var v=Number(e.value);return e.hasAttribute('data-elrs-switch')?v:(v===16?0:v+1);}function v(){var n={};for(var i=0;i<s.length;i++)if(c(s[i]))n[c(s[i])]=(n[c(s[i])]||0)+1;for(var i=0;i<s.length;i++)s[i].setCustomValidity(n[c(s[i])]>1?'Choose a different channel for each input.':'');}for(var i=0;i<s.length;i++)s[i].addEventListener('change',v);v();})();</script>";
     if(op == WM_CP_LEN) {
         wmLenBuf = html.length() + 1;
         return (const char *)&wmLenBuf;
@@ -590,7 +631,7 @@ static const char *wmBuildCRSFSwitchMap(const char *dest, int op)
 
 static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)
 {
-    const char *html[18];
+    const char *html[19];
 
     html[0] = label;
     html[1] = id;
@@ -598,7 +639,9 @@ static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, cons
         html[i + 2] = cChannelCustHTMLSrc[i];
     }
 
-    return wmBuildSelectOneBased(dest, op, html, 18, setting, false);
+    html[17] = ">CH16%s16'";
+    html[18] = ">None%s";
+    return wmBuildSelectOneBased(dest, op, html, 19, setting, false);
 }
 
 static void wmAppendCRSFOutputLimits(String &html, uint8_t axis)
@@ -878,6 +921,16 @@ static void crsfReadInputParam(const char *name, char *destBuf, size_t length, i
         parsed >= minval - offset && parsed <= maxval - offset;
     // Keep invalid submissions invalid until the atomic input validator rejects them.
     snprintf(destBuf, length + 1, "%ld", valid ? parsed + offset : -1L);
+}
+
+static void crsfReadGimbalChannelParam(const char *name, char *destBuf)
+{
+    String value = wm.server->arg(name);
+    const char *text = value.c_str();
+    long channel = strtol(text, NULL, 10);
+    bool valid = value.length() >= 1 && value.length() <= 2 && strspn(text, "0123456789") == value.length() && channel <= 16;
+    // Retain HTTP0..15 for CH1..16; the appended option16 means no channel.
+    snprintf(destBuf, sizeof(settings.elrsRollCh), "%ld", valid ? (channel == 16 ? 0 : channel + 1) : -1L);
 }
 
 #endif
