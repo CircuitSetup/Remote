@@ -142,11 +142,48 @@ void adjusted_clock_uses_same_mapping() {
   CHECK(output.stop()); CHECK(output.begin());
   CHECK((installs==std::vector<uint32_t>{22150,48100}) && rates.size()==1);
 }
+
+// Only synthesis is substituted: exercise the actual MP3 sample method with real I2S output.
+struct ProbePCM { unsigned length=0, samplerate=48000, channels=2; int16_t samples[2][32] = {}; };
+struct ProbeSynth { ProbePCM pcm; };
+enum mad_flow { MAD_FLOW_CONTINUE, MAD_FLOW_BREAK, MAD_FLOW_STOP };
+mad_flow mad_synth_frame_onens(ProbeSynth *synth, void *, unsigned) {
+  synth->pcm.length=32;
+  synth->pcm.samples[0][0]=1000; synth->pcm.samples[1][0]=-2000;
+  return MAD_FLOW_CONTINUE;
+}
+struct MP3SampleProbe {
+  AudioOutput *output;
+  ProbeSynth *synth;
+  void *frame=nullptr;
+  unsigned samplePtr=9999, nsCount=0, lastRate=44100, lastChannels=2;
+  MP3SampleProbe(AudioOutput *out, ProbeSynth *pcm) : output(out), synth(pcm) {}
+  bool GetOneSample(int16_t& saL, int16_t& saR);
+};
+__GET_ONE_SAMPLE__
+void mp3_sample_rejects_failed_clock_change() {
+  reset(); AudioOutputI2S output; CHECK(output.begin()); output.SetGain(0.5f);
+  ProbeSynth synth;
+  MP3SampleProbe sample(&output,&synth);
+  int16_t left=11, right=22;
+  failRate=true;
+  CHECK(!sample.GetOneSample(left,right));
+  CHECK(sample.lastRate==44100 && sample.samplePtr==0);
+  CHECK(left==11 && right==22 && pcm.empty());
+  CHECK(rates==std::vector<uint32_t>{48000});
+  // A fresh decoding attempt after recovery must apply the previously failed rate.
+  failRate=false; MP3SampleProbe retry(&output,&synth);
+  CHECK(retry.GetOneSample(left,right));
+  CHECK(retry.lastRate==48000 && retry.samplePtr==1 && left==1000 && right==-2000);
+  CHECK((rates==std::vector<uint32_t>{48000,48000}));
+  CHECK(output.ConsumeSample(left,right)==4 && pcm.back()==0xfc1801f4u);
+}
 int main() {
   default_clock_and_rate_changes();
   prebegin_rate_and_driver_failures();
   adjusted_clock_uses_same_mapping();
-  std::puts("Real ESP32 I2S startup clocks, rate retries, restarts and packed PCM passed");
+  mp3_sample_rejects_failed_clock_change();
+  std::puts("Real ESP32 I2S clocks, retries, PCM and MP3 clock-failure propagation passed");
 }
 '''
 
@@ -161,12 +198,21 @@ def main():
     if not args.cc:
         parser.error("pass --cc with a C++ compiler")
     audio = args.project.resolve() / "src/src/ESP8266Audio"
+    source = (audio / "AudioGeneratorMP3.cpp").read_text()
+    start = source.index("bool AudioGeneratorMP3::GetOneSample(")
+    body = source.index("{", start)
+    depth = 1
+    end = body + 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    method = source[start:end].replace("AudioGeneratorMP3::", "MP3SampleProbe::", 1)
     with tempfile.TemporaryDirectory(prefix="remote-i2s-check-") as temporary:
         scratch = Path(temporary)
         (scratch / "driver").mkdir()
         (scratch / "Arduino.h").write_text(ARDUINO)
         (scratch / "driver/i2s.h").write_text(I2S)
-        (scratch / "check.cpp").write_text(CASES)
+        (scratch / "check.cpp").write_text(CASES.replace("__GET_ONE_SAMPLE__", method))
         executable = scratch / "check.exe"
         subprocess.run([args.cc, "-std=gnu++11", "-DESP32", "-Wno-narrowing", "-I", str(scratch),
                         "-I", str(audio), str(audio / "AudioOutputI2S.cpp"),
