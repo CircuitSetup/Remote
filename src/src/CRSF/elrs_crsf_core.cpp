@@ -216,7 +216,6 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
          (unsigned)_inputRouting.elevatorChannel,
          (unsigned)_inputRouting.throttleChannel,
          (unsigned)_inputRouting.rudderChannel);
-    log(host, "ELRS/CRSF: display GPS, airspeed, then LQ");
 #ifdef REMOTE_DBG
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         logf(host, "ELRS/CRSF A%d calibration: low=%d center=%d high=%d reverse=%u", i,
