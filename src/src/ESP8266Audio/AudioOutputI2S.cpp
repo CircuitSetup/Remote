@@ -35,6 +35,9 @@ AudioOutputI2S::AudioOutputI2S(int port, int output_mode, int dma_buf_count, int
 {
   this->portNo = port;
   this->i2sOn = false;
+  #ifdef ESP32
+  this->rateConfigured = false;
+  #endif
   this->dma_buf_count = dma_buf_count;
   if (output_mode != EXTERNAL_I2S && output_mode != INTERNAL_DAC && output_mode != INTERNAL_PDM) {
     output_mode = EXTERNAL_I2S;
@@ -122,17 +125,23 @@ AudioOutputI2S::~AudioOutputI2S()
 bool AudioOutputI2S::SetRate(int hz)
 {
   // TODO - have a list of allowable rates from constructor, check them
-  this->hertz = hz;
   if (i2sOn)
   {
   #ifdef ESP32
-      i2s_set_sample_rates((i2s_port_t)portNo, AdjustI2SRate(hz));
+      if (rateConfigured && hz == hertz)
+        return true;
+      // A failed driver call may leave its clock partially changed.
+      rateConfigured = false;
+      if (i2s_set_sample_rates((i2s_port_t)portNo, AdjustI2SRate(hz)) != ESP_OK)
+        return false;
+      rateConfigured = true;
   #elif defined(ESP8266)
       i2s_set_rate(AdjustI2SRate(hz));
   #elif defined(ARDUINO_ARCH_RP2040)
       I2S.setFrequency(hz);
   #endif
   }
+  this->hertz = hz;
   return true;
 }
 
@@ -225,7 +234,7 @@ bool AudioOutputI2S::begin(bool txDAC)
 
       i2s_config_t i2s_config_dac = {
           .mode = mode,
-          .sample_rate = 44100,
+          .sample_rate = (uint32_t)AdjustI2SRate(hertz),
           .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
           .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
           .communication_format = comm_fmt,
@@ -244,6 +253,7 @@ bool AudioOutputI2S::begin(bool txDAC)
         #else
         Serial.println("Unable to install I2S driver");
         #endif
+        return false;
       }
       if (output_mode == INTERNAL_DAC || output_mode == INTERNAL_PDM)
       {
@@ -259,6 +269,7 @@ bool AudioOutputI2S::begin(bool txDAC)
         SetPinout();
       }
       i2s_zero_dma_buffer((i2s_port_t)portNo);
+      rateConfigured = true;
     }
   #elif defined(ESP8266)
     (void)dma_buf_count;
@@ -291,8 +302,7 @@ bool AudioOutputI2S::begin(bool txDAC)
     }
   #endif
   i2sOn = true;
-  SetRate(hertz); // Default
-  return true;
+  return SetRate(hertz);
 }
 
 #ifdef TWESP32
@@ -395,6 +405,7 @@ bool AudioOutputI2S::stop()
     return false;
 
   #ifdef ESP32
+    rateConfigured = false;
     i2s_zero_dma_buffer((i2s_port_t)portNo);
     i2s_driver_uninstall((i2s_port_t)portNo); //stop & destroy i2s driver
   #elif defined(ESP8266)
