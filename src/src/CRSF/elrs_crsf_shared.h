@@ -57,6 +57,53 @@ struct ELRSAxisCalibrationData {
     int16_t maximum;
 };
 
+enum ELRSTelemetrySource : uint8_t {
+    ELRS_DISPLAY_AUTO, ELRS_DISPLAY_GPS_SPEED, ELRS_DISPLAY_AIRSPEED,
+    ELRS_DISPLAY_BATTERY_VOLTAGE, ELRS_DISPLAY_BATTERY_CURRENT,
+    ELRS_DISPLAY_BATTERY_PERCENT, ELRS_DISPLAY_CAPACITY, ELRS_DISPLAY_GPS_ALTITUDE,
+    ELRS_DISPLAY_GPS_HEADING, ELRS_DISPLAY_SATELLITES, ELRS_DISPLAY_LINK_QUALITY,
+    ELRS_DISPLAY_RSSI, ELRS_DISPLAY_SNR, ELRS_DISPLAY_OFF, ELRS_DISPLAY_NONE
+};
+
+struct ELRSTelemetrySample {
+    uint8_t source;
+    float value;
+    bool received;
+    bool available;
+    uint32_t ageMs;
+};
+
+static inline const char *elrsTelemetrySourceLabel(uint8_t source)
+{
+    static const char * const labels[] = {
+        "Auto", "GPS speed", "Airspeed", "Vehicle battery voltage", "Vehicle battery current",
+        "Vehicle battery remaining", "Consumed capacity", "GPS altitude", "GPS heading",
+        "GPS satellites", "Receiver uplink LQ", "Receiver RSSI (antenna 1)", "Receiver SNR", "Off", "None (normal display)"
+    };
+    return source <= ELRS_DISPLAY_NONE ? labels[source] : "Unknown";
+}
+
+static inline const char *elrsTelemetrySourceUnit(uint8_t source, uint8_t speedUnits)
+{
+    switch(source) {
+    case ELRS_DISPLAY_GPS_SPEED: case ELRS_DISPLAY_AIRSPEED: return speedUnits == ELRS_SPEED_UNITS_MPH ? "mph" : "km/h";
+    case ELRS_DISPLAY_BATTERY_VOLTAGE: return "V";
+    case ELRS_DISPLAY_BATTERY_CURRENT: return "A";
+    case ELRS_DISPLAY_BATTERY_PERCENT: case ELRS_DISPLAY_LINK_QUALITY: return "%";
+    case ELRS_DISPLAY_CAPACITY: return "mAh";
+    case ELRS_DISPLAY_GPS_ALTITUDE: return "m";
+    case ELRS_DISPLAY_GPS_HEADING: return "deg";
+    case ELRS_DISPLAY_RSSI: return "dBm";
+    case ELRS_DISPLAY_SNR: return "dB";
+    default: return "";
+    }
+}
+
+static inline uint8_t elrsTelemetrySourceDecimals(uint8_t source)
+{
+    return source >= ELRS_DISPLAY_GPS_SPEED && source <= ELRS_DISPLAY_BATTERY_CURRENT ? 1 : 0;
+}
+
 static inline bool elrsPacketRateSupported(uint16_t packetRateHz)
 {
     return (packetRateHz == ELRS_PACKET_RATE_50HZ ||

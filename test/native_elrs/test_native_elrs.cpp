@@ -3717,6 +3717,77 @@ static void test_all_none_configuration_survives_sanitizing_and_core_modes()
     for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
 }
 
+// Catch missing fields, wrong wire units/signs, and stale-family leakage.
+static void test_telemetry_samples_decode_supported_numeric_sources()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0,126,0x30,0x39,0x03,0xB6,8}));
+    host.queueFrame(makeFrame(0x0A, {0,77}));
+    host.queueFrame(makeFrame(0x08, {0,126,0,34,0,9,196,77}));
+    host.queueFrame(makeFrame(0x14, {105,0,85,253,0,0,0,0,0,0}));
+    core.loop(host, 100, 0);
+    const float expected[] = {12.6f,7.7f,12.6f,3.4f,77,2500,-50,123.45f,8,85,-105,-3};
+    for(uint8_t source = 1; source <= 12; source++) {
+        const ELRSTelemetrySample sample = core.telemetrySample(source, 100);
+        TEST_ASSERT_TRUE(sample.received);
+        TEST_ASSERT_TRUE(sample.available);
+        TEST_ASSERT_EQUAL_UINT32(0, sample.ageMs);
+        TEST_ASSERT_FLOAT_WITHIN(0.001f, expected[source - 1], sample.value);
+    }
+    TEST_ASSERT_EQUAL_UINT8(1, core.telemetrySample(0, 100).source);
+    TEST_ASSERT_EQUAL_STRING("V", elrsTelemetrySourceUnit(3, 0));
+    TEST_ASSERT_EQUAL_STRING("mph", elrsTelemetrySourceUnit(1, 1));
+    TEST_ASSERT_FALSE(core.telemetrySample(13, 100).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(14, 100).available);
+}
+
+static void test_telemetry_samples_track_presence_freshness_and_invalid_fields()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 0).received);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, core.telemetrySample(3, 0).ageMs);
+    host.queueFrame(makeFrame(0x02, std::vector<uint8_t>(15, 0)));
+    host.queueFrame(makeFrame(0x08, {0,126,0,0,0,0,0,77}));
+    core.loop(host, 0, 0);
+    TEST_ASSERT_TRUE(core.telemetrySample(1, 0).available);
+    TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(1, 0).value);
+    TEST_ASSERT_TRUE(core.telemetrySample(9, 0).available); // Zero satellites is received, not proof of a fix.
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 1999).available);
+    host.queueFrame(makeFrame(0x14, {0,0,80,0,0,0,0,0,0,0}));
+    core.loop(host, 2000, 0);
+    TEST_ASSERT_FALSE(core.telemetrySample(1, 2000).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 2000).available);
+    TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(3, 2000).value);
+    TEST_ASSERT_EQUAL_UINT8(10, core.telemetrySample(0, 2000).source);
+    auto badBattery = makeFrame(0x08, {0,100,0,0,0,0,0,50});
+    badBattery.back() ^= 255;
+    host.queueFrame(badBattery);
+    host.queueFrame(makeFrame(0x08, {0,100}));
+    host.queueFrame(makeFrame(0x22, {1,2,3}));
+    core.loop(host, 2100, 0);
+    TEST_ASSERT_EQUAL_UINT32(2100, core.telemetrySample(3, 2100).ageMs);
+    host.queueFrame(makeFrame(0x08, {0,126,0,34,0,9,196,255}));
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0,126,255,255,0,0,0}));
+    host.queueFrame(makeFrame(0x14, {105,0,255,253,0,0,0,0,0,0}));
+    core.loop(host, 2200, 0);
+    TEST_ASSERT_FALSE(core.telemetrySample(5, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 2200).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(8, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(1, 2200).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(10, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(12, 2200).available);
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xfffffff0UL));
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 0xfffffff0UL).received);
+    host.queueFrame(makeFrame(0x08, {0,126,0,0,0,0,0,77}));
+    core.loop(host, 0xfffffff0UL, 0);
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 1983).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 1984).available);
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -3724,6 +3795,8 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_telemetry_samples_decode_supported_numeric_sources);
+    RUN_TEST(test_telemetry_samples_track_presence_freshness_and_invalid_fields);
     RUN_TEST(test_none_routing_preserves_multiple_disabled_inputs);
     RUN_TEST(test_none_switch_keeps_local_actions_and_other_channels_independent);
     RUN_TEST(test_none_gimbals_leave_free_channels_and_preserve_assigned_axes);

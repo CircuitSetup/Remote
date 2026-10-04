@@ -177,6 +177,11 @@ ELRSCrsfStatus ELRSCrsfMode::getStatus() const
     return _core.getStatus();
 }
 
+ELRSTelemetrySample ELRSCrsfMode::telemetrySample(uint8_t source, uint32_t now) const
+{
+    return _core.telemetrySample(source, now);
+}
+
 void ELRSCrsfMode::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
 {
     _core.requestModuleConfigUpdate(telemetryRatio, maxPower, dynamicPower, millis());

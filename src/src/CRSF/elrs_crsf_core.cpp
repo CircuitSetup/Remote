@@ -113,6 +113,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _lastLinkStats = 0;
     _lastGpsSpeed = 0;
     _lastAirspeed = 0;
+    _lastBattery = 0;
     _batteryBlinkAt = 0;
     _batteryBannerAt = 0;
     _overlayUntil = 0;
@@ -120,6 +121,13 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _linkQuality = 0;
     _remoteBattery = 0;
     _remoteBatteryVoltage = 0.0f;
+    _remoteCurrent10 = 0;
+    _remoteCapacity = 0;
+    _gpsAltitude = 0;
+    _gpsHeading100 = 0;
+    _gpsSatellites = 0;
+    _rxRssi = 0;
+    _rxSnr = 0;
     _faultFlags = ELRS_FAULT_NONE;
     _gpsSpeed10 = 0;
     _airspeed10 = 0;
@@ -132,6 +140,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _haveLinkStats = false;
     _haveGpsSpeed = false;
     _haveAirspeed = false;
+    _haveBattery = false;
     _lastPackStates = 0;
     _localInputsInitialized = 0;
     _localNeedsRelease = 0;
@@ -358,6 +367,53 @@ uint16_t ELRSCrsfCore::airspeed10() const
     return _airspeed10;
 }
 
+ELRSTelemetrySample ELRSCrsfCore::telemetrySample(uint8_t source, uint32_t now) const
+{
+    ELRSTelemetrySample sample = {source, 0, false, false, UINT32_MAX};
+    if(source == ELRS_DISPLAY_AUTO) {
+        const uint8_t candidates[] = {ELRS_DISPLAY_GPS_SPEED, ELRS_DISPLAY_AIRSPEED, ELRS_DISPLAY_LINK_QUALITY};
+        for(uint8_t candidate : candidates) {
+            const ELRSTelemetrySample next = telemetrySample(candidate, now);
+            if(next.available) return next;
+        }
+        return sample;
+    }
+    uint32_t receivedAt = 0;
+    if(source == ELRS_DISPLAY_GPS_SPEED || (source >= ELRS_DISPLAY_GPS_ALTITUDE && source <= ELRS_DISPLAY_SATELLITES)) {
+        sample.received = _haveGpsSpeed;
+        receivedAt = _lastGpsSpeed;
+    } else if(source == ELRS_DISPLAY_AIRSPEED) {
+        sample.received = _haveAirspeed;
+        receivedAt = _lastAirspeed;
+    } else if(source >= ELRS_DISPLAY_BATTERY_VOLTAGE && source <= ELRS_DISPLAY_CAPACITY) {
+        sample.received = _haveBattery;
+        receivedAt = _lastBattery;
+    } else if(source >= ELRS_DISPLAY_LINK_QUALITY && source <= ELRS_DISPLAY_SNR) {
+        sample.received = _haveLinkStats;
+        receivedAt = _lastLinkStats;
+    }
+    if(!sample.received) return sample;
+    sample.ageMs = now - receivedAt;
+    if(sample.ageMs >= _config.transport.telemetryTimeoutMs) return sample;
+    switch(source) {
+    case ELRS_DISPLAY_GPS_SPEED: sample.value = _gpsSpeed10 * 0.1f; break;
+    case ELRS_DISPLAY_AIRSPEED: sample.value = _airspeed10 * 0.1f; break;
+    case ELRS_DISPLAY_BATTERY_VOLTAGE: sample.value = _remoteBatteryVoltage; break;
+    case ELRS_DISPLAY_BATTERY_CURRENT: sample.value = _remoteCurrent10 * 0.1f; break;
+    case ELRS_DISPLAY_BATTERY_PERCENT: if(_remoteBattery > 100) return sample; sample.value = _remoteBattery; break;
+    case ELRS_DISPLAY_CAPACITY: sample.value = _remoteCapacity; break;
+    case ELRS_DISPLAY_GPS_ALTITUDE: sample.value = _gpsAltitude; break;
+    case ELRS_DISPLAY_GPS_HEADING: if(_gpsHeading100 > 36000) return sample; sample.value = _gpsHeading100 * 0.01f; break;
+    case ELRS_DISPLAY_SATELLITES: sample.value = _gpsSatellites; break;
+    case ELRS_DISPLAY_LINK_QUALITY: if(_linkQuality > 100) return sample; sample.value = _linkQuality; break;
+    case ELRS_DISPLAY_RSSI: sample.value = -(int)_rxRssi; break;
+    case ELRS_DISPLAY_SNR: sample.value = _rxSnr; break;
+    default: return sample;
+    }
+    sample.available = true;
+    return sample;
+}
+
 bool ELRSCrsfCore::telemetryActive() const
 {
     return _transport.status().telemetryActive;
@@ -498,6 +554,8 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
     case CRSF_FRAME_LINK_STATS:
         if(payloadLen >= 10) {
             _linkQuality = payload[2];
+            _rxRssi = payload[0];
+            _rxSnr = (int8_t)payload[3];
             _lastLinkStats = now;
             _haveLinkStats = true;
             supportedTelemetry = true;
@@ -507,12 +565,19 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
         if(payloadLen >= 8) {
             _remoteBatteryVoltage = (float)readBE16(payload) * 0.1f;
             _remoteBattery = payload[7];
+            _remoteCurrent10 = readBE16(payload + 2);
+            _remoteCapacity = ((uint32_t)payload[4] << 16) | ((uint32_t)payload[5] << 8) | payload[6];
+            _lastBattery = now;
+            _haveBattery = true;
             supportedTelemetry = true;
         }
         break;
     case CRSF_FRAME_GPS:
         if(payloadLen >= 15) {
             _gpsSpeed10 = readBE16(payload + 8);
+            _gpsHeading100 = readBE16(payload + 10);
+            _gpsAltitude = (int32_t)readBE16(payload + 12) - 1000;
+            _gpsSatellites = payload[14];
             _lastGpsSpeed = now;
             _haveGpsSpeed = true;
             supportedTelemetry = true;

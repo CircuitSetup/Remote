@@ -48,6 +48,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool isCalibrating() const;
         bool fakePowerOn() const;
         ELRSCrsfStatus getStatus() const;
+        ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now) const;
         void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
         bool readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 
