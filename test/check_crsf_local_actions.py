@@ -49,6 +49,8 @@ STUBS = r'''
 #define PA_ALLOWSD 1
 #define PA_INTRMUS 2
 #define PA_DYNVOL 4
+#define BTTFN_REMCMD_PING 1
+#define BTTFN_REMCMD_COMBINED 3
 unsigned long now = 100, volchgtimer = 0, brichgtimer = 0, offDisplayNow = 0;
 unsigned long volchgnow = 0, brichgnow = 0, vischgnow = 0;
 unsigned long millis() { return now; }
@@ -95,6 +97,17 @@ int prevCount = 0, nextCount = 0, stopCount = 0, playCount = 0, audioStops = 0;
 int volume = 5, brightness = 5, volumeDisplays = 0, brightnessDisplays = 0;
 int savedVol = 0, savedBri = 0, savedVis = 0, combined = 0, flushes = 0, tt = 0;
 bool networkAvailable = true;
+bool useBTTFN = true, displayTCDSMode = false, sendSucceeds = true;
+unsigned long lastCommandSent = 0;
+struct Packet { uint8_t command, flags, speed; };
+std::vector<Packet> packets;
+bool bttfn_send_command(uint8_t command, uint8_t flags, uint8_t speed) {
+    packets.push_back({command, flags, speed});
+    if(!sendSucceeds) return false;
+    if(command == BTTFN_REMCMD_COMBINED) combined++;
+    lastCommandSent = now;
+    return true;
+}
 uint8_t configuredLocalActions[12] = {};
 void loadELRSInputConfig(void*,int,void*,void*,void*,void*,void*,uint8_t *flags) { memcpy(flags, configuredLocalActions, 12); }
 const char *powerOnSnd = "/poweron.mp3", *powerOffSnd = "/poweroff.mp3";
@@ -119,7 +132,7 @@ void displayBrightness() { brightnessDisplays++; }
 void updateVisMode() {}
 void triggerSaveVis() { vischgnow = now; }
 void toggleAutoThrottle() { autoThrottle = !autoThrottle; triggerSaveVis(); }
-void bttfn_remote_send_combined(bool,bool,uint8_t) { combined++; }
+static void bttfn_remote_send_combined(bool,bool,uint8_t);
 bool bttfn_trigger_tt(bool probe) { if(!probe && networkAvailable && !tcdIsBusy) tt++; return networkAvailable && !tcdIsBusy; }
 void saveCurVolume() { savedVol++; }
 void saveBrightness() { savedBri++; }
@@ -255,6 +268,50 @@ int main() {
     opModePropCRSF = false; maxDelay = 0; priorCrsfTicks = crsfTicks;
     mydelay(20, false);
     assert(maxDelay == 10 && crsfTicks == priorCrsfTicks);
+    // A telemetry-only local action must not register TCD speed/power control.
+    memset(configuredLocalActions, 0, sizeof(configuredLocalActions));
+    configuredLocalActions[2] = 1; // O.O only; FakePower and Stop remain unchecked.
+    opModeCRSF = true; powerMaster = true; displayTCDSMode = false;
+    triggerCompleteUpdate = triggerRefill = false;
+    processCRSFLocalSwitches(3, 1 << 2);
+    assert(powerState && brakeState && !(csf & CSF_OFF)); // Keep local button context.
+    packets.clear(); lastCommandSent = now; now += 10001;
+    crsf_standalone_keepalive();
+    assert(packets.size() == 1 && packets[0].command == 1 && packets[0].flags == 0);
+    // Every send path uses the same opt-in rule, including power-master actions.
+    packets.clear(); bttfn_remote_send_combined(true, true, 42);
+    assert(packets.size() == 1 && packets[0].command == 1 && packets[0].flags == 0);
+    packets.clear(); sendSucceeds = false;
+    bttfn_remote_send_combined(true, true, 42);
+    assert(packets.size() == 1 && packets[0].command == 1 && triggerCompleteUpdate);
+    packets.clear(); sendSucceeds = true; crsf_standalone_keepalive();
+    assert(packets.size() == 1 && packets[0].command == 1 && !triggerCompleteUpdate);
+    // Refill is independent of FakePower/Stop and keeps its retry after failure.
+    packets.clear(); triggerRefill = true; sendSucceeds = false;
+    bttfn_remote_send_combined(true, true, 42);
+    assert(packets.size() == 1 && packets[0].command == 103);
+    assert(triggerRefill && triggerCompleteUpdate);
+    packets.clear(); sendSucceeds = true; crsf_standalone_keepalive();
+    assert(packets.size() == 2 && packets[0].command == 103 && packets[1].command == 1);
+    assert(!triggerRefill && !triggerCompleteUpdate);
+    // Stop alone must not accidentally give the Remote speed or power ownership.
+    configuredLocalActions[2] = 0; configuredLocalActions[0] = 1;
+    packets.clear(); bttfn_remote_send_combined(true, true, 0);
+    assert(packets.size() == 1 && packets[0].command == 1 && packets[0].flags == 0);
+    // FakePower opt-in enables combined control; Stop needs its own opt-in.
+    configuredLocalActions[0] = 0; configuredLocalActions[1] = 1;
+    packets.clear(); bttfn_remote_send_combined(true, true, 0);
+    assert(packets.size() == 1 && packets[0].command == 3 && packets[0].flags == 9);
+    configuredLocalActions[0] = 1;
+    packets.clear(); bttfn_remote_send_combined(true, true, 0);
+    assert(packets.size() == 1 && packets[0].command == 3 && packets[0].flags == 11);
+    // Legacy and combined prop mode retain all of their normal controls.
+    memset(configuredLocalActions, 0, sizeof(configuredLocalActions));
+    for(int mode = 0; mode < 2; mode++) {
+        opModeCRSF = mode != 0; opModePropCRSF = mode != 0;
+        packets.clear(); bttfn_remote_send_combined(true, true, 42);
+        assert(packets.size() == 1 && packets[0].command == 3 && packets[0].flags == 11 && packets[0].speed == 42);
+    }
     puts("CRSF Settings behavior, audio/network callbacks, and persistence checks passed");
 }
 '''
@@ -281,7 +338,9 @@ if __name__ == '__main__':
              'butPackKeyLongPressed', 'butPackKeyLongPressStop',
              'powKeyPressed', 'powKeyLongPressStop', 'brakeKeyPressed', 'brakeKeyLongPressStop',
              'processCRSFLocalSwitches', 'crsfLocalActionsEnabled', 'serviceCRSF',
-             'queueCRSFLocalSwitches', 'myloop', 'mydelay']
+             'queueCRSFLocalSwitches', 'myloop', 'mydelay',
+             'crsf_standalone_keepalive', 'crsf_handle_bttfn_update',
+             'bttfn_remote_send_combined']
     production = '\n\n'.join(function(source, name) for name in names)
     # Execute the exact inline event bodies restored to the normal prop loop.
     for name, marker in [('handleButtonAEvent', 'if(isbuttonAKeyChange)'),

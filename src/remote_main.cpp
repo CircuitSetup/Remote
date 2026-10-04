@@ -3884,6 +3884,9 @@ void bttfn_remote_unregister()
 static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t speed)
 {
     if(!triggerCompleteUpdate) {
+        #ifdef HAVE_CRSF
+        if(crsf_handle_bttfn_update(brakestate)) return;
+        #endif
         uint8_t p1 = 0;
         if(powerstate)       p1 |= 0x01;
         if(brakestate)       p1 |= 0x02;

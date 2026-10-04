@@ -1013,6 +1013,8 @@ Choose **CH1** through **CH16**, or **None**, for each gimbal and switch. Assign
 
 In **ELRS/CRSF** mode, check **Also trigger Settings action** beside a switch channel to also run that switch's existing behavior from the Settings page. In **Prop controls + ELRS/CRSF**, all normal prop controls are already active regardless of these checkboxes. This reuses the Stop, FakePower, O.O/RESET, and User Buttons behavior, including the configured momentary/maintained switch handling, short/long presses, and maintained-switch audio options. CRSF channel output continues independently. A checked switch also runs its local Settings action when its channel is **None**. In **Prop controls + ELRS/CRSF**, all prop functions remain active even for inputs assigned **None**. All checkboxes default to unchecked, including after loading older settings. Save the ELRS/CRSF page and restart to apply changes.
 
+In telemetry mode, the **FakePower** checkbox enables TCD power/speed control, including O.O/RESET's configured TCD power-master actions. TCD braking also requires the **Stop** checkbox. With FakePower unchecked, BTTFN uses state-free keepalives; enabled O.O Time Travel and User Button refill requests still work independently. The physical FakePower position still selects the on/off behavior of enabled O.O/RESET and User Button actions.
+
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 
 Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF frame is generated.
@@ -1125,6 +1127,8 @@ Choose **CH1** through **CH16**, or **None**, for each gimbal and switch. Assign
 ##### &#9193; Switch Local Actions
 
 In **ELRS/CRSF** mode, check **Also trigger Settings action** beside a switch channel to also run that switch's existing behavior from the Settings page. In **Prop controls + ELRS/CRSF**, all normal prop controls are already active regardless of these checkboxes. This reuses the Stop, FakePower, O.O/RESET, and User Buttons behavior, including the configured momentary/maintained switch handling, short/long presses, and maintained-switch audio options. CRSF channel output continues independently. A checked switch also runs its local Settings action when its channel is **None**. In **Prop controls + ELRS/CRSF**, all prop functions remain active even for inputs assigned **None**. All checkboxes default to unchecked, including after loading older settings. Save the ELRS/CRSF page and restart to apply changes.
+
+In telemetry mode, the **FakePower** checkbox enables TCD power/speed control, including O.O/RESET's configured TCD power-master actions. TCD braking also requires the **Stop** checkbox. With FakePower unchecked, BTTFN uses state-free keepalives; enabled O.O Time Travel and User Button refill requests still work independently. The physical FakePower position still selects the on/off behavior of enabled O.O/RESET and User Button actions.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 

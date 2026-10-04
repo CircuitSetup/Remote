@@ -190,5 +190,32 @@ static void crsf_standalone_keepalive()
     }
 }
 
+static bool bttfn_send_command(uint8_t cmd, uint8_t p1, uint8_t p2);
+
+static bool crsf_handle_bttfn_update(bool &brakestate)
+{
+    if(!opModeCRSF || opModePropCRSF) return false;
+
+    uint8_t localActions[12];
+    loadELRSInputConfig(NULL, 0, NULL, NULL, NULL, NULL, NULL, localActions);
+    if(localActions[1]) {
+        brakestate = brakestate && localActions[0];
+        return false;
+    }
+
+    // COMBINED always replaces TCD power, brake and speed. A disabled FakePower
+    // must use state-free keepalives, including sends from O.O/RESET or retries.
+    if(triggerRefill) {
+        constexpr uint8_t refillCommand = 103;
+        if(!bttfn_send_command(refillCommand, 0, 0)) {
+            triggerCompleteUpdate = true;
+            return true;
+        }
+        triggerRefill = false;
+    }
+    triggerCompleteUpdate = !bttfn_send_command(BTTFN_REMCMD_PING, 0, 0);
+    return true;
+}
+
 #endif
 #endif
