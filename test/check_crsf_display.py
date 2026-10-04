@@ -17,6 +17,9 @@ production += function('static bool crsfParseDisplayParams(ELRSDisplayConfig &co
 production += portal[portal.index('static const char crsfDisplayScript[]'):portal.index('static void handleELRSRawRead()')]
 fixture = r'''
 #include <cassert>
+#include <cmath>
+#include <ArduinoJson.h>
+static_assert(ARDUINOJSON_USE_DOUBLE == 1, "Use the installed default numeric precision");
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
@@ -63,6 +66,15 @@ struct { Server *server = &::server; } wm;
 '''
 cases = r'''
 int main() {
+    float number;
+    for(const auto &item : std::vector<std::pair<const char *, float>>{{"1.25",1.25f},{".5",0.5f},{"1.",1.0f},{"+2e-1",0.2f},{"-2E+1",-20.0f},{"-0",-0.0f},{"1e-40",1e-40f},{"0e999",0.0f}}) {
+        assert(crsfParseDisplayNumber(item.first, number));
+        assert(number == item.second);
+    }
+    assert(crsfParseDisplayNumber("-0", number) && std::signbit(number));
+    for(const char *bad : {".", "+", "-", "e1", "1e", "1e+", "1..2", "--1", "1-2", "1e2e3", "1e999"}) {
+        assert(!crsfParseDisplayNumber(bad, number));
+    }
     auto config = defaultConfig(); config.propControls = true;
     assert(core.begin(host, config, 0));
     handleELRSTelemetryRead(); assert(server.status == 200);
@@ -71,6 +83,9 @@ int main() {
     assert(server.status == 200 && server.body.find("\"text\":\"31.1\"") != String::npos);
     server.args = {{"cdmul","1"},{"cdoff","0"},{"cspdu","0"},{"cddec","0"}};
     handleELRSTelemetryRead(); assert(server.body.find("\"text\":\"100\"") != String::npos);
+    for(const char *id : {"7","8","9"}) {
+        server.args = {{"cdsrc",id}}; handleELRSTelemetryRead(); assert(server.status == 200);
+    }
     testNow = 2000; core.loop(host, testNow, 0);
     host.queueFrame(makeFrame(0x14, {105,0,88,253,0,0,0,0,0,0}));
     core.loop(host, testNow, 0); server.args.clear(); handleELRSTelemetryRead();
@@ -84,9 +99,21 @@ int main() {
     server.args = {{"cdsrc","13"}}; handleELRSTelemetryRead();
     assert(server.body.find("\"text\":\"\"") != String::npos);
     for(const char *field : {"cdsrc","cddec","cdmul","cdoff","cspdu"}) {
-        for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "0x1p2", "1junk", " 1", "999999999999999999999999999", String("1\0x",3)}) {
+        for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "0x1p2", "1junk", " 1", ".", "+", "1e", "1e+", "1..2", "--1", "1-2", "1e2e3", "1e999", "999999999999999999999999999", String("1\0x",3)}) {
             server.args = {{field,bad}}; handleELRSTelemetryRead(); assert(server.status == 400);
         }
+    }
+    for(const auto &item : std::vector<std::pair<const char *, const char *>>{{"cdmul","1000"},{"cdmul","-1000"},{"cdoff","999"},{"cdoff","-999"},{"cdmul","1e-40"},{"cdoff","0e999"}}) {
+        server.args = {{item.first,item.second}}; handleELRSTelemetryRead(); assert(server.status == 200);
+    }
+    for(const auto &item : std::vector<std::pair<const char *, const char *>>{{"cdmul","1000.01"},{"cdmul","-1000.01"},{"cdoff","999.01"},{"cdoff","-999.01"},{"cdmul","1e999"},{"cdoff","1e+"}}) {
+        server.args = {{item.first,item.second}}; handleELRSTelemetryRead(); assert(server.status == 400);
+    }
+    // A zero sample must remain selectable and appear numerically only in preview.
+    opModePropCRSF = true;
+    host.queueFrame(makeFrame(0x14, {0,0,0,0,0,0,0,0,0,0})); core.loop(host, testNow, 0);
+    for(const char *id : {"10","11","12"}) {
+        server.args = {{"cdsrc",id}}; handleELRSTelemetryRead(); assert(server.status == 200);
     }
     assert(crsfDisplayConfig.source == 1 && crsfDisplayConfig.multiplier == 0.5f && host.displayShows == 0);
     const char *html = wmBuildCRSFDisplay(nullptr, 2); assert(html);
@@ -106,15 +133,19 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='crsf-display-') as work:
     path = Path(work) / 'responses.jsonl'
     os.environ['CRSF_DISPLAY_JSON'] = str(path)
-    compile_and_run(fixture + production + cases, ['elrs_crsf_core.cpp', 'elrs_crsf_transport.cpp', 'elrs_input_model.cpp'])
+    compile_and_run(fixture + production + cases, ['elrs_crsf_core.cpp', 'elrs_crsf_transport.cpp', 'elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
     responses = [json.loads(line) for line in path.read_text().splitlines()]
-    assert len(responses) == 8
-    assert responses[0]['sources'][0]['ageMs'] is None
-    assert responses[0]['sources'][0]['value'] is None
-    assert responses[1]['sources'][0]['ageMs'] == 0
-    assert responses[1]['sources'][0]['value'] == 100 and responses[1]['sources'][0]['unit'] == 'km/h'
+    assert len(responses) == 20
+    assert responses[0]['sources'] == [], 'Sources must be absent before reception'
+    assert [row['id'] for row in responses[1]['sources']] == [1,7,8,9]
+    assert responses[1]['sources'][0] == {'id':1,'label':'GPS speed','unit':'km/h'}
     assert abs(responses[1]['preview']['value'] - 62.1371192) < 0.001 and responses[1]['preview']['unit'] == 'mph'
-    assert responses[3]['sources'][0]['received'] and not responses[3]['sources'][0]['available']
-    assert responses[3]['sources'][0]['ageMs'] == 2000 and responses[3]['sources'][0]['value'] is None
-    assert responses[3]['sources'][11]['value'] == -3
+    assert [response['preview']['value'] for response in responses[3:6]] == [0,0,0]
+    assert all(response['preview']['available'] for response in responses[3:6])
+    assert [row['id'] for row in responses[6]['sources']] == [10,11,12]
+    assert responses[6]['preview']['value'] is None and not responses[6]['preview']['available']
+    for response in responses:
+        assert all(set(row) == {'id','label','unit'} for row in response['sources'])
+    assert [response['preview']['value'] for response in responses[-3:]] == [0,0,0]
+    assert all(response['preview']['available'] for response in responses[-3:])
     del os.environ['CRSF_DISPLAY_JSON']

@@ -1,6 +1,7 @@
 
 #ifdef HAVE_CRSF
 
+#include <ArduinoJson.h>
 #include "elrs_crsf.h"
 
 static const char *wmBuildCRSFStatus(const char *dest, int op);
@@ -462,12 +463,27 @@ static void crsfReadOutputLimitParams()
 
 static bool crsfParseDisplayNumber(const String &value, float &number)
 {
-    const char *text = value.c_str();
+    const char *text = value.c_str(), *p = text;
     const size_t length = value.length();
-    if(!length || length > 24 || strlen(text) != length || strspn(text, "0123456789+-.eE") != length) return false;
-    char *end;
-    number = strtof(text, &end);
-    return end == text + length && std::isfinite(number);
+    if(!length || length > 24 || strlen(text) != length) return false;
+    if(*p == '+' || *p == '-') ++p;
+    const char *mantissa = p;
+    size_t digits = strspn(p, "0123456789"); p += digits;
+    if(*p == '.') { ++p; size_t fraction = strspn(p, "0123456789"); p += fraction; digits += fraction; }
+    if(!digits) return false;
+    const bool zero = strspn(mantissa, "0.") == size_t(p - mantissa);
+    if(*p == 'e' || *p == 'E') {
+        ++p; if(*p == '+' || *p == '-') ++p;
+        size_t exponent = strspn(p, "0123456789"); if(!exponent) return false; p += exponent;
+    }
+    if(*p) return false;
+    if(zero) { number = *text == '-' ? -0.0f : 0.0f; return true; }
+    // ponytail: JSON conversion can round rare decimal boundaries differently; use strtof if exact rounding is required.
+    StaticJsonDocument<0> document;
+    document.set(text);
+    number = document.as<float>();
+    if(number == 0 && *text == '-') number = -0.0f;
+    return std::isfinite(number);
 }
 
 static bool crsfParseDisplayParams(ELRSDisplayConfig &config)
@@ -953,7 +969,7 @@ function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidde
 function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});}
 function options(rows){var wanted=hidden.value,label=source.selectedOptions.length?source.selectedOptions[0].textContent:'Saved source';source.textContent='';
 function add(id,text,disabled){var option=document.createElement('option');option.value=String(id);option.textContent=text;option.disabled=!!disabled;source.appendChild(option);}
-add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){if(row.available)add(row.id,row.label+' ('+row.unit+')');});
+add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){add(row.id,row.label+' ('+row.unit+')');});
 if(!Array.from(source.options).some(function(option){return option.value===wanted;}))add(wanted,label.replace(/ \(unavailable\)$/,'')+' (unavailable)',true);source.value=wanted;}
 function fail(message){options([]);preview.textContent='---';status.textContent=message;}
 function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.available?': '+data.preview.value+(data.preview.unit?' '+data.preview.unit:''):' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
@@ -1020,17 +1036,15 @@ static void handleELRSTelemetryRead()
     const uint32_t now = millis();
     String json = "{\"ok\":true,\"sources\":[";
     json.reserve(2400);
-    char buf[280], value[32], age[16];
+    char buf[280], value[32];
+    bool first = true;
     for(uint8_t source = ELRS_DISPLAY_GPS_SPEED; source <= ELRS_DISPLAY_SNR; source++) {
         const ELRSTelemetrySample sample = elrsMode.telemetrySample(source, now);
-        if(sample.available) snprintf(value, sizeof(value), "%.9g", sample.value);
-        else strcpy(value, "null");
-        if(sample.received) snprintf(age, sizeof(age), "%lu", (unsigned long)sample.ageMs);
-        else strcpy(age, "null");
-        snprintf(buf, sizeof(buf), "%s{\"id\":%u,\"label\":\"%s\",\"unit\":\"%s\",\"received\":%s,\"available\":%s,\"value\":%s,\"ageMs\":%s}",
-                 source == 1 ? "" : ",", source, elrsTelemetrySourceLabel(source), elrsTelemetrySourceUnit(source, ELRS_SPEED_UNITS_KMH),
-                 sample.received ? "true" : "false", sample.available ? "true" : "false", value, age);
+        if(!sample.available) continue;
+        snprintf(buf, sizeof(buf), "%s{\"id\":%u,\"label\":\"%s\",\"unit\":\"%s\"}",
+                 first ? "" : ",", source, elrsTelemetrySourceLabel(source), elrsTelemetrySourceUnit(source, ELRS_SPEED_UNITS_KMH));
         json += buf;
+        first = false;
     }
     const ELRSDisplayConfig effective = elrsEffectiveDisplayConfig(config, opModePropCRSF);
     const ELRSTelemetrySample sample = elrsMode.telemetrySample(effective.source, now);

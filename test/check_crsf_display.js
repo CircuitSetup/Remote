@@ -17,8 +17,8 @@ const context = {document:{getElementById:id=>elements[id],createElement:()=>new
 vm.createContext(context);
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],context);
 const data=(sources,text='50.0',source=1)=>({sources,preview:{source,text,label:'GPS speed',unit:'km/h',value:text==='---'?null:100,available:text!=='---'}});
-const gps={id:1,label:'GPS speed',unit:'km/h',available:true};
-const battery={id:3,label:'Vehicle battery voltage',unit:'V',available:true};
+const gps={id:1,label:'GPS speed',unit:'km/h'};
+const battery={id:3,label:'Vehicle battery voltage',unit:'V'};
 const flush=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
 async function reply(index,body,ok=true,status=200) { requests[index].resolve({ok,status,json:()=>Promise.resolve(body)}); await flush(); }
 (async()=>{
