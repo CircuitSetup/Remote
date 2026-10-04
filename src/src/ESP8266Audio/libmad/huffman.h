@@ -22,45 +22,53 @@
 # ifndef LIBMAD_HUFFMAN_H
 # define LIBMAD_HUFFMAN_H
 
-// Use ints instead of bitfields. This'll make the structure way larger, but allow
+# if defined(ESP32)
+# include <stdint.h>
+// ESP32 supports direct 16-bit flash reads; keep the original layout elsewhere.
+typedef uint16_t mad_huffval_t;
+# else
+typedef unsigned int mad_huffval_t;
+# endif
+
+// Use scalar fields instead of bitfields. This'll make the structure way larger, but allow
 // for easy direct access w/o any helper functions when placed in PROGMEM
 
 union huffquad {
   struct {
-    unsigned int final;
-    unsigned int bits;
-    unsigned int offset;
+    mad_huffval_t final;
+    mad_huffval_t bits;
+    mad_huffval_t offset;
   } ptr;
   struct {
-    unsigned int final;
-    unsigned int hlen;
-    unsigned int v;
-    unsigned int w;
-    unsigned int x;
-    unsigned int y;
+    mad_huffval_t final;
+    mad_huffval_t hlen;
+    mad_huffval_t v;
+    mad_huffval_t w;
+    mad_huffval_t x;
+    mad_huffval_t y;
   } value;
-  unsigned int final ;
+  mad_huffval_t final ;
 };
 
 union huffpair {
   struct {
-    unsigned int final;
-    unsigned int bits;
-    unsigned int offset;
+    mad_huffval_t final;
+    mad_huffval_t bits;
+    mad_huffval_t offset;
   } ptr;
   struct {
-    unsigned int final;
-    unsigned int hlen;
-    unsigned int x;
-    unsigned int y;
+    mad_huffval_t final;
+    mad_huffval_t hlen;
+    mad_huffval_t x;
+    mad_huffval_t y;
   } value;
-  unsigned int final;
+  mad_huffval_t final;
 };
 
 struct hufftable {
   union huffpair const *table;
-  unsigned int linbits;
-  unsigned int startbits;
+  mad_huffval_t linbits;
+  mad_huffval_t startbits;
 };
 
 extern union huffquad const *const mad_huff_quad_table[2];

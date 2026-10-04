@@ -483,7 +483,7 @@ uint8_t WiFiManager::connectWifi(const char *ssid, const char *pass, const char 
     _badBSSID = false;
 
     if(bssid && *bssid) {
-        if(sscanf(bssid, "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) == 6) {
+        if(siscanf(bssid, "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) == 6) {
             int j = 0;
             for(int i = 0; i < 6; i++) {
                 if(b[i] <= 255) br[i] = b[i];
@@ -2970,7 +2970,7 @@ void WiFiManager::_handleParamSave(int aidx, const char *title)
     doParamSave(_params[aidx], _paramsCount[aidx]);
 
     if(_saveparamscallback && !_saveparamscallback(aidx)) {
-        server->send(400, "text/html", "<p>Settings were not saved. Check the values and storage, then try again.</p><a href='/'>Return to portal</a>");
+        server->send(500, "text/html", "<p>Settings could not be saved to storage. Please try again.</p><a href='/'>Return to portal</a>");
         return;
     }
 
