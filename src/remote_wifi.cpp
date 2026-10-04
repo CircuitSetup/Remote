@@ -102,7 +102,7 @@ static const char acul_part7[]  = " S' id='lc'><strong>Upload successful.</stron
 static const char acul_part7a[] = "<br>Installation will proceed after reboot.";
 static const char acul_part71[] = " D'><strong>Upload failed.</strong><br>";
 static const char acul_part8[]  = "</div></div></body></html>";
-static const char *acul_errs[]  = { 
+static const char * const acul_errs[]  = {
     "Can't open file on SD",
     "No SD card found",
     "Write error",
@@ -120,7 +120,7 @@ static const char tcdSSIDq[] = "%sCurrently connected TCD has %s password config
 static const char tcdAPPW1[] = "no";
 static const char tcdAPPW2[] = "a";
 
-static const char *apChannelCustHTMLSrc[14] = {
+static const char * const apChannelCustHTMLSrc[14] = {
     "'>WiFi channel",
     "apchnl",
     ">Random%s1'",
@@ -137,7 +137,7 @@ static const char *apChannelCustHTMLSrc[14] = {
     ">11%s"
 };
 
-static const char *tutCustHTMLSrc[5] = {
+static const char * const tutCustHTMLSrc[5] = {
     "mt5",
     "Play throttle-up sound on throttle-up",
     "tut",
@@ -146,7 +146,7 @@ static const char *tutCustHTMLSrc[5] = {
 };
 
 
-static const char *musFoldCustHTMLSrc[12] = {
+static const char * const musFoldCustHTMLSrc[12] = {
     "'>Music folder",
     "mfol",
     ">0%s%s1'",
@@ -161,7 +161,7 @@ static const char *musFoldCustHTMLSrc[12] = {
     ">9%s%s"
 };
 
-static const char *musFoldStates[6] = {
+static const char * const musFoldStates[6] = {
     " No SD card",
     " Not a folder",
     " No audio files",
@@ -170,7 +170,7 @@ static const char *musFoldStates[6] = {
     ""
 };
 
-static const char *refillCustHTMLSrc[11] = {
+static const char * const refillCustHTMLSrc[11] = {
     "'>Button to refill Plutonium",
     "refb",
     ">None%s1'",
@@ -184,7 +184,7 @@ static const char *refillCustHTMLSrc[11] = {
     ">8%s"
 };
 
-static const char *oorstCustHTMLSrc[5] = {
+static const char * const oorstCustHTMLSrc[5] = {
     "",
     "Holding O.O/RESET when Fake-Power off",
     "oorst",
@@ -192,7 +192,7 @@ static const char *oorstCustHTMLSrc[5] = {
     "takes/releases control of TCD Fake Power"
 };
 
-static const char *oottCustHTMLSrc[5] = {
+static const char * const oottCustHTMLSrc[5] = {
     "mt5",
     "Pressing O.O when Fake-Power on",
     "oott",
@@ -200,7 +200,7 @@ static const char *oottCustHTMLSrc[5] = {
     "makes throttle-up trigger a time travel"
 };
 
-static const char *resatCustHTMLSrc[5] = {
+static const char * const resatCustHTMLSrc[5] = {
     "mt5",
     "Holding RESET when Fake-Power on",
     "resat",
@@ -209,7 +209,7 @@ static const char *resatCustHTMLSrc[5] = {
 };
 
 #ifdef HAVE_PM
-static const char *batTypeHTMLSrc[7] = {
+static const char * const batTypeHTMLSrc[7] = {
     "'>Battery type'",
     "bty",
     ">3.7V/4.2V LiPo%s3'",
@@ -222,7 +222,7 @@ static const char *wmBuildBatType(const char *dest, int op);
 #endif
 
 #ifdef HAVE_MQTT
-static const char *mqttpCustHTMLSrc[4] = {
+static const char * const mqttpCustHTMLSrc[4] = {
     "'>Protocol version",
     "mprot",
     ">3.1.1%s1'",
@@ -531,7 +531,7 @@ static void setCMCallback(bool enable);
 
 static void updateConfigPortalValues();
 
-static const char *wmBuildSelect(const char *dest, int op, const char **src, int count, char *setting, bool indent = false);
+static const char *wmBuildSelect(const char *dest, int op, const char * const *src, int count, char *setting, bool indent = false);
 
 static IPAddress stringToIp(char *str);
 
@@ -1604,7 +1604,7 @@ static void checkForUpdate()
 
     lastUpdateCheck = millis();
 
-    if(connectedToTCDAP || sscanf(CURRVERSION, "V%d.%d", &cver, &crev) != 2) {
+    if(connectedToTCDAP || siscanf(CURRVERSION, "V%d.%d", &cver, &crev) != 2) {
         lastUpdateLiveCheck = millisNonZero();
         return;
     }
@@ -1949,7 +1949,7 @@ static const char *buildBanner(const char *msg, const char *col, int op)
     return str;
 }
 
-static unsigned int calcSelectMenu(const char **theHTML, int cnt, char *setting, bool indent = false)
+static unsigned int calcSelectMenu(const char * const *theHTML, int cnt, char *setting, bool indent = false)
 {
     int sr = atoi(setting);
 
@@ -1972,7 +1972,7 @@ static unsigned int calcSelectMenu(const char **theHTML, int cnt, char *setting,
     return l + 8;
 }
 
-static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *setting, bool indent = false)
+static void buildSelectMenu(char *target, const char * const *theHTML, int cnt, char *setting, bool indent = false)
 {
     int sr = atoi(setting);
 
@@ -1991,7 +1991,7 @@ static void buildSelectMenu(char *target, const char **theHTML, int cnt, char *s
     }
 }
 
-static const char *wmBuildSelect(const char *dest, int op, const char **src, int count, char *setting, bool indent)
+static const char *wmBuildSelect(const char *dest, int op, const char * const *src, int count, char *setting, bool indent)
 {
     if(op == WM_CP_DESTROY) {
         if(dest) free((void *)dest);
@@ -2012,7 +2012,7 @@ static const char *wmBuildSelect(const char *dest, int op, const char **src, int
     return str;
 }
 
-static unsigned int lengthRadioButtons(const char **theHTML, int cnt, char *setting)
+static unsigned int lengthRadioButtons(const char * const *theHTML, int cnt, char *setting)
 {
     unsigned int mysize = STRLEN(rad0) - 2 + strlen(theHTML[0]) + strlen(theHTML[1]) + STRLEN(rad2);
     int i, j = strlen(theHTML[2]), sr = atoi(setting);
@@ -2026,7 +2026,7 @@ static unsigned int lengthRadioButtons(const char **theHTML, int cnt, char *sett
     return mysize;
 }
 
-static void buildRadioButtons(char *target, const char **theHTML, int cnt, char *setting)
+static void buildRadioButtons(char *target, const char * const *theHTML, int cnt, char *setting)
 {
     int i, sr = atoi(setting);
     
@@ -2040,7 +2040,7 @@ static void buildRadioButtons(char *target, const char **theHTML, int cnt, char 
     strcat(target, rad99);
 }
 
-static const char *wmBuildRadioButtons(const char *dest, int op, const char **theHTML, int cnt, char *setting)
+static const char *wmBuildRadioButtons(const char *dest, int op, const char * const *theHTML, int cnt, char *setting)
 {
     if(op == WM_CP_DESTROY) {
         if(dest) free((void *)dest);
@@ -2550,6 +2550,7 @@ static void handleUploadDone()
 
     if(!haveSD && numUploads) {
       
+        haveErrs = true;
         buflen += (STRLEN(acul_part71) + strlen(acul_errs[1]));
         
     } else {
@@ -2637,8 +2638,9 @@ static void handleUploadDone()
     }
     */
     
-    String str(buf);
-    wm.server->send(200, "text/html", str);
+    wm.server->setContentLength(strlen(buf));
+    wm.server->send(200, "text/html", "");
+    wm.server->sendContent(buf, strlen(buf));
 
     // Reboot required even for mp3 upload, because for most files, we check
     // during boot if they exist (to avoid repeatedly failing open() calls)
@@ -2713,7 +2715,7 @@ static IPAddress stringToIp(char *str)
 {
     int ip1, ip2, ip3, ip4;
 
-    sscanf(str, "%d.%d.%d.%d", &ip1, &ip2, &ip3, &ip4);
+    siscanf(str, "%d.%d.%d.%d", &ip1, &ip2, &ip3, &ip4);
 
     return IPAddress(ip1, ip2, ip3, ip4);
 }

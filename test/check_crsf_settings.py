@@ -132,7 +132,8 @@ select_page += ''.join(function('src/remote_wifi.cpp', signature) for signature 
 ])
 select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildSelectOneBased(const char *dest, int op, const char * const *src, int count, char *setting, bool indent = false)')
 select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFGimbalChannelSelect(const char *dest, int op, const char *label, const char *id, char *setting)')
-select_page += portal[portal.index('static const char *cOpModeCustHTMLSrc'):portal.index('static const char *cChannelCustHTMLSrc')]
+opmode_start = portal.rfind('\n', 0, portal.index('cOpModeCustHTMLSrc[')) + 1
+select_page += portal[opmode_start:channel_start]
 select_page += portal[portal.index('enum CRSFSelectFieldId'):portal.index('struct CRSFAxisSettings')]
 select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)')
 mode_json = function('src/remote_settings.cpp', 'static bool CopyCheckValidNumParm(const char *json, char *text, int lowerLim, int upperLim, int setDefault)')
@@ -438,15 +439,18 @@ int main() {
     const char *invalidText[] = {"15","4","17","5x","","256","-1"};
     server.name = "csw0";
     for(const char *bad : invalidText) {
+        stored = validStored; crsf_load_settings();
         syncCRSFPortalBuffers();
         server.value = bad;
         crsfReadSwitchParams();
-        strcpy(settings.elrsRollLow, "500"); // Rejection must also preserve calibration.
-        assert(!saveCRSFPortalInputSettings());
-        assert(stored == validStored);
-        loadELRSInputConfig(profiles, 4, nullptr, nullptr, nullptr, &switches);
-        assert(profiles[0].minimum == 300 && switches.channels[0] == 16);
+        strcpy(settings.elrsRollLow, "500"); // Invalid routing must preserve valid calibration edits.
+        assert(saveCRSFPortalInputSettings());
+        loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
+        assert(profiles[0].minimum == 500 && switches.channels[0] == 5);
+        assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
+        for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
     }
+    stored = validStored; crsf_load_settings();
     syncCRSFPortalBuffers();
     strcpy(settings.elrsSwitchCh[0], "15"); strcpy(settings.elrsSwitchCh[1], "16");
     assert(saveCRSFPortalInputSettings());
@@ -511,10 +515,10 @@ int main() {
             for(int i = 0; i < 4; i++) server.args[expoIds[i]] = "99";
             server.args[expoIds[axis]] = bad;
             crsfReadExpoParams(); strcpy(settings.elrsRollLow, "500");
-            assert(!saveCRSFPortalInputSettings()); assert(stored == fourStrengths);
+            assert(saveCRSFPortalInputSettings());
             loadELRSInputConfig(profiles, 4, nullptr);
-            assert(memcmp(profiles, fourProfiles, sizeof(profiles)) == 0);
-            for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
+            for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == axis ? 0 : 99));
+            assert(profiles[0].minimum == 500 && profiles[0].center == fourProfiles[0].center);
         }
     }
     stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
@@ -586,6 +590,7 @@ int main() {
     const auto validHash = crsfSettingsHash;
     validStored = stored;
     for(int axis = 0; axis < 4; axis++) {
+        stored = validStored; crsf_load_settings();
         ELRSInputAxisProfile invalidProfiles[4];
         memcpy(invalidProfiles, profiles, sizeof(profiles));
         invalidProfiles[axis].minimum = invalidProfiles[axis].center;
@@ -595,10 +600,15 @@ int main() {
         assert(memcmp(&crsfSettings, &validInputs, sizeof(validInputs)) == 0);
         syncCRSFPortalBuffers();
         strcpy(crsfAxisSettings[axis].low, crsfAxisSettings[axis].center);
-        assert(!saveCRSFPortalInputSettings());
-        assert(stored == validStored && crsfSettingsHash == validHash);
-        assert(memcmp(&crsfSettings, &validInputs, sizeof(validInputs)) == 0);
+        assert(saveCRSFPortalInputSettings());
+        ELRSInputAxisProfile defaulted[4]; loadELRSInputConfig(defaulted, 4);
+        const int inputAxis = crsfAxisSettings[axis].axis;
+        assert(defaulted[inputAxis].minimum == 0 && defaulted[inputAxis].center == 1024 && defaulted[inputAxis].maximum == 2047);
+        assert(defaulted[inputAxis].reverse == validInputs.axisProfile[inputAxis].reverse);
+        assert(defaulted[inputAxis].expo == validInputs.axisProfile[inputAxis].expo && defaulted[inputAxis].deadband == validInputs.axisProfile[inputAxis].deadband);
+        for(int i = 0; i < 4; i++) if(i != inputAxis) assert(memcmp(&defaulted[i], &validInputs.axisProfile[i], sizeof(defaulted[i])) == 0);
     }
+    stored = validStored; crsf_load_settings();
     ELRSGimbalRouting duplicateGimbals = routing;
     duplicateGimbals.aileronChannel = duplicateGimbals.elevatorChannel;
     assert(!saveELRSInputConfig(nullptr, 0, &duplicateGimbals));
@@ -610,7 +620,7 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(profiles, 4);
     assert(profiles[0].minimum == 375 && profiles[0].reverse == 1);
-    puts("CRSF invalid calibration/routing rejection and corrected retry check passed");
+    puts("CRSF portal calibration defaults, strict raw calibration/routing rejection and corrected retry check passed");
     loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches);
     const auto blobSize = stored.size();
     const uint8_t oldStop = switches.channels[0];
@@ -635,9 +645,11 @@ int main() {
     assert(!strcmp(settings.elrsRollCh, "15") && !strcmp(settings.elrsSwitchCh[0], "1"));
     strcpy(settings.elrsRollLow, "500");
     strcpy(settings.elrsSwitchCh[0], "15");
-    assert(!saveCRSFPortalInputSettings());
-    assert(stored == mixedStored && crsfSettingsHash == mixedHash);
-    assert(memcmp(&crsfSettings, &mixedInputs, sizeof(mixedInputs)) == 0);
+    assert(saveCRSFPortalInputSettings());
+    loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
+    assert(profiles[0].minimum == 500 && profiles[0].reverse == 1);
+    assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
+    for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
     for(int corruptGimbal = 0; corruptGimbal < 2; corruptGimbal++) {
         stored = mixedStored;
         size_t offset = corruptGimbal ? sizeof(old.axisProfile) : sizeof(old) + 4;
@@ -662,7 +674,7 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches);
     assert(routing.aileronChannel == 1 && switches.channels[0] == 15);
-    puts("CRSF shared CH1-CH16 routing, collision rejection and corrupt-map recovery check passed");
+    puts("CRSF shared CH1-CH16 routing, portal collision defaulting and strict raw-save checks passed");
     const char *channelNames[] = {"crlch", "cptch", "cthch", "cywch"};
     const char *pointNames[][3] = {{"crrlo","crrct","crrhi"}, {"cptlo","cptct","cpthi"},
                                  {"cthlo","cthct","cthhi"}, {"cywlo","cywct","cywhi"}};
@@ -684,27 +696,37 @@ int main() {
     };
     const auto beforePost = stored;
     const auto beforePostInputs = crsfSettings;
-    const auto beforePostHash = crsfSettingsHash;
-    const std::string badPoints[] = {"", "x", "900x", "2048", "00900x", "-1", "99999999999999999999", std::string("900\0x",5)};
+    const std::string badPoints[] = {"", "x", "900x", "2048", "00900x", "-1", "4294967296", "99999999999999999999", std::string("900\0x",5)};
     for(int axis = 0; axis < 4; axis++) {
         for(int point = 0; point < 3; point++) {
             for(const auto &bad : badPoints) {
+                stored = beforePost; crsf_load_settings();
                 preparePost();
                 server.args[pointNames[axis][point]] = bad;
                 crsf_wifi_saveParamsCallback();
-                assert(!saveCRSFPortalInputSettings());
-                assert(stored == beforePost && crsfSettingsHash == beforePostHash);
-                assert(memcmp(&crsfSettings, &beforePostInputs, sizeof(crsfSettings)) == 0);
+                assert(saveCRSFPortalInputSettings());
+                crsf_load_settings(); loadELRSInputConfig(profiles, 4, nullptr);
+                const int inputAxis = crsfAxisSettings[axis].axis;
+                assert(profiles[inputAxis].minimum == 0 && profiles[inputAxis].center == 1024 && profiles[inputAxis].maximum == 2047);
+                assert(profiles[inputAxis].reverse == beforePostInputs.axisProfile[inputAxis].reverse);
+                assert(profiles[inputAxis].expo == beforePostInputs.axisProfile[inputAxis].expo && profiles[inputAxis].deadband == beforePostInputs.axisProfile[inputAxis].deadband);
+                for(int i = 0; i < 4; i++) if(i != inputAxis) assert(memcmp(&profiles[i], &beforePostInputs.axisProfile[i], sizeof(profiles[i])) == 0);
             }
         }
-        for(const char *bad : {"", "17", "-1", "+1", " 1", "0x", "000x", "15x", "99999999999999999999"}) {
+        // HTTP 16 is the new None option; malformed values default the whole routing map.
+        for(const auto &bad : std::vector<std::string>{"", "17", "-1", "+1", " 1", "0x", "000x", "15x", "4294967296", "99999999999999999999", std::string("0\0x",3)}) {
+            stored = beforePost; crsf_load_settings();
             preparePost();
             server.args[channelNames[axis]] = bad;
             crsf_wifi_saveParamsCallback();
-            assert(!saveCRSFPortalInputSettings());
-            assert(stored == beforePost && crsfSettingsHash == beforePostHash);
+            assert(saveCRSFPortalInputSettings());
+            crsf_load_settings(); loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
+            assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
+            for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
+            assert(memcmp(profiles, beforePostInputs.axisProfile, sizeof(profiles)) == 0);
         }
     }
+    stored = beforePost; crsf_load_settings();
     preparePost();
     server.args["crlch"] = "15"; server.args["csw1"] = "1";
     crsf_wifi_saveParamsCallback();
@@ -712,7 +734,7 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches);
     assert(routing.aileronChannel == 16 && switches.channels[1] == 1);
-    puts("CRSF actual POST parser rejects blank/malformed calibration and channels, then accepts corrected CH16 swap");
+    puts("CRSF actual POST defaults malformed calibration and channel maps, then accepts corrected CH16 swap");
     // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
     assert(sizeof(ELRSInputAxisProfile) == 12);
     assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
@@ -830,20 +852,28 @@ int main() {
         for(int side = 0; side < 2; side++) {
             char name[8]; snprintf(name, sizeof(name), "cout%d%s", axis, side ? "hi" : "lo");
             for(const auto &bad : badLimits) {
+                stored = beforeLimitsPost; crsf_load_settings();
                 preparePost();
                 server.args[name] = bad;
                 crsf_wifi_saveParamsCallback();
-                assert(!saveCRSFPortalInputSettings());
-                assert(stored == beforeLimitsPost && crsfSettingsHash == beforeLimitsHash);
-                assert(memcmp(&crsfSettings, &beforeLimitsSettings, sizeof(crsfSettings)) == 0);
+                assert(saveCRSFPortalInputSettings());
+                crsf_load_settings(); loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+                assert(loaded[axis].minimumUs == (side ? limits[axis].minimumUs : 1000));
+                assert(loaded[axis].maximumUs == (side ? 2000 : limits[axis].maximumUs));
+                for(int i = 0; i < 4; i++) if(i != axis) assert(memcmp(&loaded[i], &limits[i], sizeof(loaded[i])) == 0);
+                assert(memcmp(crsfSettings.axisProfile, beforeLimitsSettings.axisProfile, sizeof(crsfSettings.axisProfile)) == 0);
             }
+            stored = beforeLimitsPost; crsf_load_settings();
             preparePost();
             server.args[name] = side ? "1499" : "1501";
             crsf_wifi_saveParamsCallback();
-            assert(!saveCRSFPortalInputSettings());
-            assert(stored == beforeLimitsPost && crsfSettingsHash == beforeLimitsHash);
+            assert(saveCRSFPortalInputSettings());
+            loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+            assert(loaded[axis].minimumUs == (side ? limits[axis].minimumUs : 1000));
+            assert(loaded[axis].maximumUs == (side ? 2000 : limits[axis].maximumUs));
         }
     }
+    stored = beforeLimitsPost; crsf_load_settings();
     preparePost();
     memset(crsfOutputMin, 0, sizeof(crsfOutputMin));
     memset(crsfOutputMax, 0, sizeof(crsfOutputMax));
@@ -864,27 +894,29 @@ int main() {
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
     assert(loaded[2].minimumUs == 1500 && loaded[2].maximumUs == 1500);
     for(int axis : {0,1,3}) assert(memcmp(&loaded[axis], &limits[axis], sizeof(ELRSOutputLimits)) == 0);
-    puts("CRSF travel controls, strict POST parsing, missing fields and write retry passed");
+    puts("CRSF travel controls, per-endpoint defaults, missing fields and write retry passed");
     wm._saveparamscallback = saveParamsCallback;
     const auto beforeHttpBlob = stored;
     const auto beforeHttpInputs = crsfSettings;
     const auto beforeHttpHash = crsfSettingsHash;
     for(const auto &bad : badLimits) {
+        stored = beforeHttpBlob; crsf_load_settings();
         preparePost();
-        const auto beforeHttpSettings = settings;
+        wifiLoopSaveAction = 0;
         server.args["cout0lo"] = bad;
         wm._handleParamSave(3, "ELRS");
-        assert(server.status == 400 && server.body.find("Settings saved.") == String::npos);
-        assert(wifiLoopSaveAction == 0 && stored == beforeHttpBlob && crsfSettingsHash == beforeHttpHash);
-        assert(memcmp(&settings, &beforeHttpSettings, sizeof(settings)) == 0);
-        assert(memcmp(&crsfSettings, &beforeHttpInputs, sizeof(crsfSettings)) == 0);
+        assert(server.status == 200 && server.body.find("Settings saved.") != String::npos && wifiLoopSaveAction == 32);
+        crsf_load_settings(); loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
+        assert(loaded[0].minimumUs == 1000 && loaded[0].maximumUs == 1700);
+        assert(memcmp(crsfSettings.axisProfile, beforeHttpInputs.axisProfile, sizeof(crsfSettings.axisProfile)) == 0);
     }
+    stored = beforeHttpBlob; crsf_load_settings(); wifiLoopSaveAction = 0;
     preparePost();
     const auto beforeHttpSettings = settings;
     server.args["cout0lo"] = "1250";
     storageWriteOk = false;
     wm._handleParamSave(3, "ELRS");
-    assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == beforeHttpBlob);
+    assert(server.status == 500 && wifiLoopSaveAction == 0 && stored == beforeHttpBlob);
     assert(memcmp(&settings, &beforeHttpSettings, sizeof(settings)) == 0);
     assert(memcmp(&crsfSettings, &beforeHttpInputs, sizeof(crsfSettings)) == 0 && crsfSettingsHash == beforeHttpHash);
     storageWriteOk = true;
@@ -982,7 +1014,6 @@ int main() {
     for(uint8_t channel : switches.channels) assert(channel == 0);
     assert(localActions[1] == 1 && profiles[0].minimum == calibration[0].minimum);
     const auto noneStored = stored;
-    const auto noneInputs = crsfSettings;
     syncCRSFPortalBuffers();
     const char *noneGimbal = wmBuildCRSFGimbalChannelSelect(nullptr, 2, "'>Throttle target channel", "cthch", settings.elrsThrCh);
     assert(strstr(noneGimbal, "value='16' selected>None</option>"));
@@ -992,14 +1023,18 @@ int main() {
     wmBuildCRSFSwitchMap(noneSwitches, WM_CP_DESTROY);
     for(const std::string &bad : {std::string(""), std::string("17"), std::string("-1"), std::string("+1"), std::string(" 1"), std::string("1x"), std::string("1\0", 2)}) {
         for(int input = 0; input < 2; input++) {
-            syncCRSFPortalBuffers(); server.args.clear(); server.name = input ? "csw0" : "crlch"; server.value = bad;
+            stored = noneStored; crsf_load_settings(); syncCRSFPortalBuffers();
+            server.args.clear(); server.name = input ? "csw0" : "crlch"; server.value = bad;
             if(input) crsfReadSwitchParams();
             else crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
-            assert(!saveCRSFPortalInputSettings() && stored == noneStored);
-            assert(!memcmp(&crsfSettings, &noneInputs, sizeof(noneInputs)));
+            assert(saveCRSFPortalInputSettings());
+            crsf_load_settings(); loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches, nullptr, localActions);
+            assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
+            for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
+            assert(localActions[1] == 1);
         }
     }
-    syncCRSFPortalBuffers(); server.name = "crlch"; server.value = "15";
+    stored = noneStored; crsf_load_settings(); syncCRSFPortalBuffers(); server.name = "crlch"; server.value = "15";
     crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
     storageWriteOk = false;
     assert(!saveCRSFPortalInputSettings() && stored == noneStored);
@@ -1008,7 +1043,7 @@ int main() {
     crsf_load_settings(); loadELRSInputConfig(nullptr, 0, &routing);
     assert(routing.aileronChannel == 16 && routing.throttleChannel == 0);
     server.name.clear(); server.args.clear();
-    puts("CRSF None channels persist, render, preserve local controls and reject malformed POSTs atomically");
+    puts("CRSF None channels persist, render, preserve local controls and default malformed POSTs");
     for(const char *mode : {"0", "1", "2"}) {
         server.name = "copm"; server.value = mode;
         crsf_wifi_saveParamsCallback();
@@ -1113,7 +1148,7 @@ int main() {
     WiFiManager manager;
     manager._saveparamscallback = inputSaveResult;
     manager._handleParamSave(3, "ELRS");
-    assert(httpServer.status == 400);
+    assert(httpServer.status == 500);
     assert(httpServer.body.find("Settings saved.") == String::npos);
     inputWriteOk = true;
     manager._handleParamSave(3, "ELRS");
@@ -1134,7 +1169,7 @@ int main() {
     inputWriteOk = false;
     settings = beforeRejected;
     manager._handleParamSave(3, "ELRS");
-    assert(httpServer.status == 400 && wifiLoopSaveAction == 0);
+    assert(httpServer.status == 500 && wifiLoopSaveAction == 0);
     assert(memcmp(&settings, &beforeRejected, sizeof(settings)) == 0);
     saveParamsCallback(1); // An unrelated later save must see only the original values.
     assert(memcmp(&settings, &beforeRejected, sizeof(settings)) == 0);
@@ -1395,7 +1430,7 @@ integration_callbacks += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_
 integration_callbacks += post_parser
 integration_cases = r'''
 // Submit required input fields while allowing curve fields to be omitted.
-void submitCurveRequest(WiFiManager &manager, bool includeTolerances = true) {
+void submitCurveRequest(WiFiManager &manager, bool includeTolerances = true, bool includeRequired = true) {
     server.args["copm"] = "1";
     if(includeTolerances) {
         server.args.emplace("chyst", settings.elrsAdcHysteresis);
@@ -1404,21 +1439,64 @@ void submitCurveRequest(WiFiManager &manager, bool includeTolerances = true) {
     const char *channelNames[] = {"crlch", "cptch", "cthch", "cywch"};
     const char *pointNames[][3] = {{"crrlo","crrct","crrhi"}, {"cptlo","cptct","cpthi"},
                                  {"cthlo","cthct","cthhi"}, {"cywlo","cywct","cywhi"}};
-    for(int axis = 0; axis < 4; axis++) {
+    for(int axis = 0; includeRequired && axis < 4; axis++) {
         const auto &fields = crsfAxisSettings[axis];
-        server.args[channelNames[axis]] = std::to_string(atoi(fields.channel) - 1);
+        server.args.emplace(channelNames[axis], std::to_string(atoi(fields.channel) - 1));
         const char *points[] = {fields.low, fields.center, fields.high};
-        for(int point = 0; point < 3; point++) server.args[pointNames[axis][point]] = points[point];
+        for(int point = 0; point < 3; point++) server.args.emplace(pointNames[axis][point], points[point]);
     }
     manager._handleParamSave(3, "ELRS");
 }
 
+void test_mixed_defaults_and_required_omissions(WiFiManager &manager) {
+    const auto saved = stored;
+    ELRSInputAxisProfile profiles[4]; loadELRSInputConfig(profiles, 4);
+    for(int i = 0; i < 4; i++) {
+        profiles[i].minimum = 100; profiles[i].center = 900; profiles[i].maximum = 1800;
+        profiles[i].reverse = 1; profiles[i].expo = 20 + i; profiles[i].deadband = 7 + i;
+    }
+    const ELRSOutputLimits limits[4] = {{1100,1900},{1200,1800},{1300,1700},{1400,1600}};
+    ELRSGimbalRouting routing = {1,2,3,4};
+    ELRSSwitchRouting switches; for(int i = 0; i < 12; i++) switches.channels[i] = 5 + i;
+    assert(saveELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches, limits));
+    syncCRSFPortalBuffers(); wifiLoopSaveAction = 0;
+    server.args = {{"crrlo",std::string("100\0bad",7)}, {"cptlo","900"}, {"cthexp","4294967296"},
+                   {"cywexp","65"}, {"crlch","1"}, {"cout0lo","4294967296"}, {"cout0hi","1750"},
+                   {"cout2lo","1250"}, {"cout2hi","bad"}};
+    submitCurveRequest(manager);
+    assert(server.status == 200 && wifiLoopSaveAction == 32 && server.body.find("Settings saved.") != String::npos);
+    crsf_load_settings(); ELRSOutputLimits loadedLimits[4];
+    loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches, loadedLimits);
+    for(int i = 0; i < 2; i++) assert(profiles[i].minimum == 0 && profiles[i].center == 1024 && profiles[i].maximum == 2047);
+    for(int i = 2; i < 4; i++) assert(profiles[i].minimum == 100 && profiles[i].center == 900 && profiles[i].maximum == 1800);
+    for(int i = 0; i < 4; i++) assert(profiles[i].reverse == 1 && profiles[i].deadband == 7 + i);
+    assert(profiles[0].expo == 20 && profiles[1].expo == 21 && profiles[2].expo == 65 && profiles[3].expo == 0);
+    assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
+    for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
+    assert(loadedLimits[0].minimumUs == 1000 && loadedLimits[0].maximumUs == 1750);
+    assert(loadedLimits[2].minimumUs == 1250 && loadedLimits[2].maximumUs == 2000);
+    assert(!memcmp(&loadedLimits[1], &limits[1], sizeof(limits[1])) && !memcmp(&loadedLimits[3], &limits[3], sizeof(limits[3])));
+
+    // Missing required channels reset routing; omitted optional curves/limits remain saved.
+    syncCRSFPortalBuffers(); wifiLoopSaveAction = 0; server.args.clear();
+    submitCurveRequest(manager, false, false);
+    assert(server.status == 200 && wifiLoopSaveAction == 32);
+    crsf_load_settings(); ELRSOutputLimits omittedLimits[4]; uint16_t hysteresis, idle;
+    loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle, &switches, omittedLimits);
+    for(int i = 0; i < 4; i++) {
+        assert(profiles[i].minimum == 0 && profiles[i].center == 1024 && profiles[i].maximum == 2047);
+        assert(profiles[i].reverse == 1 && profiles[i].deadband == 7 + i);
+    }
+    assert(profiles[0].expo == 20 && profiles[1].expo == 21 && profiles[2].expo == 65 && profiles[3].expo == 0);
+    assert(hysteresis == 5 && idle == 5 && !memcmp(omittedLimits, loadedLimits, sizeof(loadedLimits)));
+    assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
+    for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
+    stored = saved; crsf_load_settings(); syncCRSFPortalBuffers();
+    puts("CRSF mixed malformed HTTP input defaults only affected fields; required omissions preserve optional fields");
+}
+
 void test_filtering_request_validation(WiFiManager &manager) {
     syncCRSFPortalBuffers();
-    const auto saved = stored;
-    const auto savedInputs = crsfSettings;
-    const auto savedHash = crsfSettingsHash;
-    const auto savedSettings = settings;
     const std::string invalid[] = {"", "x", "32junk", "999", "33", "-1", "4294967296",
                                   "99999999999999999999", std::string("32\0junk", 7)};
     for(const char *field : {"chyst", "cthid"}) {
@@ -1427,17 +1505,23 @@ void test_filtering_request_validation(WiFiManager &manager) {
             server.args = {{"chyst","7"}, {"cthid","8"}, {"crlexp","90"}};
             server.args[field] = value;
             submitCurveRequest(manager, false);
-            assert(server.status == 400 && server.body.find("Settings saved.") == String::npos);
-            assert(wifiLoopSaveAction == 0 && stored == saved && crsfSettingsHash == savedHash);
-            assert(memcmp(&crsfSettings, &savedInputs, sizeof(crsfSettings)) == 0);
-            assert(memcmp(&settings, &savedSettings, sizeof(settings)) == 0);
+            assert(server.status == 200 && server.body.find("Settings saved.") != String::npos && wifiLoopSaveAction == 32);
+            crsf_load_settings();
+            uint16_t hysteresis, idle; ELRSInputAxisProfile profiles[4];
+            loadELRSInputConfig(profiles, 4, nullptr, &hysteresis, &idle);
+            assert(hysteresis == (!strcmp(field, "chyst") ? 5 : 7));
+            assert(idle == (!strcmp(field, "cthid") ? 5 : 8));
+            assert(profiles[0].expo == 90);
         }
         wifiLoopSaveAction = 0;
         server.args = {{"chyst","7"}, {"cthid","8"}};
         server.args.erase(field);
         submitCurveRequest(manager, false);
-        assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == saved);
-        assert(crsfSettingsHash == savedHash && memcmp(&crsfSettings, &savedInputs, sizeof(crsfSettings)) == 0);
+        assert(server.status == 200 && wifiLoopSaveAction == 32);
+        crsf_load_settings();
+        uint16_t hysteresis, idle; loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
+        assert(hysteresis == (!strcmp(field, "chyst") ? 5 : 7));
+        assert(idle == (!strcmp(field, "cthid") ? 5 : 8));
     }
     // Every supported ADC count must survive a successful HTTP save and reload.
     for(int value = 0; value <= 32; value++) {
@@ -1450,28 +1534,31 @@ void test_filtering_request_validation(WiFiManager &manager) {
         loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
         assert(hysteresis == value && idle == 32 - value);
     }
-    puts("CRSF filtering HTTP rejects malformed/missing tolerances atomically and saves all counts 0..32");
+    puts("CRSF filtering HTTP defaults malformed/missing tolerances and saves all counts 0..32");
 }
 
-// Rejected edits must not become the next request's omitted defaults.
-void test_rejected_curve_request_preserves_saved_omissions(WiFiManager &manager) {
-    const uint8_t expected[4] = {10,25,60,40};
+// Omitted edits must use the normalized saved result, including a defaulted curve.
+void test_defaulted_curve_request_preserves_saved_omissions(WiFiManager &manager) {
     const auto saved = stored;
     for(int omitAll = 0; omitAll < 2; omitAll++) {
+        stored = saved; crsf_load_settings(); syncCRSFPortalBuffers();
         wifiLoopSaveAction = 0;
         server.args = {{"crlexp","99"},{"cptexp","88"},{"cywexp","77"},{"cthexp","bad"}};
         submitCurveRequest(manager);
-        assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == saved);
+        assert(server.status == 200 && wifiLoopSaveAction == 32);
+        const auto normalized = stored;
         // No portal sync or reload between requests. A partial retry omits three fields.
         server.args.clear();
         if(!omitAll) server.args["cthexp"] = "40";
         submitCurveRequest(manager);
         assert(server.status == 200 && wifiLoopSaveAction == 32);
         ELRSInputAxisProfile profiles[4]; loadELRSInputConfig(profiles, 4, nullptr);
+        const uint8_t expected[4] = {99,88,77,(uint8_t)(omitAll ? 0 : 40)};
         for(int i = 0; i < 4; i++) assert(profiles[i].expo == expected[i]);
-        assert(stored == saved);
+        if(omitAll) assert(stored == normalized);
     }
-    puts("CRSF rejected request then omit some/all curve fields check passed");
+    stored = saved; crsf_load_settings(); syncCRSFPortalBuffers();
+    puts("CRSF defaulted request then omit some/all curve fields check passed");
 }
 
 void test_failed_curve_write_preserves_saved_omissions(WiFiManager &manager) {
@@ -1482,7 +1569,7 @@ void test_failed_curve_write_preserves_saved_omissions(WiFiManager &manager) {
         server.args = {{"crlexp","80"},{"cptexp","70"},{"cywexp","60"},{"cthexp","50"}};
         storageWriteOk = false;
         submitCurveRequest(manager);
-        assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == saved);
+        assert(server.status == 500 && wifiLoopSaveAction == 0 && stored == saved);
         storageWriteOk = true;
         // No portal sync or reload. This partial retry omits exactly Aileron.
         server.args.clear();
@@ -1508,14 +1595,16 @@ int main() {
     server.args = {{"crlexp","10"},{"cptexp","25"},{"cywexp","60"},{"cthexp","40x"}};
     strcpy(settings.elrsRollLow, "500");
     submitCurveRequest(manager);
-    assert(server.status == 400 && wifiLoopSaveAction == 0);
-    assert(server.body.find("Settings saved.") == String::npos && stored == before);
-    loadELRSInputConfig(profiles, 4, nullptr);
-    assert(memcmp(profiles, oldProfiles, sizeof(profiles)) == 0);
+    assert(server.status == 200 && wifiLoopSaveAction == 32);
+    assert(server.body.find("Settings saved.") != String::npos);
+    crsf_load_settings(); loadELRSInputConfig(profiles, 4, nullptr);
+    assert(profiles[0].expo == 10 && profiles[1].expo == 25 && profiles[2].expo == 60 && profiles[3].expo == 0);
+    assert(profiles[0].minimum == 500);
+    before = stored; memcpy(oldProfiles, profiles, sizeof(profiles)); wifiLoopSaveAction = 0;
     server.args["cthexp"] = "40";
     storageWriteOk = false;
     submitCurveRequest(manager);
-    assert(server.status == 400 && wifiLoopSaveAction == 0 && stored == before);
+    assert(server.status == 500 && wifiLoopSaveAction == 0 && stored == before);
     loadELRSInputConfig(profiles, 4, nullptr);
     assert(memcmp(profiles, oldProfiles, sizeof(profiles)) == 0);
     storageWriteOk = true;
@@ -1526,9 +1615,10 @@ int main() {
     const uint8_t expected[4] = {10,25,60,40};
     for(int i = 0; i < 4; i++) assert(profiles[i].expo == expected[i]);
     assert(profiles[0].minimum == 500);
-    puts("CRSF real four-curve HTTP rejection, atomic write failure and successful reboot retry check passed");
-    test_rejected_curve_request_preserves_saved_omissions(manager);
+    puts("CRSF real four-curve HTTP defaulting, atomic write failure and successful reboot retry check passed");
+    test_defaulted_curve_request_preserves_saved_omissions(manager);
     test_failed_curve_write_preserves_saved_omissions(manager);
+    test_mixed_defaults_and_required_omissions(manager);
     test_filtering_request_validation(manager);
 }
 '''
