@@ -950,15 +950,16 @@ static const char *wmBuildCRSFYC(const char *dest, int op)
 static const char crsfDisplayScript[] = R"JS(<script>(function(){
 var byId=function(id){return document.getElementById(id);},source=byId('cdsrc'),hidden=byId('cdsrcvalue'),preview=byId('cdpreview'),status=byId('cdstatus'),busy=false;
 function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidden.value)+'&cdmul='+encodeURIComponent(byId('cdmul').value)+'&cdoff='+encodeURIComponent(byId('cdoff').value)+'&cddec='+encodeURIComponent(byId('cddec').value)+(unit?'&cspdu='+encodeURIComponent(unit.value):'');}
+function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});}
 function options(rows){var wanted=hidden.value,label=source.selectedOptions.length?source.selectedOptions[0].textContent:'Saved source';source.textContent='';
 function add(id,text,disabled){var option=document.createElement('option');option.value=String(id);option.textContent=text;option.disabled=!!disabled;source.appendChild(option);}
 add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){if(row.available)add(row.id,row.label+' ('+row.unit+')');});
 if(!Array.from(source.options).some(function(option){return option.value===wanted;}))add(wanted,label.replace(/ \(unavailable\)$/,'')+' (unavailable)',true);source.value=wanted;}
 function fail(message){options([]);preview.textContent='---';status.textContent=message;}
-function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.unit?' ('+data.preview.unit+')':'')+(data.preview.available?'':' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
-source.addEventListener('change',function(){hidden.value=source.value;preview.textContent='…';poll();});
+function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.available?': '+data.preview.value+(data.preview.unit?' '+data.preview.unit:''):' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
+source.addEventListener('change',function(){hidden.value=source.value;scaling();preview.textContent='…';poll();});
 ['cdmul','cdoff','cddec','cspdu'].forEach(function(id){var input=byId(id);if(input)input.addEventListener('input',function(){preview.textContent='…';poll();});});
-poll();setInterval(poll,500);
+scaling();poll();setInterval(poll,500);
 })();</script>)JS";
 
 static const char *wmBuildCRSFDisplay(const char *dest, int op)
@@ -1033,11 +1034,13 @@ static void handleELRSTelemetryRead()
     }
     const ELRSDisplayConfig effective = elrsEffectiveDisplayConfig(config, opModePropCRSF);
     const ELRSTelemetrySample sample = elrsMode.telemetrySample(effective.source, now);
+    if(sample.available) snprintf(value, sizeof(value), "%.9g", sample.source <= ELRS_DISPLAY_AIRSPEED && units == ELRS_SPEED_UNITS_MPH ? sample.value * 0.621371192f : sample.value);
+    else strcpy(value, "null");
     char text[8];
     elrsFormatTelemetry(effective, sample, units, text);
-    snprintf(buf, sizeof(buf), "],\"preview\":{\"source\":%u,\"label\":\"%s\",\"unit\":\"%s\",\"available\":%s,\"text\":\"%s\"}}",
+    snprintf(buf, sizeof(buf), "],\"preview\":{\"source\":%u,\"label\":\"%s\",\"unit\":\"%s\",\"value\":%s,\"available\":%s,\"text\":\"%s\"}}",
              sample.available ? sample.source : effective.source, elrsTelemetrySourceLabel(sample.available ? sample.source : effective.source),
-             elrsTelemetrySourceUnit(sample.available ? sample.source : effective.source, units), sample.available ? "true" : "false", text);
+             elrsTelemetrySourceUnit(sample.available ? sample.source : effective.source, units), value, sample.available ? "true" : "false", text);
     json += buf;
     wm.server->send(200, "application/json", json.c_str());
 }

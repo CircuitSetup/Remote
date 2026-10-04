@@ -16,7 +16,7 @@ const context = {document:{getElementById:id=>elements[id],createElement:()=>new
   fetch:(url)=>new Promise(resolve=>requests.push({url,resolve})),setInterval:callback=>timers.push(callback)};
 vm.createContext(context);
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],context);
-const data=(sources,text='50.0',source=1)=>({sources,preview:{source,text,label:'GPS speed',unit:'km/h',available:text!=='---'}});
+const data=(sources,text='50.0',source=1)=>({sources,preview:{source,text,label:'GPS speed',unit:'km/h',value:text==='---'?null:100,available:text!=='---'}});
 const gps={id:1,label:'GPS speed',unit:'km/h',available:true};
 const battery={id:3,label:'Vehicle battery voltage',unit:'V',available:true};
 const flush=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
@@ -26,6 +26,7 @@ async function reply(index,body,ok=true,status=200) { requests[index].resolve({o
   timers[0]();timers[0]();assert.strictEqual(requests.length,1); // One request at a time.
   await reply(0,data([gps,battery]));
   assert.strictEqual(elements.cdpreview.textContent,'50.0');
+  assert.strictEqual(elements.cdstatus.textContent,'GPS speed: 100 km/h');
   assert.deepStrictEqual(elements.cdsrc.options.map(option=>option.value),['14','0','13','1','3']);
   elements.cdsrc.value='3';elements.cdsrc.handlers.change();
   assert.strictEqual(elements.cdsrcvalue.value,'3');
@@ -47,5 +48,10 @@ async function reply(index,body,ok=true,status=200) { requests[index].resolve({o
   elements.cdsrc.value='14';elements.cdsrc.handlers.change();await reply(5,data([],'',14));
   assert.strictEqual(elements.cdsrcvalue.value,'14');assert.strictEqual(elements.cdpreview.textContent,'Blank');
   assert.strictEqual(elements.cdstatus.textContent,'Normal gimbal-controlled speed/speedo');
+  for(const id of ['cdmul','cdoff','cddec'])assert(elements[id].disabled);
+  elements.cdsrc.value='0';elements.cdsrc.handlers.change();assert(elements.cdmul.disabled);
+  elements.cdsrc.value='13';elements.cdsrc.handlers.change();assert(elements.cdmul.disabled);
+  elements.cdsrc.value='1';elements.cdsrc.handlers.change();assert(!elements.cdmul.disabled);
+  assert.strictEqual(elements.cdmul.value,'0.001');
   console.log('CRSF portal availability, pending selection, preview races, and single-request polling checks passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

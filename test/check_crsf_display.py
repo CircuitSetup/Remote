@@ -30,6 +30,9 @@ using String = std::string;
 unsigned long testNow = 0;
 '''
 fixture += native[native.index('constexpr uint8_t AXIS_AILERON'):native.index('static std::vector<uint8_t> makeFrameWithSync')]
+style = (ROOT / 'src/src/WiFiManager/wm_strings_en.h').read_text()
+fixture += '#define HTTP_BLUE "#4f529d"\n#define HTTP_RED "#be5c9c"\n#define HTTP_BUTTON_TEXT "#fff"\n'
+fixture += style[style.index('static const char HTTP_STYLE[]'):style.index('\n#ifndef WM_50S_STYLE', style.index('static const char HTTP_STYLE[]'))].replace('PROGMEM', '')
 fixture += r'''
 FakeHost host;
 ELRSCrsfCore core;
@@ -93,7 +96,7 @@ int main() {
     assert(*(const size_t*)wmBuildCRSFDisplay(nullptr, WM_CP_LEN) == strlen(html) + 1);
     if(const char *path = getenv("CRSF_DISPLAY_PREVIEW")) {
         FILE *file = fopen(path, "w"); assert(file);
-        fprintf(file, "<!doctype html><html><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{font-family:Arial;max-width:600px;margin:20px auto;padding:12px}label{display:block;margin-top:12px}input,select{box-sizing:border-box;width:100%%;padding:8px}fieldset{min-width:0}p{line-height:1.5}</style><body><form>%s</form></body></html>", html);
+        fprintf(file, "<!doctype html><html><meta charset='utf-8'><title>Telemetry display preview</title><meta name='viewport' content='width=device-width,initial-scale=1'>%s</style><body><div id='wrap'><form>%s</form></div></body></html>", HTTP_STYLE, html);
         fclose(file);
     }
     wmBuildCRSFDisplay(html, WM_CP_DESTROY);
@@ -110,6 +113,7 @@ with tempfile.TemporaryDirectory(prefix='crsf-display-') as work:
     assert responses[0]['sources'][0]['value'] is None
     assert responses[1]['sources'][0]['ageMs'] == 0
     assert responses[1]['sources'][0]['value'] == 100 and responses[1]['sources'][0]['unit'] == 'km/h'
+    assert abs(responses[1]['preview']['value'] - 62.1371192) < 0.001 and responses[1]['preview']['unit'] == 'mph'
     assert responses[3]['sources'][0]['received'] and not responses[3]['sources'][0]['available']
     assert responses[3]['sources'][0]['ageMs'] == 2000 and responses[3]['sources'][0]['value'] is None
     assert responses[3]['sources'][11]['value'] == -3

@@ -281,11 +281,24 @@ int main() {
     }
     stored = fullDisplay; ((ELRSCrsfSettingsBlob*)stored.data())->displayConfig.offset = NAN;
     crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14);
+    const ELRSDisplayConfig corrupt[] = {{15,1,1,0},{1,3,1,0},{1,1,(float)INFINITY,0},{1,1,1001,0},{1,1,1,-1000}};
+    for(const auto &invalid : corrupt) {
+        stored = fullDisplay; ((ELRSCrsfSettingsBlob*)stored.data())->displayConfig = invalid;
+        crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14);
+        assert(!memcmp(&crsfSettings, fullDisplay.data(), 96));
+    }
     stored = fullDisplay; crsf_load_settings();
+    const auto displayHash = crsfSettingsHash;
     storageWriteOk = false; display.source = 13;
     assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
-    assert(loadELRSDisplayConfig().source == 1 && stored == fullDisplay);
+    assert(loadELRSDisplayConfig().source == 1 && stored == fullDisplay && crsfSettingsHash == displayHash);
     storageWriteOk = true;
+    display.source = 14;
+    assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
+    crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14 && loadELRSDisplayConfig().offset == -2);
+    ELRSAxisCalibrationData cal[4]; loadELRSCalibration(cal, 4); cal[0].center = 1000;
+    assert(saveELRSCalibration(cal, 4));
+    crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14 && loadELRSDisplayConfig().multiplier == 0.5f);
     syncCRSFPortalBuffers(); server.args = {{"cdsrc","7"},{"cdmul","-0.001"},{"cdoff","20.5"},{"cddec","2"}};
     crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings());
     display = loadELRSDisplayConfig(); assert(display.source == 7 && display.multiplier == -0.001f && display.offset == 20.5f && display.decimalPlaces == 2);
@@ -1660,6 +1673,25 @@ int main() {
     test_failed_curve_write_preserves_saved_omissions(manager);
     test_mixed_defaults_and_required_omissions(manager);
     test_filtering_request_validation(manager);
+    // Match real FormData after battery selection expires: hidden cdsrc survives.
+    server.name.clear(); server.args = {{"cdsrc","3"},{"cdmul","0.5"},{"cdoff","0"},{"cddec","1"}};
+    before = stored; const auto previousDisplay = loadELRSDisplayConfig();
+    storageWriteOk = false; wifiLoopSaveAction = 0;
+    submitCurveRequest(manager);
+    assert(server.status == 500 && wifiLoopSaveAction == 0 && stored == before);
+    assert(loadELRSDisplayConfig().source == previousDisplay.source);
+    storageWriteOk = true; submitCurveRequest(manager);
+    assert(server.status == 200 && wifiLoopSaveAction == 32);
+    crsf_load_settings(); assert(loadELRSDisplayConfig().source == 3 && loadELRSDisplayConfig().multiplier == 0.5f);
+    before = stored;
+    for(const char *bad : {"NaN","1001","0x1p2","1junk"}) {
+        server.args = {{"cdmul",bad}}; wifiLoopSaveAction = 0;
+        submitCurveRequest(manager);
+        assert(server.status == 500 && wifiLoopSaveAction == 0 && stored == before);
+    }
+    server.args.clear(); submitCurveRequest(manager);
+    assert(server.status == 200 && stored == before);
+    puts("CRSF display form save, missing-source persistence, malformed HTTP rejection and write retry passed");
 }
 '''
 compile_and_run(integration_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + integration_callbacks + http_callbacks + integration_cases, ['elrs_input_model.cpp'])

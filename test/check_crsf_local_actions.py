@@ -362,6 +362,13 @@ int main() {
     followP0(); renderTelemetry();
     assert(currSpeedF == 157 && remdisplay.visible == "157");
     csf = 0; renderTelemetry(); assert(remdisplay.visible == "50.0");
+    // Equal/below-speed stalled P0 must immediately take back the visible readout.
+    for(int startingSpeed : {12,13}) {
+        csf = 0; currSpeedF = 137; normalProgress(130); renderTelemetry();
+        csf = CSF_TCDINP0; tcdSpeedP0 = startingSpeed; tcdSpeedP0Old = -1;
+        followP0(); assert(currSpeedF == 137 && remdisplay.visible == "137");
+        now += 500; followP0(); assert(remdisplay.visible == "137");
+    }
     puts("CRSF controls, telemetry ownership, P0, and persistence checks passed");
 }
 '''

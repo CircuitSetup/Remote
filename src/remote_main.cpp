@@ -1878,6 +1878,13 @@ void main_loop()
                 csf |= (CSF_TCDINP0O|CSF_TCDINP0T);
                 tcdClickNow = 0;
                 remSpdAtP0Start = currSpeedF / 10;
+                #ifdef HAVE_CRSF
+                if(opModePropCRSF && elrsMode.telemetryDisplayAssigned() && !(csf & CSF_OFF)) {
+                    remdisplay.on();
+                    remdisplay.setSpeed(currSpeedF);
+                    remdisplay.show();
+                }
+                #endif
                 #ifdef REMOTE_DBG
                 Serial.printf("Switching to P0\n");
                 #endif
