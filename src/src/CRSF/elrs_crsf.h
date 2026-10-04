@@ -40,7 +40,8 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             const ELRSSwitchRouting *switchRouting = NULL,
             const ELRSOutputLimits *outputLimits = NULL,
             const uint8_t *localActions = NULL,
-            bool propControls = false
+            bool propControls = false,
+            const ELRSDisplayConfig *displayConfig = NULL
         );
 
         void loop(int battWarn);
@@ -49,6 +50,9 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool fakePowerOn() const;
         ELRSCrsfStatus getStatus() const;
         ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now) const;
+        bool telemetryDisplayAssigned() const;
+        void renderAssignedDisplay(uint32_t now, int battWarn);
+        uint8_t speedDisplayUnits() const;
         void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
         bool readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 
@@ -92,6 +96,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool saveCalibration(const ELRSAxisCalibrationData *cal, int count) override;
 
         ELRSCrsfCore _core;
+        uint8_t _speedDisplayUnits = ELRS_SPEED_UNITS_DEFAULT;
         HardwareSerial _serial;
         ButtonPack *_buttonPack = NULL;
         remDisplay *_display = NULL;

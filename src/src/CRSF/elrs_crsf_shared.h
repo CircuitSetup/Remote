@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 
 /*
  * Define HAVE_CRSF at build time to enable the ELRS/CRSF integration in the main
@@ -72,6 +73,39 @@ struct ELRSTelemetrySample {
     bool available;
     uint32_t ageMs;
 };
+
+#pragma pack(push, 1)
+struct ELRSDisplayConfig {
+    uint8_t source;
+    uint8_t decimalPlaces;
+    float multiplier;
+    float offset;
+};
+#pragma pack(pop)
+static_assert(sizeof(ELRSDisplayConfig) == 10, "Display settings must retain their stored layout");
+
+static inline ELRSDisplayConfig elrsDefaultDisplayConfig()
+{
+    return {ELRS_DISPLAY_NONE, 255, 1.0f, 0.0f};
+}
+
+static inline bool elrsIsValidDisplayConfig(const ELRSDisplayConfig &config)
+{
+    return config.source <= ELRS_DISPLAY_NONE &&
+        (config.decimalPlaces <= 2 || config.decimalPlaces == 255) &&
+        isfinite(config.multiplier) && config.multiplier >= -1000 && config.multiplier <= 1000 &&
+        isfinite(config.offset) && config.offset >= -999 && config.offset <= 999;
+}
+
+static inline ELRSDisplayConfig elrsEffectiveDisplayConfig(const ELRSDisplayConfig &config, bool propControls)
+{
+    ELRSDisplayConfig effective = elrsIsValidDisplayConfig(config) ? config : elrsDefaultDisplayConfig();
+    if(effective.source == ELRS_DISPLAY_NONE && !propControls) effective.source = ELRS_DISPLAY_AUTO;
+    return effective;
+}
+
+void elrsFormatTelemetry(const ELRSDisplayConfig &config, const ELRSTelemetrySample &sample,
+                         uint8_t speedUnits, char text[8]);
 
 static inline const char *elrsTelemetrySourceLabel(uint8_t source)
 {

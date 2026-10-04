@@ -46,6 +46,9 @@ STUBS = r'''
 #define CSF_TT 16
 #define CSF_CALIBMD 32
 #define CSF_KEEPCOUNTING 64
+#define CSF_TCDINP0O 128
+#define CSF_TCDINP0T 256
+#define PA_THRUP 8
 #define PA_ALLOWSD 1
 #define PA_INTRMUS 2
 #define PA_DYNVOL 4
@@ -148,6 +151,25 @@ struct PackSink {
     void scan(uint8_t s,uint8_t v) { states=s; validMask=v; }
     int getPackSize() { return 8; }
 } butPack;
+struct DisplaySink {
+    int speed = 0, shows = 0; std::string visible;
+    void on() {}
+    void setSpeed(int v) { speed = v; }
+    int getSpeedPostDot() { return speed % 10; }
+    void show() { shows++; visible = std::to_string(speed); }
+} remdisplay;
+struct {
+    bool assigned = false; int renders = 0; std::string telemetry = "50.0";
+    bool telemetryDisplayAssigned() { return assigned; }
+    void renderAssignedDisplay(unsigned long, int) { renders++; remdisplay.visible = telemetry; remdisplay.shows++; }
+} elrsMode;
+int currSpeedF = 0, tcdCurrSpeed = 0, currTCDSpeedOld = 0;
+unsigned long lastSpeedUpd = 0, tcdClickNow = 0, tcdInP0now = 0, tcdSpdChgNow = 0;
+int tcdSpeedP0 = 0, tcdSpeedP0Old = 0, remSpdAtP0Start = 0, tcdSpdFake100 = 0;
+int throttleUpSoundThresholdP0 = 20, accelDelays[5] = {0};
+bool tcdIsInP0stalled = false, haveThUp = false, doForceDispUpd = false;
+const char *throttleUpSnd = "throttle";
+void play_click() {} void play_throttleup() {}
 '''
 
 TEST = r'''
@@ -312,7 +334,35 @@ int main() {
         packets.clear(); bttfn_remote_send_combined(true, true, 42);
         assert(packets.size() == 1 && packets[0].command == 3 && packets[0].flags == 11 && packets[0].speed == 42);
     }
-    puts("CRSF Settings behavior, audio/network callbacks, and persistence checks passed");
+    // Execute normal prop display/sends and P0 from the actual main loop.
+    opModePropCRSF = crsfStarted = true; csf = 0; offDisplayTimer = false;
+    currSpeedF = 123; throttlePos = 1; packets.clear();
+    normalProgress(110);
+    assert(remdisplay.visible == "123" && packets.back().speed == 12);
+    elrsMode.assigned = true; currSpeedF = 137; packets.clear();
+    int shows = remdisplay.shows; normalProgress(123); renderTelemetry();
+    assert(remdisplay.speed == 137 && remdisplay.shows == shows + 1);
+    assert(remdisplay.visible == "50.0" && packets.back().speed == 13);
+    elrsMode.telemetry = "---"; now += 2000; renderTelemetry();
+    assert(remdisplay.visible == "---" && currSpeedF == 137);
+    elrsMode.telemetry = "50.0"; renderTelemetry(); assert(remdisplay.visible == "50.0");
+    // Native holds and hidden fake-off screens do not render telemetry.
+    for(uint32_t hold : {CSF_CALIBMD, CSF_TT, CSF_TCDINP0}) {
+        csf = hold; int prior = elrsMode.renders; renderTelemetry(); assert(elrsMode.renders == prior);
+    }
+    csf = 0; offDisplayTimer = true; assert(!crsfTelemetryOwnsDisplay());
+    offDisplayTimer = false; csf = CSF_OFF; displayTCDSMode = false;
+    assert(!crsfTelemetryOwnsDisplay());
+    displayTCDSMode = true; tcdCurrSpeed = 42; currTCDSpeedOld = -2;
+    shows = remdisplay.shows; fakeOffSpeed(); renderTelemetry();
+    assert(remdisplay.speed == 420 && remdisplay.shows == shows + 1);
+    // Keep the prop fraction cached under telemetry for a subsequent P0 stall.
+    csf = 0; currSpeedF = 137; normalProgress(130); renderTelemetry();
+    csf = CSF_TCDINP0; tcdIsInP0stalled = true; tcdSpeedP0 = 15; tcdSpeedP0Old = -1;
+    followP0(); renderTelemetry();
+    assert(currSpeedF == 157 && remdisplay.visible == "157");
+    csf = 0; renderTelemetry(); assert(remdisplay.visible == "50.0");
+    puts("CRSF controls, telemetry ownership, P0, and persistence checks passed");
 }
 '''
 
@@ -340,8 +390,18 @@ if __name__ == '__main__':
              'processCRSFLocalSwitches', 'crsfLocalActionsEnabled', 'serviceCRSF',
              'queueCRSFLocalSwitches', 'myloop', 'mydelay',
              'crsf_standalone_keepalive', 'crsf_handle_bttfn_update',
-             'bttfn_remote_send_combined']
+             'bttfn_remote_send_combined', 'crsfTelemetryOwnsDisplay', 'showNormalSpeed']
     production = '\n\n'.join(function(source, name) for name in names)
+    for name, marker in [('normalProgress', 'if(currSpeedF != sbf)'),
+                         ('fakeOffSpeed', 'if((csf & CSF_OFF) && (!(csf & CSF_CALIBMD)) && !offDisplayTimer)'),
+                         ('followP0', 'if(csf & CSF_TCDINP0)')]:
+        body = block(main_loop, main_loop.index(marker))
+        args = 'int sbf' if name == 'normalProgress' else ''
+        prefix = 'int sb = sbf / 10;' if name == 'normalProgress' else ''
+        production += f'\nvoid {name}({args}) {{ {prefix}\n{body}\n}}\n'
+    hook = 'if(crsfTelemetryOwnsDisplay()) elrsMode.renderAssignedDisplay(millis(), battWarn);'
+    assert hook in main_loop
+    production += f'\nvoid renderTelemetry() {{ {hook} }}\n'
     # Execute the exact inline event bodies restored to the normal prop loop.
     for name, marker in [('handleButtonAEvent', 'if(isbuttonAKeyChange)'),
                          ('handleButtonBEvent', 'if(isbuttonBKeyChange)'),

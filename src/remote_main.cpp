@@ -577,6 +577,14 @@ static void bttfn_loop_quick();
 #include "src/CRSF/crsf_main.h"
 #endif
 
+static void showNormalSpeed()
+{
+    #ifdef HAVE_CRSF
+    if(crsfTelemetryOwnsDisplay()) return;
+    #endif
+    remdisplay.show();
+}
+
 void main_boot()
 {
 }
@@ -1162,7 +1170,7 @@ void main_loop()
                 remdisplay.blink(false);
                 remdisplay.on();
                 remdisplay.setSpeed(currSpeedF);
-                remdisplay.show();
+                showNormalSpeed();
                 doForceDispUpd = false;
 
                 tcdSpeedP0Old = 2000;
@@ -1830,7 +1838,7 @@ void main_loop()
                         }
                         lastSpeedUpd = millis();                
                         remdisplay.setSpeed(currSpeedF);
-                        remdisplay.show();
+                        showNormalSpeed();
                     }
                 }
             }
@@ -1848,7 +1856,7 @@ void main_loop()
                 if(tcdCurrSpeed != currTCDSpeedOld) {
                     remdisplay.on();
                     remdisplay.setSpeed(tcdCurrSpeed * 10);
-                    remdisplay.show();
+                    showNormalSpeed();
                     currTCDSpeedOld = tcdCurrSpeed;
                 }
             } else {
@@ -1943,7 +1951,7 @@ void main_loop()
     if((!(csf & (CSF_TCDINP0|CSF_TT|CSF_OFF))) && doForceDispUpd) {
         doForceDispUpd = false;
         remdisplay.setSpeed(currSpeedF);
-        remdisplay.show();
+        showNormalSpeed();
     }
 
     if(justBootedNow && (millis() - justBootedNow > 10*1000)) {
@@ -2203,6 +2211,9 @@ void main_loop()
             sendBootStatus = false;
         }
     }
+    #ifdef HAVE_CRSF
+    if(crsfTelemetryOwnsDisplay()) elrsMode.renderAssignedDisplay(millis(), battWarn);
+    #endif
 }
 
 void flushDelayedSave()
