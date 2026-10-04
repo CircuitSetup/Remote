@@ -81,6 +81,9 @@ class REMRotEnc {
 
         bool    dynZeroPos();
         void    setZeroPos(int32_t num);
+        #ifdef HAVE_CRSF
+        void    useSampledPosition(int32_t position, bool valid = true);
+        #endif
 
         int32_t getMaxStepsUp();
         int32_t getMaxStepsDown();
@@ -112,6 +115,10 @@ class REMRotEnc {
         int32_t       throttlePositionsUp = 5;
         int32_t       throttlePositionsDown = -5;
         unsigned long lastUpd = 0;
+        #ifdef HAVE_CRSF
+        bool          _useSampledPosition = false;
+        int32_t       _sampledPosition = 0;
+        #endif
 
         bool          _dynZeroPos = false;
 
@@ -158,10 +165,14 @@ class RemButton {
         void attachELongPressStop(void (*newFunction)(void));
 
         void scan();
+        #ifdef HAVE_CRSF
+        void scan(bool active, bool valid = true);
+        #endif
         void reset(void);
 
     private:
 
+        void scanState(bool active);
         void transitionTo(ButState nextState);
 
         void (*_pressDownFunc)() = NULL;
@@ -217,6 +228,7 @@ class ButtonPack {
         int  getPackSize();
         void scan();
         #ifdef HAVE_CRSF
+        void scan(uint8_t states, uint8_t validMask = 0xff);
         bool    sampleStates(uint8_t &states);
         uint8_t readStates();
         #endif
@@ -225,6 +237,7 @@ class ButtonPack {
 
         void reset(int);
         void transitionTo(int, ButState nextState);
+        void scanStates(uint8_t states, uint8_t validMask, unsigned long now);
 
         void port_write(uint8_t reg, uint8_t val);
         int  port_read(uint8_t *buf);

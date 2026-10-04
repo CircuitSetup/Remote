@@ -242,7 +242,14 @@ bool PubSubClient::connect(const char *user, const char *pass, bool cleanSession
                 }
             }
 
+            #ifdef HAVE_CRSF
+            if(!write(MQTTCONNECT, this->buffer, length - mqtt_max_header_size)) {
+                _state = MQTT_CONNECT_FAILED;
+                return false;
+            }
+            #else
             write(MQTTCONNECT, this->buffer, length - mqtt_max_header_size);
+            #endif
 
             lastInActivity = lastOutActivity = millis();
 
@@ -705,7 +712,7 @@ bool PubSubClient::readByte(uint8_t *result)
             looper();
             mnow = millis();
         }
-
+        
         delay(2);
 
     }

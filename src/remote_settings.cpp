@@ -822,7 +822,7 @@ static bool read_settings(File configFile, int cfgReadCount)
 
         #ifdef HAVE_CRSF
         if(haveNewBoard) {
-            wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, 0, 1, DEF_OPMODE);
+            wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, 0, 2, DEF_OPMODE);
             wd |= CopyCBParm(json["eWAP"], settings.crsfap, DEF_CRSFWM);
             wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, 0, 4, DEF_ELRSPKTRATE);
             wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, 0, 1, DEF_ELRSSPDUNIT);

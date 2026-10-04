@@ -960,6 +960,18 @@ Calibration for these gimbals can now be done directly in the portal. The page s
 
 Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
 
+##### &#9193; Operation mode
+
+Choose one of three modes, then save and restart:
+
+- **Legacy**: normal prop controls, simulated speed/display, sound effects, and the configured MQTT/BTTFN behavior. No CRSF channel transmission.
+- **ELRS/CRSF**: all four gimbals and twelve switch inputs transmit on their assigned CRSF channels, and the display shows radio telemetry. Check **Also trigger Settings action** beside individual switches to additionally run their existing Settings-page behavior. For O.O configured for Time Travel, an enabled checkbox sends the request directly; it does not wait for the prop throttle.
+- **Prop controls + ELRS/CRSF**: normal prop controls and the prop speed display run together with all mapped CRSF channels. All prop switches and Settings actions are active; the individual checkboxes do not restrict them. MQTT and BTTFN work as configured under the usual WiFi/network requirements. O.O and Time Travel retain normal prop behavior, including the throttle-up condition.
+
+To use the gimbal as a prop speed control with optional radio output, choose **Prop controls + ELRS/CRSF**. The physical **Throttle** gimbal on ADS1015 **AIN3** accelerates/decelerates the simulated prop speed through the normal auto-throttle/coasting/movie settings. Its CRSF output still follows the **Throttle target channel** selection; moving it from CH3 to another channel does not move the prop speed-control function to another gimbal. Choosing **None** for the Throttle channel disables only its radio output; the physical AIN3 throttle still controls prop speed. The other three gimbals keep their independent CRSF mappings.
+
+Prop throttle calibration and CRSF gimbal calibration serve different purposes. Use the normal [Calibration button procedure](#calibration) to set prop throttle neutral and endpoints, and the portal's **Gimbal Calibration** captures, reversal, curves, and travel limits for the transmitted radio channel. Calibrating one does not replace the other. Select the switch/gimbal channels as usual, ensure they are unique, and match the ELRS packet rate/RF mode to the module and receiver. Save and restart to apply mode and mapping changes.
+
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
 If checked, the Remote will join the configured WiFi network while operating in ELRS/CRSF mode. If unchecked, it remains in AP mode during ELRS/CRSF operation.
@@ -995,7 +1007,13 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
+Choose **CH1** through **CH16**, or **None**, for each gimbal and switch. Assigned channels must be unique across gimbals and switches; any number of inputs may use **None**. None stops that input from driving any radio channel. A channel with no assigned input still transmits the minimum CRSF value (`172`), unless you assign another input to it. Existing default channel assignments are unchanged.
+
+##### &#9193; Switch Local Actions
+
+In **ELRS/CRSF** mode, check **Also trigger Settings action** beside a switch channel to also run that switch's existing behavior from the Settings page. In **Prop controls + ELRS/CRSF**, all normal prop controls are already active regardless of these checkboxes. This reuses the Stop, FakePower, O.O/RESET, and User Buttons behavior, including the configured momentary/maintained switch handling, short/long presses, and maintained-switch audio options. CRSF channel output continues independently. A checked switch also runs its local Settings action when its channel is **None**. In **Prop controls + ELRS/CRSF**, all prop functions remain active even for inputs assigned **None**. All checkboxes default to unchecked, including after loading older settings. Save the ELRS/CRSF page and restart to apply changes.
+
+In telemetry mode, the **FakePower** checkbox enables TCD power/speed control, including O.O/RESET's configured TCD power-master actions. TCD braking also requires the **Stop** checkbox. With FakePower unchecked, BTTFN uses state-free keepalives; enabled O.O Time Travel and User Button refill requests still work independently. The physical FakePower position still selects the on/off behavior of enabled O.O/RESET and User Button actions.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 
@@ -1057,6 +1075,18 @@ Calibration for these gimbals can now be done directly in the portal. The page s
 
 Non-gimbal controls such as Stop, FakePower, O.O, RESET, and ButtonPack continue to use their existing logic. They are written into any channels that are not claimed by the routed gimbals.
 
+##### &#9193; Operation mode
+
+Choose one of three modes, then save and restart:
+
+- **Legacy**: normal prop controls, simulated speed/display, sound effects, and the configured MQTT/BTTFN behavior. No CRSF channel transmission.
+- **ELRS/CRSF**: all four gimbals and twelve switch inputs transmit on their assigned CRSF channels, and the display shows radio telemetry. Check **Also trigger Settings action** beside individual switches to additionally run their existing Settings-page behavior. For O.O configured for Time Travel, an enabled checkbox sends the request directly; it does not wait for the prop throttle.
+- **Prop controls + ELRS/CRSF**: normal prop controls and the prop speed display run together with all mapped CRSF channels. All prop switches and Settings actions are active; the individual checkboxes do not restrict them. MQTT and BTTFN work as configured under the usual WiFi/network requirements. O.O and Time Travel retain normal prop behavior, including the throttle-up condition.
+
+To use the gimbal as a prop speed control with optional radio output, choose **Prop controls + ELRS/CRSF**. The physical **Throttle** gimbal on ADS1015 **AIN3** accelerates/decelerates the simulated prop speed through the normal auto-throttle/coasting/movie settings. Its CRSF output still follows the **Throttle target channel** selection; moving it from CH3 to another channel does not move the prop speed-control function to another gimbal. Choosing **None** for the Throttle channel disables only its radio output; the physical AIN3 throttle still controls prop speed. The other three gimbals keep their independent CRSF mappings.
+
+Prop throttle calibration and CRSF gimbal calibration serve different purposes. Use the normal [Calibration button procedure](#calibration) to set prop throttle neutral and endpoints, and the portal's **Gimbal Calibration** captures, reversal, curves, and travel limits for the transmitted radio channel. Calibrating one does not replace the other. Select the switch/gimbal channels as usual, ensure they are unique, and match the ELRS packet rate/RF mode to the module and receiver. Save and restart to apply mode and mapping changes.
+
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
 If checked, the Remote will join the configured WiFi network while operating in ELRS/CRSF mode. If unchecked, it remains in AP mode during ELRS/CRSF operation.
@@ -1092,7 +1122,13 @@ By default the mapping is:
 - Throttle -> CH3
 - Rudder -> CH4
 
-Any unique channel from CH1 through CH16 can be selected. If a gimbal claims a channel that was previously used by a fixed-function signal, the gimbal takes that channel and the fixed-function signal is only emitted on still-unclaimed channels.
+Choose **CH1** through **CH16**, or **None**, for each gimbal and switch. Assigned channels must be unique across gimbals and switches; any number of inputs may use **None**. None stops that input from driving any radio channel. A channel with no assigned input still transmits the minimum CRSF value (`172`), unless you assign another input to it. Existing default channel assignments are unchanged.
+
+##### &#9193; Switch Local Actions
+
+In **ELRS/CRSF** mode, check **Also trigger Settings action** beside a switch channel to also run that switch's existing behavior from the Settings page. In **Prop controls + ELRS/CRSF**, all normal prop controls are already active regardless of these checkboxes. This reuses the Stop, FakePower, O.O/RESET, and User Buttons behavior, including the configured momentary/maintained switch handling, short/long presses, and maintained-switch audio options. CRSF channel output continues independently. A checked switch also runs its local Settings action when its channel is **None**. In **Prop controls + ELRS/CRSF**, all prop functions remain active even for inputs assigned **None**. All checkboxes default to unchecked, including after loading older settings. Save the ELRS/CRSF page and restart to apply changes.
+
+In telemetry mode, the **FakePower** checkbox enables TCD power/speed control, including O.O/RESET's configured TCD power-master actions. TCD braking also requires the **Stop** checkbox. With FakePower unchecked, BTTFN uses state-free keepalives; enabled O.O Time Travel and User Button refill requests still work independently. The physical FakePower position still selects the on/off behavior of enabled O.O/RESET and User Button actions.
 
 ##### &#9193; Reverse Aileron/Elevator/Throttle/Rudder
 

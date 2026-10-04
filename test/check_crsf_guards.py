@@ -10,8 +10,17 @@ NM = shutil.which('nm') or str(Path(COMPILER).with_name('nm.exe'))
 failed = False
 
 with tempfile.TemporaryDirectory(prefix='crsf-guards-') as work:
+    work = Path(work)
+    (work / 'Arduino.h').write_text('#include <cstdint>\n#include <cstddef>\n')
+    (work / 'IPAddress.h').write_text('#pragma once\nclass IPAddress {};\n')
+    (work / 'WiFiClient.h').write_text('#pragma once\nclass WiFiClient {};\n')
+    for header in ('crsf_input.h', 'crsf_main.h', 'crsf_mqtt.h'):
+        source = f'#include "src/CRSF/{header}"\n' * 2
+        result = subprocess.run([COMPILER, '-std=gnu++11', '-fmax-errors=1', '-I' + str(work), '-I' + str(ROOT / 'src'),
+                                 '-x', 'c++', '-fsyntax-only', '-'], input=source, capture_output=True, text=True)
+        assert result.returncode == 0, f'{header} must be empty when disabled:\n{result.stderr}'
     for enabled in (False, True):
-        flags = [COMPILER, '-std=gnu++11', '-fmax-errors=1', '-I' + str(ROOT / 'src')]
+        flags = [COMPILER, '-std=gnu++11', '-fmax-errors=1', '-I' + str(work), '-I' + str(ROOT / 'src')]
         if enabled:
             flags.append('-DHAVE_CRSF')
         for header in ('crsf_settings.h', 'crsf_kludge.h'):
@@ -34,3 +43,4 @@ with tempfile.TemporaryDirectory(prefix='crsf-guards-') as work:
 
 assert not failed, 'CRSF feature guard checks failed'
 print('CRSF headers compile twice with feature on/off; disabled input model exports no functions')
+print('Disabled CRSF input, main, and MQTT headers export no code')

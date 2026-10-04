@@ -573,6 +573,10 @@ static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t
 static void bttfn_setup();
 static void bttfn_loop_quick();
 
+#ifdef HAVE_CRSF
+#include "src/CRSF/crsf_main.h"
+#endif
+
 void main_boot()
 {
 }
@@ -722,7 +726,8 @@ void main_boot2()
 
     #ifdef HAVE_CRSF
     if(haveNewBoard) {
-        opModeCRSF = evalBool(settings.opMode);
+        opModeCRSF = atoi(settings.opMode) != 0;
+        opModePropCRSF = atoi(settings.opMode) == 2;
     }
     #endif
 }
@@ -810,43 +815,6 @@ void main_setup()
         // We never return here. The ESP is rebooted.
     }
 
-    #ifdef HAVE_CRSF
-    if(opModeCRSF) {
-        Serial.println("Control mode: ELRS/CRSF");
-
-        showUpd();
-
-        if((useBPack = butPack.begin())) {
-            butPack.setScanInterval(50);
-        } else {
-            #ifdef REMOTE_DBG
-            Serial.println("ButtonPack not detected");
-            #endif
-        }
-
-        crsf_begin(
-            (uint16_t)crsf_getPacketRate(atoi(settings.elrsPktRate)),
-            crsf_getSpeedUnits(atoi(settings.elrsSpdUnit)),
-            crsf_getTelemetryRatio(atoi(settings.elrsTlmRatio)),
-            crsf_getMaxPower(atoi(settings.elrsMaxPower)),
-            crsf_getDynamicPower(atoi(settings.elrsDynPower)),
-            useBPack ? &butPack : NULL,
-            useBPack,
-            &remdisplay,
-            &pwrled,
-            &bLvLMeter,
-            &remledStop,
-            usePwrLED,
-            useLvlMtr,
-            pwrLEDonFP,
-            LvLMtronFP,
-            wifiOnFakePowerOn
-        );
-        
-        return;
-    }
-    #endif
-    
     // Init music player (don't check for SD here)
     switchMusicFolder(musFolderNum, true);
 
@@ -863,6 +831,9 @@ void main_setup()
     haveBOFFsnd = check_file_SD(brakeOffSnd);
     haveThUp = check_file_SD(throttleUpSnd);
 
+    #ifdef HAVE_CRSF
+    if(!opModeCRSF || opModePropCRSF) {
+    #endif
     // Initialize throttle
     if(rotEnc.begin(true, haveNewBoard)) {
         useRotEnc = true;
@@ -880,17 +851,27 @@ void main_setup()
     }
     #endif
 
+    #ifdef HAVE_CRSF
+    }
+    #endif
+
     // Initialize switches and buttons
     powerswitch.begin(FPOWER_IO_PIN, true, true);  // active low, pullup
     powerswitch.setTiming(50, 50);
     powerswitch.attachLongPressStart(powKeyPressed);
     powerswitch.attachLongPressStop(powKeyLongPressStop);
+    #ifdef HAVE_CRSF
+    if(!opModeCRSF || opModePropCRSF)
+    #endif
     powerswitch.scan();
 
     brake.begin(STOPS_IO_PIN, false, false);       // active high, pulldown on board    
     brake.setTiming(50, 50);
     brake.attachLongPressStart(brakeKeyPressed);
     brake.attachLongPressStop(brakeKeyLongPressStop);
+    #ifdef HAVE_CRSF
+    if(!opModeCRSF || opModePropCRSF)
+    #endif
     brake.scan();
 
     calib.begin(CALIBB_IO_PIN, true, true);        // active low, pullup
@@ -919,7 +900,11 @@ void main_setup()
     buttonB.attachLongPressStop(buttonBKeyPressed);
 
     #ifdef ALLOW_DIS_UB
+    #ifdef HAVE_CRSF
+    if((opModeCRSF && !opModePropCRSF) || !evalBool(settings.disBPack)) {
+    #else
     if(!evalBool(settings.disBPack)) {
+    #endif
     #endif
         if((useBPack = butPack.begin())) {
             butPack.setScanInterval(50);
@@ -938,6 +923,9 @@ void main_setup()
                     initScanBP = true;
                 }
             }
+            #ifdef HAVE_CRSF
+            if(!opModeCRSF || opModePropCRSF)
+            #endif
             if(initScanBP) {
                 butPack.scan();
             }
@@ -955,6 +943,17 @@ void main_setup()
     }
     #endif
     
+    #ifdef HAVE_CRSF
+    if(opModeCRSF && !opModePropCRSF) {
+        Serial.println("Control mode: ELRS/CRSF");
+        showUpd();
+        csf |= CSF_OFF;
+        if(crsfLocalActionsEnabled()) bttfn_setup();
+        crsf_start();
+        return;
+    }
+    #endif
+
     now = millis();
 
     if(!haveAudioFiles) {
@@ -1009,6 +1008,12 @@ void main_setup()
 
     // Unset busy
     remBusy--;
+    #ifdef HAVE_CRSF
+    if(opModePropCRSF) {
+        Serial.println("Control mode: Prop controls + ELRS/CRSF");
+        crsf_start();
+    }
+    #endif
 }
 
 void main_loop()
@@ -1016,16 +1021,9 @@ void main_loop()
     unsigned long now = millis();
 
     #ifdef HAVE_CRSF
-    if(opModeCRSF) {
-        #ifdef HAVE_PM
-        battWarn = pwrMon.loop();
-        #else
-        battWarn = 0;
-        #endif
-        crsf_loop(battWarn);
-        
-        return;
-    }
+    const bool crsfStandalone = opModeCRSF && !opModePropCRSF;
+    if(opModeCRSF) serviceCRSF();
+    if(!crsfStandalone) {
     #endif
 
     if(triggerCompleteUpdate) {
@@ -1272,6 +1270,10 @@ void main_loop()
         }
     }
 
+    #ifdef HAVE_CRSF
+    }
+    #endif
+
     // Button A "O.O":
     //    Fake-power on:
     //        If buttonPack is enabled/present:
@@ -1294,6 +1296,9 @@ void main_loop()
     //    Fake-power off:
     //        Short press: Decrease volume
     //        Long press: Decrease brightness or relinquish Fake-Power control (depending on option)
+    #ifdef HAVE_CRSF
+    if(!crsfStandalone)
+    #endif
     buttonA.scan();
     if(isbuttonAKeyChange) {
         isbuttonAKeyChange = false;
@@ -1302,6 +1307,11 @@ void main_loop()
                 if(useBPack) {
                     if(isbuttonAKeyPressed) {
                         if(ooTT) {
+                            #ifdef HAVE_CRSF
+                            if(crsfStandalone) {
+                                if(!bttfn_trigger_tt(false)) play_bad();
+                            } else {
+                            #endif
                             brakeWarning = false;
                             if(!triggerTTonThrottle) {
                                 // Here we only trigger a stand-alone TT
@@ -1327,6 +1337,9 @@ void main_loop()
                                 triggerTTonThrottle = 0;
                                 play_bad();
                             }
+                            #ifdef HAVE_CRSF
+                            }
+                            #endif
                         } else {
                             if(haveMusic) {
                                 mp_prev(mpActive);
@@ -1394,6 +1407,9 @@ void main_loop()
             }
         }
     }
+    #ifdef HAVE_CRSF
+    if(!crsfStandalone)
+    #endif
     buttonB.scan();
     if(isbuttonBKeyChange) {
         isbuttonBKeyChange = false;
@@ -1461,6 +1477,9 @@ void main_loop()
         }
     }
 
+    #ifdef HAVE_CRSF
+    if(!crsfStandalone) {
+    #endif
     // Calibration button:
     //    Fake-power is off: Throttle calibration
     //        - Short press registers current position as "center" (zero) position.
@@ -1522,6 +1541,10 @@ void main_loop()
                     remdisplay.setText("CAL");
                     remdisplay.show();
                     remdisplay.on();
+                    #ifdef HAVE_CRSF
+                    if(opModePropCRSF) mydelay((pwrLEDonFP || LvLMtronFP) ? 2000 : 200, true);
+                    else
+                    #endif
                     delay((pwrLEDonFP || LvLMtronFP) ? 2000 : 200);    // Stabilize voltage after turning on display, LED, level meter
                     offDisplayTimer = true;
                     offDisplayNow = millis();
@@ -1550,6 +1573,10 @@ void main_loop()
                     if(pwrLEDonFP || LvLMtronFP) {
                         showWaitSequence();
                         remdisplay.on();
+                        #ifdef HAVE_CRSF
+                        if(opModePropCRSF) mydelay(2000, true);
+                        else
+                        #endif
                         delay(2000);
                     }
                     remdisplay.setText("UP");
@@ -1603,8 +1630,15 @@ void main_loop()
         }
     }
 
+    #ifdef HAVE_CRSF
+    }
+    #endif
+
     // Optional button pack: Up to 8 momentary buttons or maintained switches
     if(useBPack) {
+        #ifdef HAVE_CRSF
+        if(!crsfStandalone)
+        #endif
         butPack.scan();
         for(int i = 0; i < butPack.getPackSize(); i++) {
             if(isbutPackKeyChange[i]) {
@@ -1637,6 +1671,9 @@ void main_loop()
         }
     }
 
+    #ifdef HAVE_CRSF
+    if(!crsfStandalone) {
+    #endif
     // CSF_TCDINP0 is set while CSF_TT is still unset
     // CSF_INTP0 is set while CSF_TT is already set
 
@@ -2133,6 +2170,12 @@ void main_loop()
                 play_file("/volchg.mp3", PA_INTRMUS|PA_ALLOWSD);
             }
         }
+    }
+    #endif
+
+    #ifdef HAVE_CRSF
+    } else {
+        crsf_standalone_keepalive();
     }
     #endif
 
@@ -3310,6 +3353,9 @@ static void re_vol_reset()
  */
 static void myloop(bool withBTTFN)
 {
+    #ifdef HAVE_CRSF
+    if(opModePropCRSF) serviceCRSF();
+    #endif
     wifi_loop();
     audio_loop();
     if(withBTTFN) bttfn_loop_quick();
@@ -3324,7 +3370,11 @@ void mydelay(unsigned long mydel, bool withBTTFN)
     unsigned long startNow = millis();
     myloop(withBTTFN);
     while(millis() - startNow < mydel) {
+        #ifdef HAVE_CRSF
+        delay(opModePropCRSF ? 1 : 10);
+        #else
         delay(10);
+        #endif
         myloop(withBTTFN);
     }
 }
@@ -3834,6 +3884,9 @@ void bttfn_remote_unregister()
 static void bttfn_remote_send_combined(bool powerstate, bool brakestate, uint8_t speed)
 {
     if(!triggerCompleteUpdate) {
+        #ifdef HAVE_CRSF
+        if(crsf_handle_bttfn_update(brakestate)) return;
+        #endif
         uint8_t p1 = 0;
         if(powerstate)       p1 |= 0x01;
         if(brakestate)       p1 |= 0x02;

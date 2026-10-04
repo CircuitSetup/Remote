@@ -107,6 +107,8 @@ void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count) {
     for (int i = 0; i < count; ++i) cal[i] = {0, 1024, 2047};
 }
 bool saveELRSCalibration(const ELRSAxisCalibrationData *, int) { return true; }
+int localScans = 0;
+void queueCRSFLocalSwitches(uint16_t, uint16_t) { localScans++; }
 int main() {
     ELRSCrsfMode mode;
     int16_t axes[4];
@@ -117,6 +119,9 @@ int main() {
     assert(mode.begin(250, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
                       nullptr, false, nullptr, nullptr, nullptr, nullptr,
                       false, false, false, false, nullptr));
+    int previousLocalScans = localScans;
+    testNow = 4; mode.loop(0);
+    assert(localScans > previousLocalScans);
     const int16_t atRest[4] = {1000, 800, 600, 400};
     for (int i = 0; i < 4; ++i) Wire.values[i] += 20;
     testNow = 20;

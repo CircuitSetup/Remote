@@ -83,6 +83,9 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 {
     _config = config;
     elrsSanitizeInputRouting(_config.inputRouting, _config.switchRouting);
+    for(uint8_t &action : _config.localActions) {
+        if(action > 1) action = 0;
+    }
     if(_config.adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) _config.adcHysteresis = ELRS_INPUT_TOLERANCE_MAX;
     if(_config.throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) _config.throttleIdleDeadband = ELRS_INPUT_TOLERANCE_MAX;
     _logHost = &host;
@@ -130,6 +133,8 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _haveGpsSpeed = false;
     _haveAirspeed = false;
     _lastPackStates = 0;
+    _localInputsInitialized = 0;
+    _localNeedsRelease = 0;
     _adcFaultActive = false;
     _buttonPackFaultActive = false;
     _lastCommCode = ELRS_COMM_NONE;
@@ -182,10 +187,16 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     }
 
     _fakePowerOn = host.readFakePowerSwitch();
-    applyIdleOutputs(host, _fakePowerOn);
-    host.setStopLed(false);
+    if(!_config.propControls) {
+        applyIdleOutputs(host, _fakePowerOn);
+        host.setStopLed(false);
+    }
 
     updateChannels(now, _fakePowerOn, host.readStopSwitch(), host.readButtonA(), host.readButtonB(), samplePackStates(host, now));
+    if(!_config.propControls) {
+        updateLocalSwitches(host, (_lastPackStates << 4) | (host.readButtonB() << 3) |
+                           (host.readButtonA() << 2) | (_fakePowerOn << 1) | host.readStopSwitch());
+    }
 
     _transport.begin(host, _config.transport, now, nowUs);
 
@@ -216,7 +227,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     uint8_t packStates = samplePackStates(host, now);
 
     _fakePowerOn = fakePower;
-    host.setStopLed(stopOn);
+    if(!_config.propControls) host.setStopLed(stopOn);
 
     sampleAxes(host, now);
     updateInputFaults(host, now);
@@ -226,7 +237,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
         log(host, "ELRS/CRSF: self-test stopped");
     }
 
-    if(!_selfTestActive) {
+    if(!_selfTestActive && !_config.propControls) {
         updateCalibrationButton(host, now, battWarn);
     }
 
@@ -246,20 +257,42 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
 #endif
     _transport.setChannels(_channels);
     _transport.loop(host, now, nowUs);
+    if(!_config.propControls) {
+        updateLocalSwitches(host, (packStates << 4) | (buttonBOn << 3) |
+                           (buttonAOn << 2) | (fakePower << 1) | stopOn);
+    }
 
     // Module config runs after the transport loop; service frames queued here
     // are transmitted on the next scheduler pass.
     updateModuleConfig(host, now);
 
-    updateBatteryWarning(host, now, battWarn, fakePower);
+    if(!_config.propControls) updateBatteryWarning(host, now, battWarn, fakePower);
     updateBenchState(host, now);
-    updateDisplay(host, now, battWarn);
+    if(!_config.propControls) updateDisplay(host, now, battWarn);
 }
 
 void ELRSCrsfCore::startSelfTest(unsigned long now, unsigned long durationMs)
 {
     _selfTestActive = true;
     _selfTestUntil = now + durationMs;
+}
+
+void ELRSCrsfCore::updateLocalSwitches(ELRSCrsfHost &host, uint16_t states)
+{
+    uint16_t validMask = 0x000f;
+    if(_localPackSampleValid) validMask |= 0x0ff0;
+    _localInputsInitialized &= validMask;
+    // A held input must be released after startup, stale reads or calibration/self-test.
+    _localNeedsRelease = (_localNeedsRelease & states) | (states & validMask & ~_localInputsInitialized);
+    _localInputsInitialized |= validMask;
+    if(_selfTestActive || isCalibrating()) {
+        _localNeedsRelease |= states;
+        validMask = 0;
+    }
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        if(!_config.localActions[i]) validMask &= ~(1 << i);
+    }
+    host.scanLocalSwitches(states, validMask & ~_localNeedsRelease);
 }
 
 void ELRSCrsfCore::stopSelfTest()
@@ -437,6 +470,7 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
 
 uint8_t ELRSCrsfCore::samplePackStates(ELRSCrsfHost &host, unsigned long now)
 {
+    _localPackSampleValid = false;
     uint8_t packStates = _hasValidPackState ? _lastPackStates : 0;
     uint8_t sampledStates = 0;
 
@@ -445,6 +479,7 @@ uint8_t ELRSCrsfCore::samplePackStates(ELRSCrsfHost &host, unsigned long now)
     }
 
     if(host.samplePackStates(sampledStates)) {
+        _localPackSampleValid = true;
         _lastPackStates = sampledStates;
         _lastGoodPackAt = now;
         _hasValidPackState = true;
