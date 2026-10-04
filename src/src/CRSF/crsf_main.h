@@ -58,6 +58,7 @@
 #ifdef HAVE_CRSF
 
 #include "crsf_settings.h"
+#include "elrs_crsf.h"
 
 // Included once by remote_main.cpp after its private controls and declarations.
 bool opModePropCRSF = false;

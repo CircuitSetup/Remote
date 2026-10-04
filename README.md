@@ -978,6 +978,14 @@ If checked, the Remote will join the configured WiFi network while operating in 
 
 ##### &#9193; ELRS Packet rate
 
+##### &#9193; 3 digit display
+
+Choose GPS speed, airspeed, vehicle battery voltage/current/remaining charge/capacity, GPS altitude/heading/satellites, or receiver uplink LQ/RSSI/SNR. The list offers only valid values received within the last two seconds. A saved or pending source stays selected when unavailable; its readout becomes `---` until fresh telemetry returns. Received zero is a valid value.
+
+**None (normal display)** is the default. In **Prop controls + ELRS/CRSF**, it keeps normal gimbal-controlled prop speed and the connected TCD speedometer. Assigning telemetry replaces the Remote's local normal readout; the gimbal still controls prop/TCD speed independently. In standalone **ELRS/CRSF**, None uses **Auto**, which selects GPS speed, then airspeed, then uplink LQ. Auto uses default scaling. **Off** blanks the normal readout. Calibration, battery warnings, volume/brightness, and time travel messages keep priority.
+
+For an assigned source, output is `value × multiplier + offset`. Speed is converted to the selected km/h or mph units first. Choose source-default precision or 0, 1, or 2 decimal places. For example, speed × `0.5` halves the displayed value; capacity × `0.001` displays Ah instead of mAh. The three digits include the minus sign; overflow shows `HI` or `LO`. Live preview uses pending settings without changing the physical display. Save and restart to apply.
+
 Selects the RC packet rate sent to the external ELRS module. The module must be configured to the same packet rate.
 
 ##### &#9193; Speed units

@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <math.h>
+#include <cmath>
 
 /*
  * Define HAVE_CRSF at build time to enable the ELRS/CRSF integration in the main
@@ -93,8 +93,8 @@ static inline bool elrsIsValidDisplayConfig(const ELRSDisplayConfig &config)
 {
     return config.source <= ELRS_DISPLAY_NONE &&
         (config.decimalPlaces <= 2 || config.decimalPlaces == 255) &&
-        isfinite(config.multiplier) && config.multiplier >= -1000 && config.multiplier <= 1000 &&
-        isfinite(config.offset) && config.offset >= -999 && config.offset <= 999;
+        std::isfinite(config.multiplier) && config.multiplier >= -1000 && config.multiplier <= 1000 &&
+        std::isfinite(config.offset) && config.offset >= -999 && config.offset <= 999;
 }
 
 static inline ELRSDisplayConfig elrsEffectiveDisplayConfig(const ELRSDisplayConfig &config, bool propControls)

@@ -56,7 +56,7 @@ void elrsFormatTelemetry(const ELRSDisplayConfig &config, const ELRSTelemetrySam
 {
     text[0] = 0;
     if(config.source == ELRS_DISPLAY_OFF || config.source == ELRS_DISPLAY_NONE) return;
-    if(!sample.available || !isfinite(sample.value)) {
+    if(!sample.available || !std::isfinite(sample.value)) {
         strcpy(text, "---");
         return;
     }
@@ -67,7 +67,7 @@ void elrsFormatTelemetry(const ELRSDisplayConfig &config, const ELRSTelemetrySam
     if((sample.source == ELRS_DISPLAY_GPS_SPEED || sample.source == ELRS_DISPLAY_AIRSPEED) &&
        speedUnits == ELRS_SPEED_UNITS_MPH) value *= 0.621371192f;
     if(!automatic) value = value * config.multiplier + config.offset;
-    if(!isfinite(value) || decimals > 2) {
+    if(!std::isfinite(value) || decimals > 2) {
         strcpy(text, "---");
         return;
     }

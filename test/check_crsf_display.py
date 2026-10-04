@@ -1,0 +1,116 @@
+"""Run the real telemetry HTTP formatter and portal builder with received frames."""
+import json
+import os
+import tempfile
+from pathlib import Path
+from check_crsf_adc import ROOT, compile_and_run
+
+portal = (ROOT / 'src/src/CRSF/crsf_wifi.h').read_text()
+native = (ROOT / 'test/native_elrs/test_native_elrs.cpp').read_text()
+
+def function(signature):
+    start = portal.index(signature + '\n{')
+    return portal[start:portal.index('\n}', start) + 2] + '\n'
+
+production = function('static bool crsfParseDisplayNumber(const String &value, float &number)')
+production += function('static bool crsfParseDisplayParams(ELRSDisplayConfig &config)')
+production += portal[portal.index('static const char crsfDisplayScript[]'):portal.index('static void handleELRSRawRead()')]
+fixture = r'''
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <deque>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <map>
+#include "Arduino.h"
+#include "src/CRSF/elrs_crsf_core.h"
+using String = std::string;
+unsigned long testNow = 0;
+'''
+fixture += native[native.index('constexpr uint8_t AXIS_AILERON'):native.index('static std::vector<uint8_t> makeFrameWithSync')]
+fixture += r'''
+FakeHost host;
+ELRSCrsfCore core;
+ELRSDisplayConfig crsfDisplayConfig = {1,1,0.5f,0};
+ELRSDisplayConfig loadELRSDisplayConfig() { return crsfDisplayConfig; }
+bool haveNewBoard = true, opModeCRSF = true, opModePropCRSF = true;
+constexpr int WM_CP_DESTROY = 0, WM_CP_LEN = 1;
+size_t wmLenBuf;
+struct {
+    ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now) { return core.telemetrySample(source, now); }
+    uint8_t speedDisplayUnits() { return ELRS_SPEED_UNITS_MPH; }
+} elrsMode;
+struct Server {
+    std::map<std::string,std::string> args;
+    int status = 0;
+    std::string body;
+    bool hasArg(const char *key) { return args.count(key); }
+    String arg(const char *key) { return args[key]; }
+    void send(int code, const char *, const char *text) {
+        status = code; body = text;
+        if(code == 200) {
+            FILE *file = fopen(getenv("CRSF_DISPLAY_JSON"), "a"); assert(file);
+            fprintf(file, "%s\n", text); fclose(file);
+        }
+    }
+} server;
+struct { Server *server = &::server; } wm;
+'''
+cases = r'''
+int main() {
+    auto config = defaultConfig(); config.propControls = true;
+    assert(core.begin(host, config, 0));
+    handleELRSTelemetryRead(); assert(server.status == 200);
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,3,232,0,0,3,232,0}));
+    core.loop(host, 0, 0); handleELRSTelemetryRead();
+    assert(server.status == 200 && server.body.find("\"text\":\"31.1\"") != String::npos);
+    server.args = {{"cdmul","1"},{"cdoff","0"},{"cspdu","0"},{"cddec","0"}};
+    handleELRSTelemetryRead(); assert(server.body.find("\"text\":\"100\"") != String::npos);
+    testNow = 2000; core.loop(host, testNow, 0);
+    host.queueFrame(makeFrame(0x14, {105,0,88,253,0,0,0,0,0,0}));
+    core.loop(host, testNow, 0); server.args.clear(); handleELRSTelemetryRead();
+    assert(server.body.find("\"text\":\"---\"") != String::npos);
+    server.args = {{"cdsrc","0"},{"cdmul","1000"},{"cdoff","999"}};
+    handleELRSTelemetryRead(); assert(server.body.find("\"text\":\"88\"") != String::npos);
+    server.args = {{"cdsrc","14"}}; handleELRSTelemetryRead();
+    assert(server.body.find("\"text\":\"\"") != String::npos);
+    opModePropCRSF = false; handleELRSTelemetryRead();
+    assert(server.body.find("\"text\":\"88\"") != String::npos);
+    server.args = {{"cdsrc","13"}}; handleELRSTelemetryRead();
+    assert(server.body.find("\"text\":\"\"") != String::npos);
+    for(const char *field : {"cdsrc","cddec","cdmul","cdoff","cspdu"}) {
+        for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "0x1p2", "1junk", " 1", "999999999999999999999999999", String("1\0x",3)}) {
+            server.args = {{field,bad}}; handleELRSTelemetryRead(); assert(server.status == 400);
+        }
+    }
+    assert(crsfDisplayConfig.source == 1 && crsfDisplayConfig.multiplier == 0.5f && host.displayShows == 0);
+    const char *html = wmBuildCRSFDisplay(nullptr, 2); assert(html);
+    assert(strstr(html, "id='cdsrcvalue' name='cdsrc' value='1'"));
+    assert(strstr(html, "value='1' selected disabled>GPS speed (unavailable)"));
+    assert(!strstr(html, "<select id='cdsrc' name="));
+    assert(*(const size_t*)wmBuildCRSFDisplay(nullptr, WM_CP_LEN) == strlen(html) + 1);
+    if(const char *path = getenv("CRSF_DISPLAY_PREVIEW")) {
+        FILE *file = fopen(path, "w"); assert(file);
+        fprintf(file, "<!doctype html><html><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{font-family:Arial;max-width:600px;margin:20px auto;padding:12px}label{display:block;margin-top:12px}input,select{box-sizing:border-box;width:100%%;padding:8px}fieldset{min-width:0}p{line-height:1.5}</style><body><form>%s</form></body></html>", html);
+        fclose(file);
+    }
+    wmBuildCRSFDisplay(html, WM_CP_DESTROY);
+    puts("CRSF telemetry preview, validation, and pending-source form checks passed");
+}
+'''
+with tempfile.TemporaryDirectory(prefix='crsf-display-') as work:
+    path = Path(work) / 'responses.jsonl'
+    os.environ['CRSF_DISPLAY_JSON'] = str(path)
+    compile_and_run(fixture + production + cases, ['elrs_crsf_core.cpp', 'elrs_crsf_transport.cpp', 'elrs_input_model.cpp'])
+    responses = [json.loads(line) for line in path.read_text().splitlines()]
+    assert len(responses) == 8
+    assert responses[0]['sources'][0]['ageMs'] is None
+    assert responses[0]['sources'][0]['value'] is None
+    assert responses[1]['sources'][0]['ageMs'] == 0
+    assert responses[1]['sources'][0]['value'] == 100 and responses[1]['sources'][0]['unit'] == 'km/h'
+    assert responses[3]['sources'][0]['received'] and not responses[3]['sources'][0]['available']
+    assert responses[3]['sources'][0]['ageMs'] == 2000 and responses[3]['sources'][0]['value'] is None
+    assert responses[3]['sources'][11]['value'] == -3
+    del os.environ['CRSF_DISPLAY_JSON']

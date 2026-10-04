@@ -118,6 +118,11 @@ portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for s
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
 limits_page = function('src/src/CRSF/crsf_wifi.h', 'static void wmAppendCRSFOutputLimits(String &html, uint8_t axis)')
 expo_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadExpoParams()')
+display_post = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for signature in [
+    'static bool crsfParseDisplayNumber(const String &value, float &number)',
+    'static bool crsfParseDisplayParams(ELRSDisplayConfig &config)',
+    'static void crsfReadDisplayParams()',
+])
 switch_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadSwitchParams()')
 wifi_source = (ROOT / 'src/remote_wifi.cpp').read_text()
 select_page = wifi_source[wifi_source.index('static const char custHTMLHdr1[]'):wifi_source.index('static const char custHTMLSelFmt[]')]
@@ -146,6 +151,7 @@ post_parser += function('src/remote_wifi.cpp', 'static void getServerParam(const
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset)')
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadGimbalChannelParam(const char *name, char *destBuf)')
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadOutputLimitParams()')
+post_parser += display_post
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsf_wifi_saveParamsCallback()')
 portal_http = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
 portal_http += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
@@ -175,7 +181,7 @@ std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
 bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
-    valid = min(96, (int)stored.size());
+    valid = min(106, (int)stored.size());
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
@@ -260,6 +266,40 @@ void formatFlashFS(bool) { media[0].clear(); }
 '''
 storage_cases = r'''
 int main() {
+    // Display tail migration is atomic; the original 96 bytes remain intact.
+    ELRSDisplayConfig display = {1,1,0.5f,-2};
+    crsf_load_settings();
+    assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
+    auto fullDisplay = stored;
+    assert(fullDisplay.size() == 106 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
+    for(int length = 96; length <= 106; length++) {
+        stored = fullDisplay; stored.resize(length); crsf_load_settings();
+        auto loaded = loadELRSDisplayConfig();
+        assert(loaded.source == (length == 106 ? 1 : 14));
+        assert(loaded.multiplier == (length == 106 ? 0.5f : 1));
+        assert(!memcmp(&crsfSettings, fullDisplay.data(), 96));
+    }
+    stored = fullDisplay; ((ELRSCrsfSettingsBlob*)stored.data())->displayConfig.offset = NAN;
+    crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14);
+    stored = fullDisplay; crsf_load_settings();
+    storageWriteOk = false; display.source = 13;
+    assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
+    assert(loadELRSDisplayConfig().source == 1 && stored == fullDisplay);
+    storageWriteOk = true;
+    syncCRSFPortalBuffers(); server.args = {{"cdsrc","7"},{"cdmul","-0.001"},{"cdoff","20.5"},{"cddec","2"}};
+    crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings());
+    display = loadELRSDisplayConfig(); assert(display.source == 7 && display.multiplier == -0.001f && display.offset == 20.5f && display.decimalPlaces == 2);
+    auto validDisplay = stored;
+    for(const char *field : {"cdsrc","cdmul","cdoff","cddec"}) {
+        for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "0x1p2", "1junk", " 1", "999999999999999999999999999", std::string("1\0x",3)}) {
+            server.args = {{field,bad}}; crsfReadDisplayParams();
+            assert(!saveCRSFPortalInputSettings() && stored == validDisplay);
+        }
+    }
+    for(const auto &pair : std::map<std::string,std::string>{{"cdsrc","15"},{"cdmul","1001"},{"cdoff","1000"},{"cddec","3"}}) {
+        server.args = {pair}; crsfReadDisplayParams(); assert(!saveCRSFPortalInputSettings() && stored == validDisplay);
+    }
+    server.args.clear(); crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings() && stored == validDisplay);
     struct OldBlob { ELRSInputAxisProfile axisProfile[4]; ELRSGimbalRouting gimbalRouting; } old = {};
     for(int i = 0; i < 4; i++) old.axisProfile[i] = elrsDefaultInputAxisProfile();
     old.axisProfile[0].minimum = 300;
@@ -351,7 +391,7 @@ int main() {
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(previous.size() == 56 && mapped.size() == 96);
+    assert(previous.size() == 56 && mapped.size() == 106);
     for(int partial = 0; partial < 12; partial++) {
         stored = mapped;
         stored.resize(previous.size() + partial);
@@ -738,7 +778,7 @@ int main() {
     // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
     assert(sizeof(ELRSInputAxisProfile) == 12);
     assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
-    assert(sizeof(ELRSCrsfSettingsBlob) == 96 && sizeof(ELRSOutputLimits) == 4);
+    assert(sizeof(ELRSCrsfSettingsBlob) == 106 && sizeof(ELRSOutputLimits) == 4);
     const ELRSOutputLimits limits[4] = {{1100,1700},{1200,1800},{1300,1900},{1400,1600}};
     ELRSOutputLimits loaded[4];
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits));
@@ -1313,7 +1353,7 @@ int main() {
         other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
-        assert(before.size() == 99);
+        assert(before.size() == 109);
         for(int count : {0, 3, 86, 98}) {
             storage.allowedWrite = count;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));

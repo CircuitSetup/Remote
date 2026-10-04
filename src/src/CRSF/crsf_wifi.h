@@ -18,6 +18,8 @@ static const char *wmBuildCRSFCAL(const char *dest, int op);
 static void crsfReadOutputLimitParams();
 static const char *wmBuildCRSFSwitchMap(const char *dest, int op);
 static void crsfReadSwitchParams();
+static void crsfReadDisplayParams();
+static const char *wmBuildCRSFDisplay(const char *dest, int op);
 static void crsfReadExpoParams();
 
 static void syncCRSFPortalBuffers();
@@ -141,6 +143,8 @@ static const CRSFAxisSettings crsfAxisSettings[] = {
 static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", "1000"};
 static char crsfOutputMax[ELRS_GIMBAL_AXIS_COUNT][5] = {"2000", "2000", "2000", "2000"};
 static char crsfLocalActions[ELRS_SWITCH_INPUT_COUNT][2] = {};
+static ELRSDisplayConfig crsfDisplayConfig = elrsDefaultDisplayConfig();
+static bool crsfDisplayParamsValid = true;
 
 static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
 {
@@ -175,6 +179,7 @@ WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
 WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
 WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
 WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP);
+WiFiManagerParameter custom_crsfdisplay(wmBuildCRSFDisplay);
 WiFiManagerParameter custom_ss_crsfmap("<h3>Channel Mappings</h3><p style='margin:0 0 10px'><small>Changes apply after saving and restarting.</small></p>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfrc(wmBuildCRSFRC);
 WiFiManagerParameter custom_crsfrr("Reverse Aileron", settings.elrsRollRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
@@ -199,6 +204,7 @@ WiFiManagerParameter * const crsfParmArray[] = {
       &custom_crsftr,
       &custom_crsfmp,
       &custom_crsfdp,
+      &custom_crsfdisplay,
       &custom_ss_crsfmap,
       &custom_crsfrc,
       &custom_crsfrr,
@@ -257,6 +263,7 @@ static void crsf_wifi_saveParamsCallback()
     crsfReadSwitchParams();
     crsfReadOutputLimitParams();
     crsfReadExpoParams();
+    crsfReadDisplayParams();
     if(opModeCRSF) {
         crsfReadInputParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, 0);
         crsfReadInputParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, 0);
@@ -322,6 +329,8 @@ static void syncCRSFPortalBuffers()
     if(!haveNewBoard) {
         return;
     }
+    crsfDisplayConfig = loadELRSDisplayConfig();
+    crsfDisplayParamsValid = true;
 
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions);
@@ -352,6 +361,7 @@ static void syncCRSFPortalBuffers()
 
 static bool saveCRSFPortalInputSettings()
 {
+    if(!crsfDisplayParamsValid || !elrsIsValidDisplayConfig(crsfDisplayConfig)) return false;
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
@@ -423,7 +433,7 @@ static bool saveCRSFPortalInputSettings()
     uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
     if(adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
     if(throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
-    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions)) return false;
+    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions, &crsfDisplayConfig)) return false;
     syncCRSFPortalBuffers();
     return true;
 }
@@ -448,6 +458,42 @@ static void crsfReadOutputLimitParams()
             }
         }
     }
+}
+
+static bool crsfParseDisplayNumber(const String &value, float &number)
+{
+    const char *text = value.c_str();
+    const size_t length = value.length();
+    if(!length || length > 24 || strlen(text) != length || strspn(text, "0123456789+-.eE") != length) return false;
+    char *end;
+    number = strtof(text, &end);
+    return end == text + length && std::isfinite(number);
+}
+
+static bool crsfParseDisplayParams(ELRSDisplayConfig &config)
+{
+    const char *names[] = {"cdsrc", "cddec"};
+    for(int i = 0; i < 2; i++) {
+        if(!wm.server->hasArg(names[i])) continue;
+        String value = wm.server->arg(names[i]);
+        const size_t length = value.length();
+        if(!length || length > 3 || strlen(value.c_str()) != length || strspn(value.c_str(), "0123456789") != length) return false;
+        const int number = atoi(value.c_str());
+        if(i == 0) { if(number > ELRS_DISPLAY_NONE) return false; config.source = number; }
+        else { if(number > 2 && number != 255) return false; config.decimalPlaces = number; }
+    }
+    float multiplier = config.multiplier, offset = config.offset;
+    if(wm.server->hasArg("cdmul") && !crsfParseDisplayNumber(wm.server->arg("cdmul"), multiplier)) return false;
+    if(wm.server->hasArg("cdoff") && !crsfParseDisplayNumber(wm.server->arg("cdoff"), offset)) return false;
+    config.multiplier = multiplier;
+    config.offset = offset;
+    return elrsIsValidDisplayConfig(config);
+}
+
+static void crsfReadDisplayParams()
+{
+    crsfDisplayConfig = loadELRSDisplayConfig();
+    crsfDisplayParamsValid = crsfParseDisplayParams(crsfDisplayConfig);
 }
 
 static void crsfReadExpoParams()
@@ -899,6 +945,101 @@ static const char *wmBuildCRSFTC(const char *dest, int op)
 static const char *wmBuildCRSFYC(const char *dest, int op)
 {
     return wmBuildCRSFGimbalChannelSelect(dest, op, "'>Rudder target channel", "cywch", settings.elrsYawCh);
+}
+
+static const char crsfDisplayScript[] = R"JS(<script>(function(){
+var byId=function(id){return document.getElementById(id);},source=byId('cdsrc'),hidden=byId('cdsrcvalue'),preview=byId('cdpreview'),status=byId('cdstatus'),busy=false;
+function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidden.value)+'&cdmul='+encodeURIComponent(byId('cdmul').value)+'&cdoff='+encodeURIComponent(byId('cdoff').value)+'&cddec='+encodeURIComponent(byId('cddec').value)+(unit?'&cspdu='+encodeURIComponent(unit.value):'');}
+function options(rows){var wanted=hidden.value,label=source.selectedOptions.length?source.selectedOptions[0].textContent:'Saved source';source.textContent='';
+function add(id,text,disabled){var option=document.createElement('option');option.value=String(id);option.textContent=text;option.disabled=!!disabled;source.appendChild(option);}
+add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){if(row.available)add(row.id,row.label+' ('+row.unit+')');});
+if(!Array.from(source.options).some(function(option){return option.value===wanted;}))add(wanted,label.replace(/ \(unavailable\)$/,'')+' (unavailable)',true);source.value=wanted;}
+function fail(message){options([]);preview.textContent='---';status.textContent=message;}
+function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.unit?' ('+data.preview.unit+')':'')+(data.preview.available?'':' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
+source.addEventListener('change',function(){hidden.value=source.value;preview.textContent='…';poll();});
+['cdmul','cdoff','cddec','cspdu'].forEach(function(id){var input=byId(id);if(input)input.addEventListener('input',function(){preview.textContent='…';poll();});});
+poll();setInterval(poll,500);
+})();</script>)JS";
+
+static const char *wmBuildCRSFDisplay(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) { if(dest) free((void *)dest); return NULL; }
+    if(!haveNewBoard) return NULL;
+    String html;
+    char buf[220];
+    html.reserve(sizeof(crsfDisplayScript) + 1700);
+    html += "<fieldset><legend>3 digit display</legend><label for='cdsrc'>Display source</label>";
+    snprintf(buf, sizeof(buf), "<select id='cdsrc' data-live='%u'>", opModeCRSF ? 1 : 0);
+    html += buf;
+    const uint8_t choices[] = {ELRS_DISPLAY_NONE, ELRS_DISPLAY_AUTO, ELRS_DISPLAY_OFF, crsfDisplayConfig.source};
+    for(int i = 0; i < 4; i++) {
+        const uint8_t id = choices[i];
+        if(i == 3 && (id == 0 || id >= ELRS_DISPLAY_OFF)) continue;
+        snprintf(buf, sizeof(buf), "<option value='%u'%s%s>%s%s</option>", id,
+                 id == crsfDisplayConfig.source ? " selected" : "", i == 3 ? " disabled" : "",
+                 elrsTelemetrySourceLabel(id), i == 3 ? " (unavailable)" : "");
+        html += buf;
+    }
+    snprintf(buf, sizeof(buf), "</select><input type='hidden' id='cdsrcvalue' name='cdsrc' value='%u'>", crsfDisplayConfig.source);
+    html += buf;
+    snprintf(buf, sizeof(buf), "<label for='cdmul'>Multiplier</label><input type='number' id='cdmul' name='cdmul' min='-1000' max='1000' step='any' value='%.9g'>", crsfDisplayConfig.multiplier);
+    html += buf;
+    snprintf(buf, sizeof(buf), "<label for='cdoff'>Offset</label><input type='number' id='cdoff' name='cdoff' min='-999' max='999' step='any' value='%.9g'>", crsfDisplayConfig.offset);
+    html += buf;
+    html += "<label for='cddec'>Decimal places</label><select id='cddec' name='cddec'>";
+    const uint8_t precision[] = {255,0,1,2};
+    const char *labels[] = {"Source default","0","1","2"};
+    for(int i = 0; i < 4; i++) {
+        snprintf(buf, sizeof(buf), "<option value='%u'%s>%s</option>", precision[i], precision[i] == crsfDisplayConfig.decimalPlaces ? " selected" : "", labels[i]);
+        html += buf;
+    }
+    html += "</select><p>Preview: <output id='cdpreview' style='font-family:monospace;font-size:1.5em' aria-live='polite'>---</output><br><small id='cdstatus'>Waiting for received telemetry</small></p>";
+    html += "<p><small>Output = value × multiplier + offset. Speed units apply before scaling. Only fresh received sources are offered. HI/LO means the scaled value exceeds three digits; --- means unavailable. Auto uses GPS speed, airspeed, then uplink LQ with default scaling. Off blanks the normal readout. None keeps the gimbal speed/speedometer in Prop controls + ELRS/CRSF; in telemetry mode it uses Auto. Temporary display messages retain priority. Save and restart to apply; preview does not change the display.</small></p></fieldset>";
+    html += crsfDisplayScript;
+    if(op == WM_CP_LEN) { wmLenBuf = html.length() + 1; return (const char *)&wmLenBuf; }
+    char *result = (char *)malloc(html.length() + 1);
+    if(result) strcpy(result, html.c_str());
+    return result;
+}
+
+static void handleELRSTelemetryRead()
+{
+    ELRSDisplayConfig config = loadELRSDisplayConfig();
+    uint8_t units = elrsMode.speedDisplayUnits();
+    if(!crsfParseDisplayParams(config)) {
+        wm.server->send(400, "application/json", "{\"ok\":false}"); return;
+    }
+    if(wm.server->hasArg("cspdu")) {
+        String value = wm.server->arg("cspdu");
+        if(value.length() != 1 || (value[0] != '0' && value[0] != '1')) {
+            wm.server->send(400, "application/json", "{\"ok\":false}"); return;
+        }
+        units = value[0] - '0';
+    }
+    const uint32_t now = millis();
+    String json = "{\"ok\":true,\"sources\":[";
+    json.reserve(2400);
+    char buf[280], value[32], age[16];
+    for(uint8_t source = ELRS_DISPLAY_GPS_SPEED; source <= ELRS_DISPLAY_SNR; source++) {
+        const ELRSTelemetrySample sample = elrsMode.telemetrySample(source, now);
+        if(sample.available) snprintf(value, sizeof(value), "%.9g", sample.value);
+        else strcpy(value, "null");
+        if(sample.received) snprintf(age, sizeof(age), "%lu", (unsigned long)sample.ageMs);
+        else strcpy(age, "null");
+        snprintf(buf, sizeof(buf), "%s{\"id\":%u,\"label\":\"%s\",\"unit\":\"%s\",\"received\":%s,\"available\":%s,\"value\":%s,\"ageMs\":%s}",
+                 source == 1 ? "" : ",", source, elrsTelemetrySourceLabel(source), elrsTelemetrySourceUnit(source, ELRS_SPEED_UNITS_KMH),
+                 sample.received ? "true" : "false", sample.available ? "true" : "false", value, age);
+        json += buf;
+    }
+    const ELRSDisplayConfig effective = elrsEffectiveDisplayConfig(config, opModePropCRSF);
+    const ELRSTelemetrySample sample = elrsMode.telemetrySample(effective.source, now);
+    char text[8];
+    elrsFormatTelemetry(effective, sample, units, text);
+    snprintf(buf, sizeof(buf), "],\"preview\":{\"source\":%u,\"label\":\"%s\",\"unit\":\"%s\",\"available\":%s,\"text\":\"%s\"}}",
+             sample.available ? sample.source : effective.source, elrsTelemetrySourceLabel(sample.available ? sample.source : effective.source),
+             elrsTelemetrySourceUnit(sample.available ? sample.source : effective.source, units), sample.available ? "true" : "false", text);
+    json += buf;
+    wm.server->send(200, "application/json", json.c_str());
 }
 
 static void handleELRSRawRead()
