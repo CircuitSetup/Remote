@@ -54,6 +54,9 @@ struct Server {
     std::string body;
     bool hasArg(const char *key) { return args.count(key); }
     String arg(const char *key) { return args[key]; }
+    void send(int code, const char *type, const String &text) {
+        send(code, type, text.c_str());
+    }
     void send(int code, const char *, const char *text) {
         status = code; body = text;
         if(code == 200) {

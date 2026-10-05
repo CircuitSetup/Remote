@@ -1035,7 +1035,7 @@ static void handleELRSTelemetryRead()
     }
     const uint32_t now = millis();
     String json = "{\"ok\":true,\"sources\":[";
-    json.reserve(2400);
+    json.reserve(1024);
     char buf[280], value[32];
     bool first = true;
     for(uint8_t source = ELRS_DISPLAY_GPS_SPEED; source <= ELRS_DISPLAY_SNR; source++) {
@@ -1056,7 +1056,7 @@ static void handleELRSTelemetryRead()
              sample.available ? sample.source : effective.source, elrsTelemetrySourceLabel(sample.available ? sample.source : effective.source),
              elrsTelemetrySourceUnit(sample.available ? sample.source : effective.source, units), value, sample.available ? "true" : "false", text);
     json += buf;
-    wm.server->send(200, "application/json", json.c_str());
+    wm.server->send(200, "application/json", json);
 }
 
 static void handleELRSRawRead()
