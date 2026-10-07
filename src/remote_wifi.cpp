@@ -2413,6 +2413,7 @@ static void setupWebServerCallback()
     #ifdef HAVE_CRSF
     if(haveNewBoard && opModeCRSF) {
         wm.server->on("/elrsraw", HTTP_GET, &handleELRSRawRead);
+        wm.server->on("/elrstelemetry", HTTP_GET, &handleELRSTelemetryRead);
     }
     #endif
 }

@@ -82,6 +82,7 @@ struct ELRSCrsfCoreConfig {
     bool powerLedOnFakePower = false;
     bool levelMeterOnFakePower = false;
     uint8_t speedDisplayUnits = ELRS_SPEED_UNITS_DEFAULT;
+    ELRSDisplayConfig displayConfig = elrsDefaultDisplayConfig();
     uint8_t telemetryRatio = ELRS_TLM_RATIO_DEFAULT;
     uint8_t maxPower = ELRS_MAX_POWER_DEFAULT;
     uint8_t dynamicPower = ELRS_DYNAMIC_POWER_DEFAULT;
@@ -124,6 +125,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         float remoteBatteryVoltage() const;
         uint16_t gpsSpeed10() const;
         uint16_t airspeed10() const;
+        ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now) const;
+        bool telemetryDisplayAssigned() const;
+        void renderAssignedDisplay(ELRSCrsfHost &host, uint32_t now, int battWarn);
         bool telemetryActive() const;
         bool replyActive() const;
         bool synced() const;
@@ -175,8 +179,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool hasRecentTelemetry(unsigned long now) const;
         bool adcFaultActive(unsigned long now) const;
         bool buttonPackFaultActive(unsigned long now) const;
-        uint16_t getDisplaySpeed10(unsigned long now, SpeedSource *source = NULL) const;
-        uint16_t getDisplaySpeed10ForUnits(uint16_t speed10) const;
         void resetModuleConfigSession();
         void resetModuleParameters();
         bool buildExtendedFrame(uint8_t type, uint8_t destAddr, uint8_t origAddr, const uint8_t *payload, size_t payloadLen, uint8_t *frame, size_t frameSize) const;
@@ -245,6 +247,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         unsigned long _lastLinkStats = 0;
         unsigned long _lastGpsSpeed = 0;
         unsigned long _lastAirspeed = 0;
+        unsigned long _lastBattery = 0;
         unsigned long _batteryBlinkAt = 0;
         unsigned long _batteryBannerAt = 0;
         unsigned long _overlayUntil = 0;
@@ -265,6 +268,13 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         uint8_t _linkQuality = 0;
         uint8_t _remoteBattery = 0;
         float _remoteBatteryVoltage = 0.0f;
+        uint16_t _remoteCurrent10 = 0;
+        uint32_t _remoteCapacity = 0;
+        int32_t _gpsAltitude = 0;
+        uint16_t _gpsHeading100 = 0;
+        uint8_t _gpsSatellites = 0;
+        uint8_t _rxRssi = 0;
+        int8_t _rxSnr = 0;
         uint8_t _faultFlags = ELRS_FAULT_NONE;
         uint16_t _gpsSpeed10 = 0;
         uint16_t _airspeed10 = 0;
@@ -274,6 +284,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool _haveLinkStats = false;
         bool _haveGpsSpeed = false;
         bool _haveAirspeed = false;
+        bool _haveBattery = false;
+        uint8_t _receivedFamilies = 0;
+        uint8_t _lastDisplaySource = 255;
         bool _adcFaultActive = false;
         bool _buttonPackFaultActive = false;
         uint8_t _lastCommCode = ELRS_COMM_NONE;

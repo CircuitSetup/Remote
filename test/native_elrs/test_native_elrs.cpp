@@ -1877,7 +1877,7 @@ static void test_comm_codes_show_no_sync_until_valid_frame()
 
     core.loop(host, 3800, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING(" 73", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_STRING("73", host.displayText.c_str());
 }
 
 static void test_lost_telemetry_sets_los_until_valid_frame()
@@ -1975,20 +1975,20 @@ static void test_display_policy_prefers_gps_then_airspeed_then_link_quality()
 
     host.queueFrame(makeFrame(0x0A, std::vector<uint8_t>{ 0x00, 0x4D }));
     core.loop(host, 1500, 0);
-    TEST_ASSERT_EQUAL(DISPLAY_SPEED, host.displayMode);
-    TEST_ASSERT_EQUAL_INT(1230, host.displaySpeed);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("HI", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_GPS, core.activeSpeedSource());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     core.loop(host, 2301, 0);
-    TEST_ASSERT_EQUAL(DISPLAY_SPEED, host.displayMode);
-    TEST_ASSERT_EQUAL_INT(77, host.displaySpeed);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+    TEST_ASSERT_EQUAL_STRING("7.7", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_AIRSPEED, core.activeSpeedSource());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     core.loop(host, 3600, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
 }
 
@@ -2025,10 +2025,10 @@ static void test_speed_display_can_convert_kmh_to_mph()
     coreKmh.loop(hostKmh, 1500, 0);
     coreMph.loop(hostMph, 1500, 0);
 
-    TEST_ASSERT_EQUAL(DISPLAY_SPEED, hostKmh.displayMode);
-    TEST_ASSERT_EQUAL_INT(1230, hostKmh.displaySpeed);
-    TEST_ASSERT_EQUAL(DISPLAY_SPEED, hostMph.displayMode);
-    TEST_ASSERT_EQUAL_INT(764, hostMph.displaySpeed);
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, hostKmh.displayMode);
+    TEST_ASSERT_EQUAL_STRING("HI", hostKmh.displayText.c_str());
+    TEST_ASSERT_EQUAL(DISPLAY_TEXT, hostMph.displayMode);
+    TEST_ASSERT_EQUAL_STRING("76.4", hostMph.displayText.c_str());
 }
 
 static void test_battery_overlay_beats_comm_overlay()
@@ -2126,7 +2126,7 @@ static void test_battery_overlay_and_calibration_prompt_still_override_normal_di
     core.loop(host, 100, 0);
     core.loop(host, 1200, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
-    TEST_ASSERT_EQUAL_STRING(" 42", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_STRING("42", host.displayText.c_str());
 
     core.loop(host, 60000, 1);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
@@ -2157,7 +2157,7 @@ static void test_expired_overlays_do_not_return_after_millis_rollover()
         for(unsigned long now : times) {
             host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
             core.loop(host, now, 2000, 0);
-            if(now != 3600200UL) TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+            if(now != 3600200UL) TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
         }
         TEST_ASSERT_EQUAL_UINT8(ELRS_FAULT_NONE, core.getStatus().faultFlags);
     }
@@ -2173,7 +2173,7 @@ static void test_adc_overlay_expires_across_millis_rollover()
         TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), start - 2000, 0));
         host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
         core.loop(host, start - 300, 1000, 0);
-        TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+        TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
 
         host.axesAvailable = false;
         host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
@@ -2185,7 +2185,7 @@ static void test_adc_overlay_expires_across_millis_rollover()
             host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
             const uint32_t now = (uint32_t)(start + offset);
             core.loop(host, now, 2000 + offset, 0);
-            TEST_ASSERT_EQUAL_STRING(offset < 1000 ? "ADC" : " 88", host.displayText.c_str());
+            TEST_ASSERT_EQUAL_STRING(offset < 1000 ? "ADC" : "88", host.displayText.c_str());
         }
         TEST_ASSERT_EQUAL_UINT8(ELRS_FAULT_NONE, core.getStatus().faultFlags);
     }
@@ -2202,7 +2202,7 @@ static void test_comm_overlay_expires_across_millis_rollover()
     for(unsigned long now : times) {
         host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
         core.loop(host, now, 2000, 0);
-        TEST_ASSERT_EQUAL_STRING(now == 1000UL ? " 88" : "NRY", host.displayText.c_str());
+        TEST_ASSERT_EQUAL_STRING(now == 1000UL ? "88" : "NRY", host.displayText.c_str());
     }
 }
 
@@ -2218,10 +2218,10 @@ static void test_telemetry_received_at_millis_zero_is_fresh()
         core.loop(host, 0, 1000, 0);
         core.loop(host, 1000, 2000, 0);
         if(source == 0) {
-            TEST_ASSERT_EQUAL_STRING(" 88", host.displayText.c_str());
+            TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
         } else {
-            TEST_ASSERT_EQUAL(DISPLAY_SPEED, host.displayMode);
-            TEST_ASSERT_EQUAL_INT(source == 1 ? 126 : (source == 2 ? 77 : 0), host.displaySpeed);
+            TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
+            TEST_ASSERT_EQUAL_STRING(source == 1 ? "12.6" : (source == 2 ? "7.7" : "0.0"), host.displayText.c_str());
         }
         core.loop(host, 2501, 3000, 0);
         TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
@@ -3717,6 +3717,165 @@ static void test_all_none_configuration_survives_sanitizing_and_core_modes()
     for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
 }
 
+// Catch missing fields, wrong wire units/signs, and stale-family leakage.
+static void test_telemetry_samples_decode_supported_numeric_sources()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0,126,0x30,0x39,0x03,0xB6,8}));
+    host.queueFrame(makeFrame(0x0A, {0,77}));
+    host.queueFrame(makeFrame(0x08, {0,126,0,34,0,9,196,77}));
+    host.queueFrame(makeFrame(0x14, {105,0,85,253,0,0,0,0,0,0}));
+    core.loop(host, 100, 0);
+    const float expected[] = {12.6f,7.7f,12.6f,3.4f,77,2500,-50,123.45f,8,85,-105,-3};
+    for(uint8_t source = 1; source <= 12; source++) {
+        const ELRSTelemetrySample sample = core.telemetrySample(source, 100);
+        TEST_ASSERT_TRUE(sample.received);
+        TEST_ASSERT_TRUE(sample.available);
+        TEST_ASSERT_EQUAL_UINT32(0, sample.ageMs);
+        TEST_ASSERT_FLOAT_WITHIN(0.001f, expected[source - 1], sample.value);
+    }
+    TEST_ASSERT_EQUAL_UINT8(1, core.telemetrySample(0, 100).source);
+    TEST_ASSERT_EQUAL_STRING("V", elrsTelemetrySourceUnit(3, 0));
+    TEST_ASSERT_EQUAL_STRING("mph", elrsTelemetrySourceUnit(1, 1));
+    TEST_ASSERT_FALSE(core.telemetrySample(13, 100).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(14, 100).available);
+}
+
+static void test_telemetry_samples_track_presence_freshness_and_invalid_fields()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 0).received);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, core.telemetrySample(3, 0).ageMs);
+    host.queueFrame(makeFrame(0x02, std::vector<uint8_t>(15, 0)));
+    host.queueFrame(makeFrame(0x08, {0,126,0,0,0,0,0,77}));
+    core.loop(host, 0, 0);
+    TEST_ASSERT_TRUE(core.telemetrySample(1, 0).available);
+    TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(1, 0).value);
+    TEST_ASSERT_TRUE(core.telemetrySample(9, 0).available); // Zero satellites is received, not proof of a fix.
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 1999).available);
+    host.queueFrame(makeFrame(0x14, {0,0,80,0,0,0,0,0,0,0}));
+    core.loop(host, 2000, 0);
+    TEST_ASSERT_FALSE(core.telemetrySample(1, 2000).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(1, 2000).received);
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 2000).available);
+    TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(3, 2000).value);
+    TEST_ASSERT_EQUAL_UINT8(10, core.telemetrySample(0, 2000).source);
+    auto badBattery = makeFrame(0x08, {0,100,0,0,0,0,0,50});
+    badBattery.back() ^= 255;
+    host.queueFrame(badBattery);
+    host.queueFrame(makeFrame(0x08, {0,100}));
+    host.queueFrame(makeFrame(0x22, {1,2,3}));
+    core.loop(host, 2100, 0);
+    TEST_ASSERT_EQUAL_UINT32(2100, core.telemetrySample(3, 2100).ageMs);
+    host.queueFrame(makeFrame(0x08, {0,126,0,34,0,9,196,255}));
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0,126,255,255,0,0,0}));
+    host.queueFrame(makeFrame(0x14, {105,0,255,253,0,0,0,0,0,0}));
+    core.loop(host, 2200, 0);
+    TEST_ASSERT_FALSE(core.telemetrySample(5, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 2200).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(8, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(1, 2200).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(10, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(12, 2200).available);
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xfffffff0UL));
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 0xfffffff0UL).received);
+    host.queueFrame(makeFrame(0x08, {0,126,0,0,0,0,0,77}));
+    core.loop(host, 0xfffffff0UL, 0);
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 1983).available);
+    TEST_ASSERT_FALSE(core.telemetrySample(3, 1984).available);
+}
+
+static void test_display_assignment_scaling_and_formatting()
+{
+    struct Case { float value, multiplier, offset; uint8_t decimals; const char *text; };
+    const Case cases[] = {
+        {123,0.5f,0,1,"61.5"}, {12.6f,1,0,1,"12.6"}, {85,1,0,0,"85"},
+        {2500,0.001f,0,2,"2.50"}, {-105,1,20,0,"-85"}, {1000,1,0,0,"HI"},
+        {999,1,0,0,"999"}, {99.9f,1,0,1,"99.9"}, {9.99f,1,0,2,"9.99"},
+        {-99,1,0,0,"-99"}, {-9.9f,1,0,1,"-9.9"}, {-0.99f,1,0,2,"-.99"},
+        {-100,1,0,0,"LO"}, {-10,1,0,1,"LO"}, {-1,1,0,2,"LO"},
+        {99.95f,1,0,1,"HI"}, {1.25f,1,0,1,"1.3"}, {-1.25f,1,0,1,"-1.3"},
+        {-0.001f,1,0,2,"0.00"}, {7,0,2,0,"2"}, {7,-1,0,0,"-7"}
+    };
+    for(const Case &item : cases) {
+        ELRSDisplayConfig config = {1,item.decimals,item.multiplier,item.offset};
+        ELRSTelemetrySample sample = {1,item.value,true,true,0};
+        char text[8];
+        elrsFormatTelemetry(config, sample, 0, text);
+        TEST_ASSERT_EQUAL_STRING(item.text, text);
+    }
+    char text[8];
+    ELRSDisplayConfig config = elrsDefaultDisplayConfig();
+    TEST_ASSERT_EQUAL_UINT8(14, config.source);
+    config.source = 1; config.multiplier = 0.5f; config.decimalPlaces = 1;
+    ELRSTelemetrySample sample = {1,100,true,true,0};
+    elrsFormatTelemetry(config, sample, 1, text);
+    TEST_ASSERT_EQUAL_STRING("31.1", text);
+    sample.available = false;
+    elrsFormatTelemetry(config, sample, 0, text);
+    TEST_ASSERT_EQUAL_STRING("---", text);
+    config.source = 13;
+    elrsFormatTelemetry(config, sample, 0, text);
+    TEST_ASSERT_EQUAL_STRING("", text);
+    config.source = 14;
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEffectiveDisplayConfig(config, false).source);
+    TEST_ASSERT_EQUAL_UINT8(14, elrsEffectiveDisplayConfig(config, true).source);
+    config.source = 99;
+    TEST_ASSERT_FALSE(elrsIsValidDisplayConfig(config));
+    config.source = 1; config.decimalPlaces = 3;
+    TEST_ASSERT_FALSE(elrsIsValidDisplayConfig(config));
+    config.decimalPlaces = 1; config.multiplier = 1001;
+    TEST_ASSERT_FALSE(elrsIsValidDisplayConfig(config));
+    config.multiplier = NAN;
+    TEST_ASSERT_FALSE(elrsIsValidDisplayConfig(config));
+    config = {0,2,100,500}; sample.available = true; sample.value = 12.6f;
+    elrsFormatTelemetry(config, sample, 0, text);
+    TEST_ASSERT_EQUAL_STRING("12.6", text); // Auto uses neutral scale and source precision.
+    sample.value = INFINITY;
+    elrsFormatTelemetry(config, sample, 0, text);
+    TEST_ASSERT_EQUAL_STRING("---", text);
+}
+
+static void test_display_assignment_outage_recovery_units_and_overlays()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    auto config = defaultConfig();
+    config.displayConfig = {1,1,0.5f,0};
+    config.propControls = true;
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_TRUE(core.telemetryDisplayAssigned());
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0x03,0xE8,0,0,0,0,0}));
+    core.loop(host, 1200, 0);
+    TEST_ASSERT_EQUAL_INT(0, host.displayShows);
+    core.renderAssignedDisplay(host, 1200, 0);
+    TEST_ASSERT_EQUAL_STRING("50.0", host.displayText.c_str());
+    host.queueFrame(makeFrame(0x14, {0,0,88,0,0,0,0,0,0,0}));
+    core.loop(host, 3200, 0);
+    core.renderAssignedDisplay(host, 3200, 0);
+    TEST_ASSERT_EQUAL_STRING("---", host.displayText.c_str());
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0x03,0xE8,0,0,0,0,0}));
+    core.loop(host, 3400, 0);
+    core.renderAssignedDisplay(host, 3400, 0);
+    TEST_ASSERT_EQUAL_STRING("50.0", host.displayText.c_str());
+    config.displayConfig.source = 14;
+    TEST_ASSERT_TRUE(core.begin(host, config, 3500));
+    TEST_ASSERT_FALSE(core.telemetryDisplayAssigned());
+    const int shown = host.displayShows;
+    core.renderAssignedDisplay(host, 4000, 0);
+    TEST_ASSERT_EQUAL_INT(shown, host.displayShows);
+    config.propControls = false; config.displayConfig.source = ELRS_DISPLAY_OFF;
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    core.loop(host, 1500, 0);
+    TEST_ASSERT_EQUAL_STRING("", host.displayText.c_str());
+    core.loop(host, 30001, 1);
+    TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -3724,6 +3883,10 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_display_assignment_scaling_and_formatting);
+    RUN_TEST(test_display_assignment_outage_recovery_units_and_overlays);
+    RUN_TEST(test_telemetry_samples_decode_supported_numeric_sources);
+    RUN_TEST(test_telemetry_samples_track_presence_freshness_and_invalid_fields);
     RUN_TEST(test_none_routing_preserves_multiple_disabled_inputs);
     RUN_TEST(test_none_switch_keeps_local_actions_and_other_channels_independent);
     RUN_TEST(test_none_gimbals_leave_free_channels_and_preserve_assigned_axes);

@@ -58,10 +58,13 @@ bool ELRSCrsfMode::begin(
     const ELRSSwitchRouting *switchRouting,
     const ELRSOutputLimits *outputLimits,
     const uint8_t *localActions,
-    bool propControls)
+    bool propControls,
+    const ELRSDisplayConfig *displayConfig)
 {
     ELRSCrsfCoreConfig config;
     config.propControls = propControls;
+    if(displayConfig) config.displayConfig = *displayConfig;
+    _speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
 
     _buttonPack = buttonPack;
     _haveButtonPack = haveButtonPack;
@@ -176,6 +179,15 @@ ELRSCrsfStatus ELRSCrsfMode::getStatus() const
 {
     return _core.getStatus();
 }
+
+ELRSTelemetrySample ELRSCrsfMode::telemetrySample(uint8_t source, uint32_t now) const
+{
+    return _core.telemetrySample(source, now);
+}
+
+bool ELRSCrsfMode::telemetryDisplayAssigned() const { return _core.telemetryDisplayAssigned(); }
+void ELRSCrsfMode::renderAssignedDisplay(uint32_t now, int battWarn) { _core.renderAssignedDisplay(*this, now, battWarn); }
+uint8_t ELRSCrsfMode::speedDisplayUnits() const { return _speedDisplayUnits; }
 
 void ELRSCrsfMode::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
 {

@@ -58,6 +58,7 @@
 #ifdef HAVE_CRSF
 
 #include "crsf_settings.h"
+#include "elrs_crsf.h"
 
 // Included once by remote_main.cpp after its private controls and declarations.
 bool opModePropCRSF = false;
@@ -67,6 +68,13 @@ static uint16_t crsfLocalStates = 0;
 static uint16_t crsfLocalValidMask = 0;
 static uint16_t crsfLocalInvalidMask = 0;
 static bool crsfLocalPending = false;
+
+static bool crsfTelemetryOwnsDisplay()
+{
+    return opModePropCRSF && crsfStarted && elrsMode.telemetryDisplayAssigned() &&
+        !(csf & (CSF_CALIBMD | CSF_TT | CSF_TCDINP0)) && !offDisplayTimer &&
+        (!(csf & CSF_OFF) || displayTCDSMode);
+}
 
 static void crsf_start()
 {

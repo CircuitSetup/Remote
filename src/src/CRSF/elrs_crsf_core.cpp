@@ -51,6 +51,40 @@ constexpr uint8_t AXIS_THROTTLE = 3;
 
 }
 
+void elrsFormatTelemetry(const ELRSDisplayConfig &config, const ELRSTelemetrySample &sample,
+                         uint8_t speedUnits, char text[8])
+{
+    text[0] = 0;
+    if(config.source == ELRS_DISPLAY_OFF || config.source == ELRS_DISPLAY_NONE) return;
+    if(!sample.available || !std::isfinite(sample.value)) {
+        strcpy(text, "---");
+        return;
+    }
+    const bool automatic = config.source == ELRS_DISPLAY_AUTO;
+    const uint8_t decimals = automatic || config.decimalPlaces == 255 ?
+        elrsTelemetrySourceDecimals(sample.source) : config.decimalPlaces;
+    float value = sample.value;
+    if((sample.source == ELRS_DISPLAY_GPS_SPEED || sample.source == ELRS_DISPLAY_AIRSPEED) &&
+       speedUnits == ELRS_SPEED_UNITS_MPH) value *= 0.621371192f;
+    if(!automatic) value = value * config.multiplier + config.offset;
+    if(!std::isfinite(value) || decimals > 2) {
+        strcpy(text, "---");
+        return;
+    }
+    const int factor = decimals == 2 ? 100 : (decimals == 1 ? 10 : 1);
+    const float rounded = roundf(value * factor);
+    if(rounded > 999 || rounded < -99) {
+        strcpy(text, rounded > 999 ? "HI" : "LO");
+        return;
+    }
+    const int number = (int)rounded;
+    const int magnitude = number < 0 ? -number : number;
+    if(!decimals) snprintf(text, 8, "%d", number);
+    else if(number < 0 && decimals == 2) snprintf(text, 8, "-.%02d", magnitude);
+    else snprintf(text, 8, "%s%d.%0*d", number < 0 ? "-" : "", magnitude / factor,
+                  decimals, magnitude % factor);
+}
+
 ELRSCrsfCore::ELRSCrsfCore()
 {
     const ELRSInputAxisProfile defaultProfile = elrsDefaultInputAxisProfile();
@@ -82,6 +116,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
 {
     _config = config;
+    if(!elrsIsValidDisplayConfig(_config.displayConfig)) _config.displayConfig = elrsDefaultDisplayConfig();
     elrsSanitizeInputRouting(_config.inputRouting, _config.switchRouting);
     for(uint8_t &action : _config.localActions) {
         if(action > 1) action = 0;
@@ -113,6 +148,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _lastLinkStats = 0;
     _lastGpsSpeed = 0;
     _lastAirspeed = 0;
+    _lastBattery = 0;
     _batteryBlinkAt = 0;
     _batteryBannerAt = 0;
     _overlayUntil = 0;
@@ -120,6 +156,13 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _linkQuality = 0;
     _remoteBattery = 0;
     _remoteBatteryVoltage = 0.0f;
+    _remoteCurrent10 = 0;
+    _remoteCapacity = 0;
+    _gpsAltitude = 0;
+    _gpsHeading100 = 0;
+    _gpsSatellites = 0;
+    _rxRssi = 0;
+    _rxSnr = 0;
     _faultFlags = ELRS_FAULT_NONE;
     _gpsSpeed10 = 0;
     _airspeed10 = 0;
@@ -132,6 +175,9 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _haveLinkStats = false;
     _haveGpsSpeed = false;
     _haveAirspeed = false;
+    _haveBattery = false;
+    _receivedFamilies = 0;
+    _lastDisplaySource = 255;
     _lastPackStates = 0;
     _localInputsInitialized = 0;
     _localNeedsRelease = 0;
@@ -170,7 +216,6 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
          (unsigned)_inputRouting.elevatorChannel,
          (unsigned)_inputRouting.throttleChannel,
          (unsigned)_inputRouting.rudderChannel);
-    log(host, "ELRS/CRSF: display GPS, airspeed, then LQ");
 #ifdef REMOTE_DBG
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         logf(host, "ELRS/CRSF A%d calibration: low=%d center=%d high=%d reverse=%u", i,
@@ -358,6 +403,68 @@ uint16_t ELRSCrsfCore::airspeed10() const
     return _airspeed10;
 }
 
+ELRSTelemetrySample ELRSCrsfCore::telemetrySample(uint8_t source, uint32_t now) const
+{
+    ELRSTelemetrySample sample = {source, 0, false, false, UINT32_MAX};
+    if(source == ELRS_DISPLAY_AUTO) {
+        const uint8_t candidates[] = {ELRS_DISPLAY_GPS_SPEED, ELRS_DISPLAY_AIRSPEED, ELRS_DISPLAY_LINK_QUALITY};
+        for(uint8_t candidate : candidates) {
+            const ELRSTelemetrySample next = telemetrySample(candidate, now);
+            if(next.available) return next;
+        }
+        return sample;
+    }
+    uint32_t receivedAt = 0;
+    bool fresh = false;
+    if(source == ELRS_DISPLAY_GPS_SPEED || (source >= ELRS_DISPLAY_GPS_ALTITUDE && source <= ELRS_DISPLAY_SATELLITES)) {
+        sample.received = (_receivedFamilies & 1) != 0;
+        fresh = _haveGpsSpeed;
+        receivedAt = _lastGpsSpeed;
+    } else if(source == ELRS_DISPLAY_AIRSPEED) {
+        sample.received = (_receivedFamilies & 2) != 0;
+        fresh = _haveAirspeed;
+        receivedAt = _lastAirspeed;
+    } else if(source >= ELRS_DISPLAY_BATTERY_VOLTAGE && source <= ELRS_DISPLAY_CAPACITY) {
+        sample.received = (_receivedFamilies & 4) != 0;
+        fresh = _haveBattery;
+        receivedAt = _lastBattery;
+    } else if(source >= ELRS_DISPLAY_LINK_QUALITY && source <= ELRS_DISPLAY_SNR) {
+        sample.received = (_receivedFamilies & 8) != 0;
+        fresh = _haveLinkStats;
+        receivedAt = _lastLinkStats;
+    }
+    if(!sample.received) return sample;
+    sample.ageMs = now - receivedAt;
+    if(!fresh || sample.ageMs >= _config.transport.telemetryTimeoutMs) return sample;
+    switch(source) {
+    case ELRS_DISPLAY_GPS_SPEED: sample.value = _gpsSpeed10 * 0.1f; break;
+    case ELRS_DISPLAY_AIRSPEED: sample.value = _airspeed10 * 0.1f; break;
+    case ELRS_DISPLAY_BATTERY_VOLTAGE: sample.value = _remoteBatteryVoltage; break;
+    case ELRS_DISPLAY_BATTERY_CURRENT: sample.value = _remoteCurrent10 * 0.1f; break;
+    case ELRS_DISPLAY_BATTERY_PERCENT: if(_remoteBattery > 100) return sample; sample.value = _remoteBattery; break;
+    case ELRS_DISPLAY_CAPACITY: sample.value = _remoteCapacity; break;
+    case ELRS_DISPLAY_GPS_ALTITUDE: sample.value = _gpsAltitude; break;
+    case ELRS_DISPLAY_GPS_HEADING: if(_gpsHeading100 > 36000) return sample; sample.value = _gpsHeading100 * 0.01f; break;
+    case ELRS_DISPLAY_SATELLITES: sample.value = _gpsSatellites; break;
+    case ELRS_DISPLAY_LINK_QUALITY: if(_linkQuality > 100) return sample; sample.value = _linkQuality; break;
+    case ELRS_DISPLAY_RSSI: sample.value = -(int)_rxRssi; break;
+    case ELRS_DISPLAY_SNR: sample.value = _rxSnr; break;
+    default: return sample;
+    }
+    sample.available = true;
+    return sample;
+}
+
+bool ELRSCrsfCore::telemetryDisplayAssigned() const
+{
+    return _config.displayConfig.source != ELRS_DISPLAY_NONE;
+}
+
+void ELRSCrsfCore::renderAssignedDisplay(ELRSCrsfHost &host, uint32_t now, int battWarn)
+{
+    if(telemetryDisplayAssigned()) updateDisplay(host, now, battWarn);
+}
+
 bool ELRSCrsfCore::telemetryActive() const
 {
     return _transport.status().telemetryActive;
@@ -498,8 +605,11 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
     case CRSF_FRAME_LINK_STATS:
         if(payloadLen >= 10) {
             _linkQuality = payload[2];
+            _rxRssi = payload[0];
+            _rxSnr = (int8_t)payload[3];
             _lastLinkStats = now;
             _haveLinkStats = true;
+            _receivedFamilies |= 8;
             supportedTelemetry = true;
         }
         break;
@@ -507,14 +617,23 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
         if(payloadLen >= 8) {
             _remoteBatteryVoltage = (float)readBE16(payload) * 0.1f;
             _remoteBattery = payload[7];
+            _remoteCurrent10 = readBE16(payload + 2);
+            _remoteCapacity = ((uint32_t)payload[4] << 16) | ((uint32_t)payload[5] << 8) | payload[6];
+            _lastBattery = now;
+            _haveBattery = true;
+            _receivedFamilies |= 4;
             supportedTelemetry = true;
         }
         break;
     case CRSF_FRAME_GPS:
         if(payloadLen >= 15) {
             _gpsSpeed10 = readBE16(payload + 8);
+            _gpsHeading100 = readBE16(payload + 10);
+            _gpsAltitude = (int32_t)readBE16(payload + 12) - 1000;
+            _gpsSatellites = payload[14];
             _lastGpsSpeed = now;
             _haveGpsSpeed = true;
+            _receivedFamilies |= 1;
             supportedTelemetry = true;
         }
         break;
@@ -523,6 +642,7 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
             _airspeed10 = readBE16(payload);
             _lastAirspeed = now;
             _haveAirspeed = true;
+            _receivedFamilies |= 2;
             supportedTelemetry = true;
         }
         break;
@@ -865,8 +985,12 @@ void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
     if(now - _lastLinkStats >= _config.transport.telemetryTimeoutMs) _haveLinkStats = false;
     if(now - _lastGpsSpeed >= _config.transport.telemetryTimeoutMs) _haveGpsSpeed = false;
     if(now - _lastAirspeed >= _config.transport.telemetryTimeoutMs) _haveAirspeed = false;
+    if(now - _lastBattery >= _config.transport.telemetryTimeoutMs) _haveBattery = false;
 
-    getDisplaySpeed10(now, &speedSource);
+    const ELRSDisplayConfig effective = elrsEffectiveDisplayConfig(_config.displayConfig, _config.propControls);
+    const ELRSTelemetrySample sample = telemetrySample(effective.source, now);
+    if(sample.available && sample.source == ELRS_DISPLAY_GPS_SPEED) speedSource = SPEED_SOURCE_GPS;
+    if(sample.available && sample.source == ELRS_DISPLAY_AIRSPEED) speedSource = SPEED_SOURCE_AIRSPEED;
 
     if(commCode != _lastCommCode) {
         if(commCode != ELRS_COMM_NONE) {
@@ -878,23 +1002,18 @@ void ELRSCrsfCore::updateBenchState(ELRSCrsfHost &host, unsigned long now)
         _lastCommCode = commCode;
     }
 
-    if(speedSource != _activeSpeedSource) {
-        _activeSpeedSource = speedSource;
-        if(speedSource == SPEED_SOURCE_NONE) {
-            if(_haveLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) {
-                log(host, "ELRS/CRSF: no speed telemetry, displaying LQ");
-            }
-        } else {
-            logf(host, "ELRS/CRSF: displaying %s", speedSourceName(speedSource));
-        }
+    _activeSpeedSource = speedSource;
+    const uint8_t resolved = sample.available ? sample.source : effective.source;
+    if(resolved != _lastDisplaySource) {
+        _lastDisplaySource = resolved;
+        logf(host, "ELRS/CRSF: displaying %s%s", elrsTelemetrySourceLabel(resolved),
+             !sample.available && resolved <= ELRS_DISPLAY_SNR ? " (unavailable)" : "");
     }
 }
 
 void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int battWarn)
 {
     char buf[8];
-    SpeedSource speedSource = SPEED_SOURCE_NONE;
-    uint16_t speed10 = 0;
 
     if(_overlayText[0] && (int32_t)(now - _overlayUntil) >= 0) _overlayText[0] = 0;
     if(_commOverlayText[0] && (int32_t)(now - _commOverlayUntil) >= 0) _commOverlayText[0] = 0;
@@ -933,13 +1052,9 @@ void ELRSCrsfCore::updateDisplay(ELRSCrsfHost &host, unsigned long now, int batt
     _lastDisplay = now;
 
     host.displayOn();
-    speed10 = getDisplaySpeed10(now, &speedSource);
-    if(speedSource != SPEED_SOURCE_NONE) {
-        host.displaySetSpeed((int)getDisplaySpeed10ForUnits(speed10));
-    } else {
-        snprintf(buf, sizeof(buf), "%3d", (_haveLinkStats && (now - _lastLinkStats < _config.transport.telemetryTimeoutMs)) ? _linkQuality : 0);
-        host.displaySetText(buf);
-    }
+    const ELRSDisplayConfig effective = elrsEffectiveDisplayConfig(_config.displayConfig, _config.propControls);
+    elrsFormatTelemetry(effective, telemetrySample(effective.source, now), _config.speedDisplayUnits, buf);
+    host.displaySetText(buf);
     host.displayShow();
 }
 
@@ -977,35 +1092,6 @@ bool ELRSCrsfCore::buttonPackFaultActive(unsigned long now) const
     }
 
     return (now - _lastGoodPackAt > CRSF_INPUT_STALE_MS);
-}
-
-uint16_t ELRSCrsfCore::getDisplaySpeed10(unsigned long now, SpeedSource *source) const
-{
-    SpeedSource activeSource = SPEED_SOURCE_NONE;
-    uint16_t speed10 = 0;
-
-    if(_haveGpsSpeed && (now - _lastGpsSpeed < _config.transport.telemetryTimeoutMs)) {
-        activeSource = SPEED_SOURCE_GPS;
-        speed10 = _gpsSpeed10;
-    } else if(_haveAirspeed && (now - _lastAirspeed < _config.transport.telemetryTimeoutMs)) {
-        activeSource = SPEED_SOURCE_AIRSPEED;
-        speed10 = _airspeed10;
-    }
-
-    if(source) {
-        *source = activeSource;
-    }
-
-    return speed10;
-}
-
-uint16_t ELRSCrsfCore::getDisplaySpeed10ForUnits(uint16_t speed10) const
-{
-    if(_config.speedDisplayUnits == ELRS_SPEED_UNITS_MPH) {
-        return (uint16_t)(((uint32_t)speed10 * 62137UL + 50000UL) / 100000UL);
-    }
-
-    return speed10;
 }
 
 void ELRSCrsfCore::resetModuleParameters()
