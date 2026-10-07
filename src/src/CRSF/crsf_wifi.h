@@ -981,7 +981,7 @@ static const char *wmBuildCRSFYC(const char *dest, int op)
 static const char crsfDisplayScript[] = R"JS(<script>(function(){
 var byId=function(id){return document.getElementById(id);},source=byId('cdsrc'),hidden=byId('cdsrcvalue'),preview=byId('cdpreview'),status=byId('cdstatus'),busy=false;
 function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidden.value)+'&cdmul='+encodeURIComponent(byId('cdmul').value)+'&cdoff='+encodeURIComponent(byId('cdoff').value)+'&cddec='+encodeURIComponent(byId('cddec').value)+(unit?'&cspdu='+encodeURIComponent(unit.value):'')+['crpoles','crgear','crdiam','crscale'].map(function(id){return '&'+id+'='+encodeURIComponent(byId(id).value);}).join('');}
-function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});byId('rpmscale').hidden=hidden.value!=='16';}
+function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});byId('rpmspeed').hidden=hidden.value!=='15'&&hidden.value!=='16';byId('rpmscale').hidden=hidden.value!=='16';}
 function options(rows){var wanted=hidden.value,label=source.selectedOptions.length?source.selectedOptions[0].textContent:'Saved source';source.textContent='';
 function add(id,text,disabled){var option=document.createElement('option');option.value=String(id);option.textContent=text;option.disabled=!!disabled;source.appendChild(option);}
 add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){add(row.id,row.label+' ('+row.unit+')');});
@@ -1026,7 +1026,7 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
         html += buf;
     }
     html += "</select><p>Preview: <output id='cdpreview' style='font-family:monospace;font-size:1.5em' aria-live='polite'>---</output><br><small id='cdstatus'>Waiting for received telemetry</small></p>";
-    html += "<fieldset><legend>Motor RPM speed</legend>";
+    html += "<fieldset id='rpmspeed' hidden><legend>Motor RPM speed</legend>";
     const char *ids[] = {"crpoles", "crgear", "crdiam", "crscale"};
     const char *vehicleLabels[] = {"Motor poles", "Final drive ratio", "Tire outside diameter (mm)", "Scale factor"};
     const float values[] = {(float)crsfVehicleConfig.motorPoles, crsfVehicleConfig.gearRatio, crsfVehicleConfig.tireDiameterMm, crsfVehicleConfig.scaleFactor};
