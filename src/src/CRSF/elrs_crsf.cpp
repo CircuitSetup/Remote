@@ -59,11 +59,13 @@ bool ELRSCrsfMode::begin(
     const ELRSOutputLimits *outputLimits,
     const uint8_t *localActions,
     bool propControls,
-    const ELRSDisplayConfig *displayConfig)
+    const ELRSDisplayConfig *displayConfig,
+    const ELRSVehicleConfig *vehicleConfig)
 {
     ELRSCrsfCoreConfig config;
     config.propControls = propControls;
     if(displayConfig) config.displayConfig = *displayConfig;
+    if(vehicleConfig) config.vehicleConfig = *vehicleConfig;
     _speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
 
     _buttonPack = buttonPack;
@@ -180,9 +182,9 @@ ELRSCrsfStatus ELRSCrsfMode::getStatus() const
     return _core.getStatus();
 }
 
-ELRSTelemetrySample ELRSCrsfMode::telemetrySample(uint8_t source, uint32_t now) const
+ELRSTelemetrySample ELRSCrsfMode::telemetrySample(uint8_t source, uint32_t now, const ELRSVehicleConfig *vehicleConfig) const
 {
-    return _core.telemetrySample(source, now);
+    return _core.telemetrySample(source, now, vehicleConfig);
 }
 
 bool ELRSCrsfMode::telemetryDisplayAssigned() const { return _core.telemetryDisplayAssigned(); }

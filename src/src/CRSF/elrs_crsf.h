@@ -41,7 +41,8 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             const ELRSOutputLimits *outputLimits = NULL,
             const uint8_t *localActions = NULL,
             bool propControls = false,
-            const ELRSDisplayConfig *displayConfig = NULL
+            const ELRSDisplayConfig *displayConfig = NULL,
+            const ELRSVehicleConfig *vehicleConfig = NULL
         );
 
         void loop(int battWarn);
@@ -49,7 +50,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool isCalibrating() const;
         bool fakePowerOn() const;
         ELRSCrsfStatus getStatus() const;
-        ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now) const;
+        ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now, const ELRSVehicleConfig *vehicleConfig = NULL) const;
         bool telemetryDisplayAssigned() const;
         void renderAssignedDisplay(uint32_t now, int battWarn);
         uint8_t speedDisplayUnits() const;

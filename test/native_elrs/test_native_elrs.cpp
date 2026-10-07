@@ -3876,6 +3876,85 @@ static void test_display_assignment_outage_recovery_units_and_overlays()
     TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
 }
 
+static void test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph()
+{
+    for(uint8_t source : {15, 16}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        auto config = defaultConfig();
+        config.displayConfig = {source, 255, 1, 0};
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        // 10,000 eRPM / 2 pole pairs / 6.55 reduction, with 64 mm tires.
+        host.queueFrame(makeFrame(0x0C, {0, 0, 0x27, 0x10}));
+        core.loop(host, 1500, 0); // Startup ELR banner retains priority for one second.
+        const auto sample = core.telemetrySample(source, 1500);
+        TEST_ASSERT_TRUE(sample.available);
+        TEST_ASSERT_FLOAT_WITHIN(0.001f, source == 15 ? 5.722172f : 57.22172f, sample.value);
+        TEST_ASSERT_EQUAL_STRING(source == 15 ? "5.7" : "57.2", host.displayText.c_str());
+    }
+}
+
+static void test_rpm_presence_zero_reverse_and_independent_expiry()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    host.queueFrame(makeFrame(0x0C, {0, 0, 0, 0}));
+    core.loop(host, 0, 0);
+    TEST_ASSERT_TRUE(core.telemetrySample(15, 0).available);
+    TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(15, 0).value);
+    host.queueFrame(makeFrame(0x0C, {0, 0xFF, 0xD8, 0xF0})); // -10,000 RPM.
+    core.loop(host, 200, 0);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 200).value);
+    host.queueFrame(makeFrame(0x0C, {1, 0, 0, 0})); // Another motor cannot refresh motor 1.
+    host.queueFrame(makeFrame(0x0C, {0, 0, 0}));
+    host.queueFrame(makeFrame(0x0C, {0, 0, 0, 0, 0}));
+    auto bad = makeFrame(0x0C, {0, 0, 0, 0}); bad.back() ^= 0xFF;
+    host.queueFrame(bad);
+    host.queueFrame(makeFrame(0x08, {0,123,0,30,0,0,0,0}));
+    core.loop(host, 2100, 0);
+    TEST_ASSERT_EQUAL_UINT32(1900, core.telemetrySample(15, 2100).ageMs);
+    core.loop(host, 2200, 0);
+    TEST_ASSERT_FALSE(core.telemetrySample(15, 2200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 2200).available);
+    core.loop(host, 200, 0); // The same counter value after a full wrap cannot revive expired RPM.
+    TEST_ASSERT_FALSE(core.telemetrySample(15, 200).available);
+}
+
+static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    auto config = defaultConfig();
+    config.vehicleConfig = {4, 10.0f, 101.6f, 15.0f};
+    config.displayConfig = {ELRS_DISPLAY_RPM_SCALED_MPH, 255, 1, 0};
+    config.speedDisplayUnits = ELRS_SPEED_UNITS_MPH;
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    host.queueFrame(makeFrame(0x0C, {0, 0, 0x27, 0x10}));
+    core.loop(host, 1500, 0);
+    TEST_ASSERT_EQUAL_STRING("89.2", host.displayText.c_str());
+    auto preview = config.vehicleConfig;
+    preview.motorPoles = 8;
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.974993f, core.telemetrySample(15, 1500, &preview).value);
+    preview = config.vehicleConfig; preview.tireDiameterMm = 203.2f;
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 11.899973f, core.telemetrySample(15, 1500, &preview).value);
+    preview = config.vehicleConfig; preview.gearRatio = 20;
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.974993f, core.telemetrySample(15, 1500, &preview).value);
+    for(int bad = 0; bad < 5; bad++) {
+        preview = config.vehicleConfig;
+        if(bad == 0) preview.motorPoles = 3;
+        if(bad == 1) preview.gearRatio = 0;
+        if(bad == 2) preview.tireDiameterMm = NAN;
+        if(bad == 3) preview.scaleFactor = INFINITY;
+        if(bad == 4) preview.tireDiameterMm = 0;
+        TEST_ASSERT_FALSE(core.telemetrySample(15, 1500, &preview).available);
+    }
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.949986f, core.telemetrySample(15, 1500).value);
+    host.queueFrame(makeFrame(0x0C, {0, 0x80, 0, 0})); // Minimum signed 24-bit RPM.
+    core.loop(host, 1700, 0);
+    TEST_ASSERT_EQUAL_STRING("HI", host.displayText.c_str());
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -3883,6 +3962,9 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph);
+    RUN_TEST(test_rpm_presence_zero_reverse_and_independent_expiry);
+    RUN_TEST(test_rpm_vehicle_parameters_preview_and_existing_formatting);
     RUN_TEST(test_display_assignment_scaling_and_formatting);
     RUN_TEST(test_display_assignment_outage_recovery_units_and_overlays);
     RUN_TEST(test_telemetry_samples_decode_supported_numeric_sources);

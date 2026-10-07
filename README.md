@@ -984,13 +984,17 @@ Choose GPS speed, airspeed, vehicle battery voltage/current/remaining charge/cap
 
 For an assigned source, output is `value × multiplier + offset`. Speed is converted to the selected km/h or mph units first. Choose source-default precision or 0, 1, or 2 decimal places. For example, speed × `0.5` halves the displayed value; capacity × `0.001` displays Ah instead of mAh. The three digits include the minus sign; overflow shows `HI` or `LO`. Live preview uses pending settings without changing the physical display. Save and restart to apply.
 
+**Motor RPM: Actual mph** and **Motor RPM: Scaled mph** become available when motor 1 RPM telemetry arrives. Firma Smart sends electrical RPM; motor RPM is electrical RPM divided by half the motor pole count. Actual mph then uses the total motor-to-wheel reduction and tire outside diameter. Both RPM sources use mph independently of the GPS/airspeed units setting. Reverse rotation shows speed magnitude.
+
+The **Motor RPM speed** fields default to the TT-02R with the Spektrum SPMXSEMC01: **4 poles, 6.55:1 final drive ratio, 64 mm tires**, and **10× scale factor**. The ratio field also offers **6.16:1** for the kit's 64T spur/27T pinion; enter any custom ratio and tire diameter for other setups. Scaled mph multiplies Actual mph by the scale factor, so 8.8 actual mph displays as 88.0 at 10×. Use the existing Multiplier for calibration (default 1) and Offset 0. Switching sources preserves these settings; pending vehicle edits also update live preview. RPM speed estimates wheel rollout, so wheelspin and tire deformation can differ from ground speed. The existing two-second source timeout applies; the receiver can cache ESC readings for another two seconds before it stops forwarding RPM.
+
 ##### &#9193; ELRS Packet rate
 
 Selects the RC packet rate sent to the external ELRS module. The module must be configured to the same packet rate.
 
 ##### &#9193; Speed units
 
-Selects whether the Remote display prefers km/h or mph when telemetry provides speed information.
+Selects whether GPS/airspeed telemetry displays km/h or mph. The motor RPM speed sources always display mph.
 
 ##### &#9193; Telemetry Ratio
 
