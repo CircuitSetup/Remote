@@ -25,6 +25,11 @@ constexpr int16_t ADS_LOG_DELTA_THRESHOLD = 20;
 constexpr uint32_t ADS_LOG_INTERVAL_MS = 200;
 #endif
 constexpr uint8_t ADS_FILTER_SHIFT = 2;
+constexpr uint32_t ADS_CONVERSION_US = 500;
+constexpr uint32_t ADS_RETRY_MS = 20;
+// At 400kHz a config write takes 90us; a register read takes 113us.
+// Reserve overhead as well and do at most one of these per service pass.
+constexpr uint32_t ADS_SERVICE_BUDGET_US = 200;
 
 }
 
@@ -86,6 +91,12 @@ bool ELRSCrsfMode::begin(
     _lastProbeLogAt = (uint32_t)millis() - ADS_LOG_INTERVAL_MS;
     #endif
     _haveFilteredAxes = false;
+    _adsState = ADS_IDLE;
+    _adsChannel = 0;
+    _adsReadyAtUs = 0;
+    _adsRetryPending = false;
+    _lastAdsProbeAt = 0;
+    memset(_stagingAxes, 0, sizeof(_stagingAxes));
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = 1024;
         _filteredAxes[i] = 1024;
@@ -202,9 +213,6 @@ bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
         return false;
     }
 
-    if(!_haveAds) {
-        _haveAds = initAds1015();
-    }
     if(!_haveAds || !_haveFilteredAxes) {
         return false;
     }
@@ -217,6 +225,8 @@ bool ELRSCrsfMode::initAds1015()
 {
     Wire.beginTransmission(ADS1015_ADDR);
     bool ok = (Wire.endTransmission(true) == 0);
+    _lastAdsProbeAt = (uint32_t)millis();
+    _adsRetryPending = !ok;
     #ifdef REMOTE_DBG
     const uint32_t now = millis();
     if((uint32_t)(now - _lastProbeLogAt) >= ADS_LOG_INTERVAL_MS) {
@@ -227,47 +237,37 @@ bool ELRSCrsfMode::initAds1015()
     return ok;
 }
 
-bool ELRSCrsfMode::readAdsChannel(uint8_t channel, int16_t &value)
+bool ELRSCrsfMode::startAdsChannel(uint8_t channel)
 {
-    uint8_t cfg[3];
-    uint8_t raw[2];
-    if(channel >= ELRS_GIMBAL_AXIS_COUNT) {
-        return false;
-    }
-
-    cfg[0] = ADS_REG_CONFIG;
-    cfg[1] = elrsAds1015SingleEndedConfigHighByte(channel);
-    cfg[2] = 0xE3;
-
     Wire.beginTransmission(ADS1015_ADDR);
-    Wire.write(cfg[0]);
-    Wire.write(cfg[1]);
-    Wire.write(cfg[2]);
-    if(Wire.endTransmission(true)) {
-        return false;
-    }
+    Wire.write(ADS_REG_CONFIG);
+    Wire.write(elrsAds1015SingleEndedConfigHighByte(channel));
+    Wire.write(0xE3);
+    return Wire.endTransmission(true) == 0;
+}
 
-    delayMicroseconds(500);
-
+bool ELRSCrsfMode::readAdsRegister(uint8_t reg, uint16_t &value)
+{
     Wire.beginTransmission(ADS1015_ADDR);
-    Wire.write(ADS_REG_CONVERT);
-    if(Wire.endTransmission(false)) {
+    Wire.write(reg);
+    if(Wire.endTransmission(false) || Wire.requestFrom((uint8_t)ADS1015_ADDR, (uint8_t)2) != 2) {
         return false;
     }
-
-    if(Wire.requestFrom((uint8_t)ADS1015_ADDR, (uint8_t)2) != 2) {
-        return false;
-    }
-
-    raw[0] = Wire.read();
-    raw[1] = Wire.read();
-
-    value = ((int16_t)((raw[0] << 8) | raw[1])) >> 4;
-    if(value < 0) {
-        value = 0;
-    }
-
+    const uint8_t high = Wire.read();
+    const uint8_t low = Wire.read();
+    value = ((uint16_t)high << 8) | low;
     return true;
+}
+
+ELRSAxesResult ELRSCrsfMode::failAdsSweep()
+{
+    _adsState = ADS_IDLE;
+    _adsChannel = 0;
+    _haveAds = false;
+    _haveFilteredAxes = false;
+    _adsRetryPending = true;
+    _lastAdsProbeAt = (uint32_t)millis();
+    return ELRS_AXES_ERROR;
 }
 
 void ELRSCrsfMode::logMessage(const char *message)
@@ -336,32 +336,64 @@ unsigned long ELRSCrsfMode::millisNow()
     return millis();
 }
 
-bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
+ELRSAxesResult ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], uint32_t &completedAt,
+                                      ELRSAxesRequest request, uint32_t txBudgetUs)
 {
-    int16_t samples[ELRS_GIMBAL_AXIS_COUNT];
-
     if(!_haveAds) {
+        if(txBudgetUs < ADS_SERVICE_BUDGET_US ||
+           (_adsRetryPending && (uint32_t)((uint32_t)millis() - _lastAdsProbeAt) < ADS_RETRY_MS)) {
+            return ELRS_AXES_ERROR;
+        }
         _haveAds = initAds1015();
+        if(!_haveAds) return ELRS_AXES_ERROR;
+        _adsState = ADS_START;
+        _adsChannel = 0;
+        return ELRS_AXES_PENDING;
     }
-    if(!_haveAds) {
-        return false;
+    if(request == ELRS_AXES_RESTART) {
+        // A capture starts a fresh sweep. Do no extra I2C in the button's pass.
+        _adsState = ADS_START;
+        _adsChannel = 0;
+        return ELRS_AXES_PENDING;
     }
+    if(_adsState == ADS_IDLE) {
+        if(request != ELRS_AXES_START) return ELRS_AXES_PENDING;
+        _adsState = ADS_START;
+        _adsChannel = 0;
+    }
+    if(txBudgetUs < ADS_SERVICE_BUDGET_US) return ELRS_AXES_PENDING;
 
-    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        if(!readAdsChannel(i, samples[i])) {
-            _haveAds = false;
-            _haveFilteredAxes = false;
-            return false;
+    uint16_t value;
+    switch(_adsState) {
+    case ADS_START:
+        if(!startAdsChannel(_adsChannel)) return failAdsSweep();
+        _adsReadyAtUs = (uint32_t)micros() + ADS_CONVERSION_US;
+        _adsState = ADS_WAIT;
+        return ELRS_AXES_PENDING;
+    case ADS_WAIT:
+        if((int32_t)((uint32_t)micros() - _adsReadyAtUs) < 0) return ELRS_AXES_PENDING;
+        if(!readAdsRegister(ADS_REG_CONFIG, value)) return failAdsSweep();
+        if(value & 0x8000) _adsState = ADS_COLLECT;
+        else _adsReadyAtUs = (uint32_t)micros() + ADS_CONVERSION_US;
+        return ELRS_AXES_PENDING;
+    case ADS_COLLECT:
+        if(!readAdsRegister(ADS_REG_CONVERT, value)) return failAdsSweep();
+        _stagingAxes[_adsChannel] = ((int16_t)value) >> 4;
+        if(_stagingAxes[_adsChannel] < 0) _stagingAxes[_adsChannel] = 0;
+        if(++_adsChannel < ELRS_GIMBAL_AXIS_COUNT) {
+            _adsState = ADS_START;
+            return ELRS_AXES_PENDING;
         }
+        break;
+    default:
+        return ELRS_AXES_PENDING;
     }
+    _adsState = ADS_IDLE;
+    completedAt = (uint32_t)millis();
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        if(!_haveFilteredAxes) {
-            _filteredAxes[i] = samples[i];
-        } else {
-            _filteredAxes[i] = elrsIirFilterStep(_filteredAxes[i], samples[i], ADS_FILTER_SHIFT);
-        }
-        _rawAxes[i] = _filteredAxes[i];
-        axes[i] = _filteredAxes[i];
+        _filteredAxes[i] = !_haveFilteredAxes ? _stagingAxes[i] :
+            elrsIirFilterStep(_filteredAxes[i], _stagingAxes[i], ADS_FILTER_SHIFT);
+        _rawAxes[i] = axes[i] = _filteredAxes[i];
     }
     _haveFilteredAxes = true;
 
@@ -377,7 +409,7 @@ bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
     }
     #endif
 
-    return true;
+    return ELRS_AXES_READY;
 }
 
 bool ELRSCrsfMode::readFakePowerSwitch()

@@ -135,19 +135,18 @@ class FakeHost : public ELRSCrsfHost {
             subMillisUs = (subMillisUs + us) % 1000;
         }
 
-        bool sampleAxes(int16_t axesOut[ELRS_GIMBAL_AXIS_COUNT]) override
+        ELRSAxesResult sampleAxes(int16_t axesOut[ELRS_GIMBAL_AXIS_COUNT], uint32_t &completedAt,
+                                  ELRSAxesRequest request, uint32_t) override
         {
+            if(request != ELRS_AXES_POLL) axesAwaiting = true;
+            if(!axesAvailable) { axesAwaiting = false; return ELRS_AXES_ERROR; }
+            if(!axesAwaiting || axesPending) return ELRS_AXES_PENDING;
             advanceTime(sampleCostUs);
             sampleCompletions.push_back(fakeMicros);
-            if(!axesAvailable) {
-                return false;
-            }
-
-            for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-                axesOut[i] = axes[i];
-            }
-
-            return true;
+            for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) axesOut[i] = axes[i];
+            completedAt = fakeMillis;
+            axesAwaiting = false;
+            return ELRS_AXES_READY;
         }
 
         bool readFakePowerSwitch() override
@@ -266,6 +265,8 @@ class FakeHost : public ELRSCrsfHost {
         int16_t axes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
         ELRSAxisCalibrationData calibration[ELRS_GIMBAL_AXIS_COUNT];
         bool axesAvailable = true;
+        bool axesPending = false;
+        bool axesAwaiting = false;
         bool fakePower = false;
         bool stop = false;
         bool buttonA = false;
@@ -584,25 +585,31 @@ static void test_late_tx_preserves_receive_opportunity()
 {
     const uint16_t rates[] = {50, 100, 150, 250, 500};
     for(uint16_t rate : rates) {
-        for(uint32_t extra : {0U, 1000U}) {
-            FakeHost host;
-            ELRSCrsfTransport transport;
-            ELRSCrsfTransportConfig config;
-            config.packetRateHz = rate;
-            config.baudRate = elrsCrsfRecommendedBaudRate(rate);
-            transport.begin(host, config, 0, 0);
-            host.costedIo = true;
-            const uint32_t period = 1000000U / rate;
-            const uint32_t wireUs = (260000000U + config.baudRate - 1) / config.baudRate;
-            // Completion falls just BEFORE or AFTER the next deadline.
-            uint32_t start = period - wireUs - 230 - 10 + extra;
-            transportAt(transport, host, start / 1000, start);
-            const uint32_t off = host.oeOffTimes.back();
-            const uint32_t on = host.oeOnTimes.back();
-            for(uint32_t us = host.fakeMicros; host.txStarts.size() < 2; us += 10)
-                transportAt(transport, host, us / 1000, us);
-            TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period, host.oeOnTimes.back() - on);
-            TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period - 40 - wireUs - 40, host.oeOnTimes.back() - off);
+        for(uint32_t frameLen : {6U, 26U, 64U}) {
+            for(uint32_t extra : {0U, 1000U}) {
+                FakeHost host;
+                ELRSCrsfTransport transport;
+                ELRSCrsfTransportConfig config;
+                config.packetRateHz = rate;
+                config.baudRate = elrsCrsfRecommendedBaudRate(rate);
+                transport.begin(host, config, 0, 0);
+                if(frameLen != 26) {
+                    const std::vector<uint8_t> service = makeFrame(0x28, std::vector<uint8_t>(frameLen - 4, 0));
+                    TEST_ASSERT_TRUE(transport.queueServiceFrame(service.data(), service.size()));
+                }
+                host.costedIo = true;
+                const uint32_t period = 1000000U / rate;
+                const uint32_t wireUs = (frameLen * 10000000U + config.baudRate - 1) / config.baudRate;
+                // Completion falls just BEFORE or AFTER the next deadline.
+                uint32_t start = period - wireUs - 230 - 10 + extra;
+                transportAt(transport, host, start / 1000, start);
+                const uint32_t off = host.oeOffTimes.back();
+                const uint32_t on = host.oeOnTimes.back();
+                for(uint32_t us = host.fakeMicros; host.txStarts.size() < 2; us += 10)
+                    transportAt(transport, host, us / 1000, us);
+                TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period, host.oeOnTimes.back() - on);
+                TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period - 40 - wireUs - 40, host.oeOnTimes.back() - off);
+            }
         }
     }
 }
@@ -661,6 +668,50 @@ static void test_costed_service_slots_keep_rc_and_real_reply_deadlines()
     TEST_ASSERT_EQUAL_UINT32(0, transport.status().lastReplyTimeoutAt);
     // A later service slot refreshes the transaction deadline; RC never pauses for it.
     TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x28));
+}
+
+static void test_pending_axes_keep_filter_and_rc_slots()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.propControls = true;
+    config.transport.packetRateHz = 500;
+    host.axes[0] = 1800;
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    host.axesPending = true;
+    int16_t axes[4];
+    for(uint32_t ms = 2; ms <= 100; ms += 2) {
+        loopAt(core, host, ms, ms * 1000);
+        TEST_ASSERT_TRUE(core.readFilteredAxes(axes));
+        TEST_ASSERT_EQUAL_INT16(1800, axes[0]);
+        TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+    }
+    TEST_ASSERT_EQUAL_UINT32(50, host.txStarts.size());
+    loopAt(core, host, 101, 101000);
+    TEST_ASSERT_FALSE(core.readFilteredAxes(axes));
+    TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
+}
+
+static void test_new_identical_samples_and_separate_input_rollover()
+{
+    for(uint32_t origin : {0U, UINT32_MAX - 50}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), origin, UINT32_MAX - 1000));
+        for(uint32_t elapsed = 20; elapsed <= 300; elapsed += 20) {
+            loopAt(core, host, origin + elapsed, (uint32_t)(UINT32_MAX - 1000 + elapsed * 1000));
+            TEST_ASSERT_FALSE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+        }
+        host.axesPending = true;
+        loopAt(core, host, origin + 400, 1000);
+        int16_t axes[4]; TEST_ASSERT_TRUE(core.readFilteredAxes(axes));
+        loopAt(core, host, origin + 401, 2000);
+        TEST_ASSERT_FALSE(core.readFilteredAxes(axes));
+        TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+    }
 }
 
 static void test_rc_frame_packing_and_driver_enable()
@@ -3154,6 +3205,54 @@ static void calibrationPress(ELRSCrsfCore &core, FakeHost &host, unsigned long &
     loopAt(core, host, now, now * 1000UL);
 }
 
+static void test_pending_calibration_capture_is_fresh_and_advances_once()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    beginAt(core, host, defaultConfig(), 0);
+    unsigned long now = 0;
+    calibrationPress(core, host, now, true);
+    host.costedIo = true;
+    host.axesPending = true;
+    calibrationPress(core, host, now);
+    const size_t before = host.writes.size();
+    for(int i = 0; i < 10; i++) { now += 2; loopAt(core, host, now, now * 1000); }
+    TEST_ASSERT_GREATER_THAN_UINT32(before + 2, host.writes.size());
+    for(int i = 0; i < 4; i++) host.axes[i] = 1200;
+    host.axesPending = false;
+    now += 2; loopAt(core, host, now, now * 1000);
+    now += 1200; loopAt(core, host, now, now * 1000);
+    TEST_ASSERT_EQUAL_STRING("TLO", host.displayText.c_str());
+    now += 200; loopAt(core, host, now, now * 1000);
+    TEST_ASSERT_EQUAL_STRING("TLO", host.displayText.c_str());
+    TEST_ASSERT_EQUAL_INT(0, host.savedCalibrationCount);
+}
+
+static void test_pending_calibration_capture_error_timeout_and_cancellation()
+{
+    for(int cancel = 0; cancel < 5; cancel++) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        beginAt(core, host, defaultConfig(), 0);
+        unsigned long now = 0;
+        calibrationPress(core, host, now, true);
+        host.axesPending = true;
+        calibrationPress(core, host, now);
+        if(cancel == 0) host.fakePower = true;
+        if(cancel == 1) core.startSelfTest(now);
+        if(cancel == 2) { host.axesAvailable = false; host.axesPending = false; }
+        if(cancel == 3) { now += 101; loopAt(core, host, now, now * 1000); }
+        if(cancel == 4) calibrationPress(core, host, now, true); // Leave calibration.
+        now += 2; loopAt(core, host, now, now * 1000);
+        host.fakePower = false; core.stopSelfTest(); host.axesAvailable = true; host.axesPending = false;
+        now += 2; loopAt(core, host, now, now * 1000);
+        now += 1200; loopAt(core, host, now, now * 1000);
+        TEST_ASSERT_EQUAL_INT(0, host.savedCalibrationCount);
+        if(cancel == 4) TEST_ASSERT_FALSE(core.isCalibrating());
+        else TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
+    }
+}
+
 static void test_invalid_button_calibration_preserves_minimum_throttle()
 {
     FakeHost host;
@@ -4226,6 +4325,8 @@ int main(int argc, char **argv)
     RUN_TEST(test_hysteresis_holds_jitter_and_tracks_slow_motion);
     RUN_TEST(test_hysteresis_reaches_endpoints_and_reseeds_after_error);
     RUN_TEST(test_throttle_idle_band_handles_all_profile_directions);
+    RUN_TEST(test_pending_calibration_capture_is_fresh_and_advances_once);
+    RUN_TEST(test_pending_calibration_capture_error_timeout_and_cancellation);
     RUN_TEST(test_invalid_button_calibration_preserves_minimum_throttle);
     RUN_TEST(test_failed_button_capture_does_not_advance_calibration);
     RUN_TEST(test_valid_descending_button_calibration_is_saved);
@@ -4239,6 +4340,8 @@ int main(int argc, char **argv)
     RUN_TEST(test_late_tx_preserves_receive_opportunity);
     RUN_TEST(test_tx_pacing_retains_fractional_periods_and_rollover);
     RUN_TEST(test_costed_service_slots_keep_rc_and_real_reply_deadlines);
+    RUN_TEST(test_pending_axes_keep_filter_and_rc_slots);
+    RUN_TEST(test_new_identical_samples_and_separate_input_rollover);
     RUN_TEST(test_rc_frame_packing_and_driver_enable);
     RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
     RUN_TEST(test_transport_debug_suppresses_raw_frame_dumps_by_default);

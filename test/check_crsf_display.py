@@ -93,7 +93,7 @@ int main() {
     for(const char *id : {"7","8","9"}) {
         server.args = {{"cdsrc",id}}; handleELRSTelemetryRead(); assert(server.status == 200);
     }
-    testNow = 2000; core.loop(host, testNow, 0);
+    testNow = 2000; host.setTime(testNow, testNow * 1000UL); core.loop(host, testNow, 0);
     host.queueFrame(makeFrame(0x14, {105,0,88,253,0,0,0,0,0,0}));
     core.loop(host, testNow, 0); server.args.clear(); handleELRSTelemetryRead();
     assert(server.body.find("\"text\":\"---\"") != String::npos);
@@ -177,7 +177,7 @@ int main() {
         fprintf(file, "<!doctype html><html><meta charset='utf-8'><title>Telemetry lower bounds</title><meta name='viewport' content='width=device-width,initial-scale=1'>%s</style><body><div id='wrap'><form>%s</form></div></body></html>", HTTP_STYLE, html);
         fclose(file); wmBuildCRSFDisplay(html, WM_CP_DESTROY);
     }
-    testNow += 6000; core.loop(host, testNow, 0);
+    testNow += 6000; host.setTime(testNow, testNow * 1000UL); core.loop(host, testNow, 0);
     server.args = {{"cdsrc","15"}}; handleELRSTelemetryRead();
     assert(server.status == 200 && server.body.find("\"text\":\"---\"") != String::npos);
     puts("CRSF telemetry preview, validation, and pending-source form checks passed");

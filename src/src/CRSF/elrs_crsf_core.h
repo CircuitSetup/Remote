@@ -46,11 +46,15 @@ struct ELRSCrsfStatus {
     char moduleName[32] = {};
 };
 
+enum ELRSAxesResult : uint8_t { ELRS_AXES_PENDING, ELRS_AXES_READY, ELRS_AXES_ERROR };
+enum ELRSAxesRequest : uint8_t { ELRS_AXES_POLL, ELRS_AXES_START, ELRS_AXES_RESTART };
+
 class ELRSCrsfHost : public ELRSCrsfTransportHal {
     public:
         virtual ~ELRSCrsfHost() {}
 
-        virtual bool sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) = 0;
+        virtual ELRSAxesResult sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], uint32_t &completedAt,
+                                         ELRSAxesRequest request, uint32_t txBudgetUs) = 0;
         virtual bool readFakePowerSwitch() = 0;
         virtual bool readStopSwitch() = 0;
         virtual bool readButtonA() = 0;
@@ -154,13 +158,15 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
             CAL_RHIGH
         };
 
-        bool sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force = false);
+        ELRSAxesResult sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force = false);
         uint8_t samplePackStates(ELRSCrsfHost &host, unsigned long now);
         bool onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
 
         void updateCalibrationButton(ELRSCrsfHost &host, unsigned long now, int battWarn);
         void handleCalibrationShort(ELRSCrsfHost &host, unsigned long now, int battWarn);
         void handleCalibrationLong(ELRSCrsfHost &host, unsigned long now, int battWarn);
+        void requestCalibrationCapture(ELRSCrsfHost &host, unsigned long now);
+        void finishCalibrationCapture(ELRSCrsfHost &host, unsigned long now);
         const char *getCalibrationPrompt() const;
 
         void updateChannels(unsigned long now, bool fakePowerOn, bool stopOn, bool buttonAOn, bool buttonBOn, uint8_t packStates);
@@ -236,6 +242,8 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
 
         bool _haveAds = false;
         bool _haveStableAxes = false;
+        bool _haveGoodAxes = false;
+        bool _axisSweepActive = false;
         bool _fakePowerOn = false;
         bool _selfTestActive = false;
 
@@ -322,6 +330,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         unsigned long _calibDebounceAt = 0;
         unsigned long _calibPressedAt = 0;
         CalStage _calStage = CAL_IDLE;
+        CalStage _calCaptureStage = CAL_IDLE;
+        bool _calCapturePending = false;
+        uint32_t _calCaptureRequestedAt = 0;
 
         char _overlayText[4];
         char _commOverlayText[4];

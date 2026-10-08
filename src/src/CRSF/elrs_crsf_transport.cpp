@@ -186,6 +186,12 @@ bool ELRSCrsfTransport::hasPendingServiceFrame() const
     return _haveServiceFrame;
 }
 
+uint32_t ELRSCrsfTransport::txTimeRemainingUs(uint32_t nowUs) const
+{
+    const int32_t remaining = (int32_t)(_nextTxAtUs - nowUs);
+    return remaining > 0 ? (uint32_t)remaining : 0;
+}
+
 void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen, unsigned long now, unsigned long nowUs, const char *prefix, bool resetReplyWindow)
 {
     if(!frame || !frameLen) {
