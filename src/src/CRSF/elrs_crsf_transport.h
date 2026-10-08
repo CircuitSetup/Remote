@@ -68,7 +68,10 @@ class ELRSCrsfTransportHal {
         virtual void serialFlush() = 0;
         virtual void setDriverEnabled(bool enabled) = 0;
         virtual void discardSerialInput() = 0;
+        // Independent target-width clocks, consistent with explicit loop timestamps.
+        // Refresh both after I/O; never derive long-lived millis from wrapped micros.
         virtual unsigned long microsNow() = 0;
+        virtual unsigned long millisNow() = 0;
 };
 
 class ELRSCrsfTransportSink {
@@ -90,6 +93,7 @@ class ELRSCrsfTransport {
         void loop(ELRSCrsfTransportHal &hal, unsigned long now);
         bool queueServiceFrame(const uint8_t *frame, size_t frameLen);
         bool hasPendingServiceFrame() const;
+        uint32_t txTimeRemainingUs(uint32_t nowUs) const;
 
         const ELRSCrsfTransportConfig &config() const;
         const ELRSCrsfTransportStatus &status() const;
@@ -138,7 +142,7 @@ class ELRSCrsfTransport {
         unsigned long _lastReplyAt = 0;
         unsigned long _lastTelemetryAt = 0;
         unsigned long _replyDeadlineAt = 0;
-        unsigned long _nextTxAtUs = 0;
+        uint32_t _nextTxAtUs = 0;
         unsigned long _lastServiceTxAt = 0;
         unsigned long _echoSuppressUntil = 0;
         unsigned long _crcBurstAt = 0;
@@ -152,6 +156,7 @@ class ELRSCrsfTransport {
         bool _waitingForReply = false;
         bool _replySeenForTx = false;
         bool _haveServiceFrame = false;
+        bool _haveServiceTx = false;
 };
 
 #endif

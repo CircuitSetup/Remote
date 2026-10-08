@@ -114,7 +114,7 @@ ELRSCrsfCore::ELRSCrsfCore()
 
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now)
 {
-    return begin(host, config, now, now * 1000UL);
+    return begin(host, config, now, host.microsNow());
 }
 
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
@@ -177,6 +177,8 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _activeSpeedSource = SPEED_SOURCE_NONE;
     _haveAds = false;
     _haveStableAxes = false;
+    _haveGoodAxes = false;
+    _axisSweepActive = false;
     _fakePowerOn = false;
     _selfTestActive = false;
     _hasValidPackState = false;
@@ -199,6 +201,9 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _calibDebounceAt = 0;
     _calibPressedAt = 0;
     _calStage = CAL_IDLE;
+    _calCaptureStage = CAL_IDLE;
+    _calCapturePending = false;
+    _calCaptureRequestedAt = 0;
     memset(_overlayText, 0, sizeof(_overlayText));
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
     memset(_moduleName, 0, sizeof(_moduleName));
@@ -268,7 +273,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 
 void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, int battWarn)
 {
-    loop(host, now, now * 1000UL, battWarn);
+    loop(host, now, host.microsNow(), battWarn);
 }
 
 void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long nowUs, int battWarn)
@@ -282,7 +287,16 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     _fakePowerOn = fakePower;
     if(!_config.propControls) host.setStopLed(stopOn);
 
-    sampleAxes(host, now);
+    if(_calCapturePending && (fakePower || _selfTestActive || _config.propControls || battWarn)) {
+        _calCapturePending = false;
+    }
+    if(_calCapturePending && (uint32_t)(now - _calCaptureRequestedAt) > CRSF_INPUT_STALE_MS) {
+        _calCapturePending = false;
+        showOverlay("ADC", now, 1000);
+    }
+    const ELRSAxesResult axesResult = sampleAxes(host, now);
+    now = host.millisNow();
+    if(axesResult == ELRS_AXES_READY && _calCapturePending) finishCalibrationCapture(host, now);
     updateInputFaults(host, now);
 
     if(_selfTestActive && (int32_t)(now - _selfTestUntil) >= 0) {
@@ -310,6 +324,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
 #endif
     _transport.setChannels(_channels);
     _transport.loop(host, now, nowUs);
+    now = host.millisNow();
     if(!_config.propControls) {
         updateLocalSwitches(host, (packStates << 4) | (buttonBOn << 3) |
                            (buttonAOn << 2) | (fakePower << 1) | stopOn);
@@ -326,6 +341,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
 
 void ELRSCrsfCore::startSelfTest(unsigned long now, unsigned long durationMs)
 {
+    _calCapturePending = false;
     _selfTestActive = true;
     _selfTestUntil = now + durationMs;
 }
@@ -361,7 +377,7 @@ bool ELRSCrsfCore::selfTestActive() const
 
 bool ELRSCrsfCore::isCalibrating() const
 {
-    return (_calStage != CAL_IDLE);
+    return (_calStage != CAL_IDLE) || _calCapturePending;
 }
 
 bool ELRSCrsfCore::fakePowerOn() const
@@ -381,7 +397,8 @@ uint16_t ELRSCrsfCore::channelAt(uint8_t index) const
 
 bool ELRSCrsfCore::readFilteredAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) const
 {
-    if(!axes || !_haveStableAxes) return false;
+    if(!axes || !_haveStableAxes || !_haveGoodAxes || !_logHost ||
+       (uint32_t)(_logHost->millisNow() - _lastGoodAxesAt) > CRSF_INPUT_STALE_MS) return false;
     memcpy(axes, _stableAxes, sizeof(_stableAxes));
     return true;
 }
@@ -555,19 +572,30 @@ void ELRSCrsfCore::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t max
     startModuleConfigSession(now);
 }
 
-bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
+ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
 {
     int16_t axes[ELRS_GIMBAL_AXIS_COUNT];
-    unsigned long sampleIntervalMs = axisSampleIntervalMs(_config.transport.packetRateHz);
-
-    if(!force && (now - _lastAxisAttemptAt < sampleIntervalMs)) {
-        return _haveAds;
+    uint32_t completedAt = 0;
+    ELRSAxesRequest request = ELRS_AXES_POLL;
+    if(force || (!_axisSweepActive && (uint32_t)(now - _lastAxisAttemptAt) >= axisSampleIntervalMs(_config.transport.packetRateHz))) {
+        request = force ? ELRS_AXES_RESTART : ELRS_AXES_START;
+        _axisSweepActive = true;
+        _lastAxisAttemptAt = now;
     }
-
-    _lastAxisAttemptAt = now;
-    if(!host.sampleAxes(axes)) {
+    const ELRSAxesResult result = host.sampleAxes(axes, completedAt, request,
+        _transport.txTimeRemainingUs((uint32_t)host.microsNow()));
+    if(result == ELRS_AXES_PENDING) {
+        _haveAds = true;
+        return result;
+    }
+    _axisSweepActive = false;
+    if(result == ELRS_AXES_ERROR) {
         _haveStableAxes = false;
-        return false;
+        if(_calCapturePending) {
+            _calCapturePending = false;
+            showOverlay("ADC", host.millisNow(), 1000);
+        }
+        return result;
     }
 
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
@@ -594,9 +622,10 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
     }
     _haveStableAxes = true;
     _haveAds = true;
-    _lastGoodAxesAt = now;
+    _haveGoodAxes = true;
+    _lastGoodAxesAt = completedAt;
 
-    return true;
+    return ELRS_AXES_READY;
 }
 
 uint8_t ELRSCrsfCore::samplePackStates(ELRSCrsfHost &host, unsigned long now)
@@ -731,7 +760,7 @@ void ELRSCrsfCore::updateCalibrationButton(ELRSCrsfHost &host, unsigned long now
         _calibDebounceAt = now;
     }
 
-    if(now - _calibDebounceAt < 50) {
+    if((uint32_t)(now - _calibDebounceAt) < 50) {
         return;
     }
 
@@ -745,7 +774,7 @@ void ELRSCrsfCore::updateCalibrationButton(ELRSCrsfHost &host, unsigned long now
         }
     }
 
-    if(_calibPressed && !_calibLongSent && (now - _calibPressedAt >= 2000)) {
+    if(_calibPressed && !_calibLongSent && ((uint32_t)(now - _calibPressedAt) >= 2000)) {
         _calibLongSent = true;
         handleCalibrationLong(host, now, battWarn);
     }
@@ -766,11 +795,28 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
         return;
     }
 
-    if(!sampleAxes(host, now, true)) {
-        showOverlay("ADC", now, 1000);
+    requestCalibrationCapture(host, now);
+}
+
+void ELRSCrsfCore::requestCalibrationCapture(ELRSCrsfHost &host, unsigned long now)
+{
+    if(_calCapturePending) return;
+    _calCaptureStage = _calStage;
+    _calCaptureRequestedAt = (uint32_t)now;
+    _calCapturePending = true;
+    if(sampleAxes(host, now, true) == ELRS_AXES_READY) finishCalibrationCapture(host, host.millisNow());
+}
+
+void ELRSCrsfCore::finishCalibrationCapture(ELRSCrsfHost &host, unsigned long now)
+{
+    if(!_calCapturePending) return;
+    _calCapturePending = false;
+    if(_calStage != _calCaptureStage || _fakePowerOn || _selfTestActive ||
+       (uint32_t)(now - _calCaptureRequestedAt) > CRSF_INPUT_STALE_MS) return;
+    if(_calStage == CAL_IDLE) {
+        _calStage = CAL_CENTER;
         return;
     }
-
     switch(_calStage) {
     case CAL_CENTER:
         for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
@@ -848,13 +894,10 @@ void ELRSCrsfCore::handleCalibrationLong(ELRSCrsfHost &host, unsigned long now, 
         return;
     }
 
-    if(_calStage == CAL_IDLE) {
-        if(!sampleAxes(host, now, true)) {
-            showOverlay("ADC", now, 1000);
-            return;
-        }
-        _calStage = CAL_CENTER;
+    if(_calStage == CAL_IDLE && !_calCapturePending) {
+        requestCalibrationCapture(host, now);
     } else {
+        _calCapturePending = false;
         _calStage = CAL_IDLE;
         showOverlay("CAN", now, 1000);
     }
@@ -990,8 +1033,8 @@ void ELRSCrsfCore::updateBatteryWarning(ELRSCrsfHost &host, unsigned long now, i
 
 void ELRSCrsfCore::updateInputFaults(ELRSCrsfHost &host, unsigned long now)
 {
-    bool adcMissing = !_haveAds && (_lastAxisAttemptAt >= _startedAt);
-    bool adcStale = _haveAds && (now - _lastGoodAxesAt > CRSF_INPUT_STALE_MS);
+    bool adcMissing = !_haveAds;
+    bool adcStale = _haveAds && ((uint32_t)(now - (_haveGoodAxes ? _lastGoodAxesAt : _startedAt)) > CRSF_INPUT_STALE_MS);
     bool adcFault = adcMissing || adcStale;
     bool buttonPackStale = false;
 
@@ -1131,11 +1174,11 @@ bool ELRSCrsfCore::adcFaultActive(unsigned long now) const
         return true;
     }
 
-    if(!_haveAds) {
+    if(!_haveAds || !_haveGoodAxes) {
         return true;
     }
 
-    return (now - _lastGoodAxesAt > CRSF_INPUT_STALE_MS);
+    return ((uint32_t)(now - _lastGoodAxesAt) > CRSF_INPUT_STALE_MS);
 }
 
 bool ELRSCrsfCore::buttonPackFaultActive(unsigned long now) const

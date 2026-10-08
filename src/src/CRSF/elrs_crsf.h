@@ -59,7 +59,9 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
     private:
         bool initAds1015();
-        bool readAdsChannel(uint8_t channel, int16_t &value);
+        bool startAdsChannel(uint8_t channel);
+        bool readAdsRegister(uint8_t reg, uint16_t &value);
+        ELRSAxesResult failAdsSweep();
 
         void logMessage(const char *message) override;
 
@@ -72,8 +74,10 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         void setDriverEnabled(bool enabled) override;
         void discardSerialInput() override;
         unsigned long microsNow() override;
+        unsigned long millisNow() override;
 
-        bool sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) override;
+        ELRSAxesResult sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], uint32_t &completedAt,
+                                 ELRSAxesRequest request, uint32_t txBudgetUs) override;
         bool readFakePowerSwitch() override;
         bool readStopSwitch() override;
         bool readButtonA() override;
@@ -114,6 +118,13 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool _haveAds = false;
         bool _oeActiveLow = true;
         bool _haveFilteredAxes = false;
+        enum AdsState : uint8_t { ADS_IDLE, ADS_DRAIN, ADS_START, ADS_WAIT, ADS_COLLECT };
+        AdsState _adsState = ADS_IDLE;
+        uint8_t _adsChannel = 0;
+        uint32_t _adsReadyAtUs = 0;
+        uint32_t _lastAdsProbeAt = 0;
+        bool _adsRetryPending = false;
+        int16_t _stagingAxes[ELRS_GIMBAL_AXIS_COUNT] = {};
 
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
         int16_t _filteredAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };

@@ -21,6 +21,8 @@ constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
 constexpr uint8_t CRSF_COMM_BURST_THRESHOLD = 3;
 constexpr unsigned long CRSF_SERVICE_FRAME_GAP_MS = 100;
 constexpr unsigned long CRSF_BOOTSTRAP_SERVICE_REPLY_TIMEOUT_MS = 250;
+// Normal phase jitter is bounded to one short input/I2C service pass.
+constexpr uint32_t CRSF_TX_MAX_POLL_JITTER_US = 200;
 
 static bool isLikelySyncByte(uint8_t value)
 {
@@ -62,7 +64,7 @@ void ELRSCrsfTransport::setSink(ELRSCrsfTransportSink *sink)
 
 void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransportConfig &config, unsigned long now)
 {
-    begin(hal, config, now, now * 1000UL);
+    begin(hal, config, now, hal.microsNow());
 }
 
 void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransportConfig &config, unsigned long now, unsigned long nowUs)
@@ -109,6 +111,7 @@ void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransport
     _waitingForReply = false;
     _replySeenForTx = false;
     _haveServiceFrame = false;
+    _haveServiceTx = false;
     _rxFrameLen = 0;
     _serviceFrameLen = 0;
     _lastTxFrameLen = 0;
@@ -120,7 +123,7 @@ void ELRSCrsfTransport::begin(ELRSCrsfTransportHal &hal, const ELRSCrsfTransport
     hal.startSerial(_config.baudRate, _config.invertLine);
     hal.setDriverEnabled(false);
     hal.discardSerialInput();
-    resetTxScheduler(nowUs);
+    resetTxScheduler(hal.microsNow());
 
     logf(hal, "ELRS/CRSF transport: UART %lu 8N1 invert=%u rate=%uHz oeActiveLow=%u reply=%u telem=%u",
          (unsigned long)_config.baudRate,
@@ -142,20 +145,24 @@ void ELRSCrsfTransport::setChannels(const uint16_t channels[16])
 
 void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now)
 {
-    loop(hal, now, now * 1000UL);
+    loop(hal, now, hal.microsNow());
 }
 
 void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs)
 {
-    pollFrames(hal, now);
+    pollFrames(hal, hal.millisNow());
+    now = hal.millisNow();
     updateState(hal, now);
+    now = hal.millisNow();
+    nowUs = hal.microsNow();
 
-    if((int32_t)(nowUs - _nextTxAtUs) >= 0) {
-        if(_haveServiceFrame && (!_lastServiceTxAt || (now - _lastServiceTxAt >= CRSF_SERVICE_FRAME_GAP_MS))) {
+    if((int32_t)((uint32_t)nowUs - _nextTxAtUs) >= 0) {
+        if(_haveServiceFrame && (!_haveServiceTx || ((uint32_t)(now - _lastServiceTxAt) >= CRSF_SERVICE_FRAME_GAP_MS))) {
             sendFrame(hal, _serviceFrame, _serviceFrameLen, now, nowUs, "ELRS/CRSF CFG", true);
             _haveServiceFrame = false;
             _serviceFrameLen = 0;
-            _lastServiceTxAt = now;
+            _lastServiceTxAt = _status.lastTxAt;
+            _haveServiceTx = true;
         } else {
             // Keep RC cadence while a settings reply is pending. Each scheduled
             // frame still releases the half-duplex bus for the rest of its slot.
@@ -181,6 +188,12 @@ bool ELRSCrsfTransport::hasPendingServiceFrame() const
     return _haveServiceFrame;
 }
 
+uint32_t ELRSCrsfTransport::txTimeRemainingUs(uint32_t nowUs) const
+{
+    const int32_t remaining = (int32_t)(_nextTxAtUs - nowUs);
+    return remaining > 0 ? (uint32_t)remaining : 0;
+}
+
 void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen, unsigned long now, unsigned long nowUs, const char *prefix, bool resetReplyWindow)
 {
     if(!frame || !frameLen) {
@@ -196,10 +209,13 @@ void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *fram
     }
 #endif
 
+    const uint32_t enabledAtUs = (uint32_t)hal.microsNow();
+    const uint32_t latenessUs = enabledAtUs - _nextTxAtUs;
     hal.setDriverEnabled(true);
     hal.serialWrite(frame, frameLen);
     hal.serialFlush();
     hal.setDriverEnabled(false);
+    now = hal.millisNow();
 
     if(CRSF_BUS_DEBUG_ENABLED && resetReplyWindow) {
         logf(hal, "ELRS/CRSF bus: tx frame len=%u flushDone=%luus",
@@ -238,9 +254,21 @@ void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *fram
         _replySeenForTx = false;
         _replyDeadlineAt = now + replyTimeoutMs;
     }
-    do {
+    const uint32_t previousDeadline = _nextTxAtUs;
+    advanceNextTxDeadline();
+    const uint32_t periodUs = _nextTxAtUs - previousDeadline;
+    const uint32_t completedAtUs = (uint32_t)hal.microsNow();
+    // Bounded polling jitter keeps the fractional phase. Longer input work or
+    // I/O crossing the next slot is recovery: leave a whole period from OE on.
+    const bool recovery = latenessUs > CRSF_TX_MAX_POLL_JITTER_US ||
+        (int32_t)(completedAtUs - _nextTxAtUs) >= 0;
+    while((int32_t)(completedAtUs - _nextTxAtUs) >= 0) {
         advanceNextTxDeadline();
-    } while((int32_t)(nowUs - _nextTxAtUs) >= 0);
+    }
+    const uint32_t earliestNextUs = enabledAtUs + periodUs;
+    if(recovery && (int32_t)(earliestNextUs - _nextTxAtUs) > 0) {
+        _nextTxAtUs = earliestNextUs;
+    }
 }
 
 size_t ELRSCrsfTransport::drainExactEchoFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen)
@@ -321,6 +349,7 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
         if(ch < 0) {
             break;
         }
+        now = hal.millisNow();
 
         if(_rxFrameLen == 0) {
             if(!isLikelySyncByte((uint8_t)ch)) {
@@ -491,12 +520,12 @@ void ELRSCrsfTransport::clearCommCode()
 
 void ELRSCrsfTransport::updateState(ELRSCrsfTransportHal &hal, unsigned long now)
 {
-    _status.replyActive = (_status.everReplied && (now - _lastReplyAt < _config.telemetryTimeoutMs));
-    _status.telemetryActive = (_haveTelemetry && (now - _lastTelemetryAt < _config.telemetryTimeoutMs));
+    _status.replyActive = (_status.everReplied && ((uint32_t)(now - _lastReplyAt) < _config.telemetryTimeoutMs));
+    _status.telemetryActive = (_haveTelemetry && ((uint32_t)(now - _lastTelemetryAt) < _config.telemetryTimeoutMs));
     _status.synced = _status.replyActive;
     _status.everSynced = _status.everReplied;
 
-    if(_waitingForReply && !_replySeenForTx && (int32_t)(now - _replyDeadlineAt) >= 0) {
+    if(_waitingForReply && !_replySeenForTx && (int32_t)((uint32_t)now - (uint32_t)_replyDeadlineAt) >= 0) {
         _waitingForReply = false;
         _status.lastReplyTimeoutAt = now;
         if(_status.debugEnabled) {
@@ -507,7 +536,7 @@ void ELRSCrsfTransport::updateState(ELRSCrsfTransportHal &hal, unsigned long now
     }
 
     if(!_status.everReplied) {
-        if((now - _startedAt >= _config.telemetryTimeoutMs) && (_status.commCode == ELRS_COMM_NONE)) {
+        if(((uint32_t)(now - _startedAt) >= _config.telemetryTimeoutMs) && (_status.commCode == ELRS_COMM_NONE)) {
             setCommCode(ELRS_COMM_NRY);
             log(hal, "ELRS/CRSF transport: no replies; telemetry may be off, receiver/downlink absent, or module/wiring issue");
         }
