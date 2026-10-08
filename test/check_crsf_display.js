@@ -10,6 +10,8 @@ class Element {
   appendChild(option) { this.options.push(option); }
 }
 const elements = {cdsrc:new Element('1'),cdsrcvalue:new Element('1'),cdmul:new Element('0.5'),cdoff:new Element('0'),cddec:new Element('1'),cspdu:new Element('0'),cdpreview:new Element(),cdstatus:new Element()};
+Object.assign(elements,{crpoles:new Element('4'),crgear:new Element('6.55'),crdiam:new Element('64'),crscale:new Element('10'),rpmscale:new Element(),rpmspeed:new Element()});
+Object.assign(elements,{crrpmtype:new Element('0'),rpmpoles:new Element()});
 elements.cdsrc.options=[{value:'1',textContent:'GPS speed (unavailable)',disabled:true}];
 const requests=[], timers=[];
 const context = {document:{getElementById:id=>elements[id],createElement:()=>new Element()},
@@ -23,6 +25,7 @@ const flush=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
 async function reply(index,body,ok=true,status=200) { requests[index].resolve({ok,status,json:()=>Promise.resolve(body)}); await flush(); }
 (async()=>{
   assert.strictEqual(requests.length,1);
+  assert.strictEqual(elements.rpmspeed.hidden,true);
   timers[0]();timers[0]();assert.strictEqual(requests.length,1); // One request at a time.
   await reply(0,data([gps,battery]));
   assert.strictEqual(elements.cdpreview.textContent,'50.0');
@@ -37,6 +40,7 @@ async function reply(index,body,ok=true,status=200) { requests[index].resolve({o
   timers[0]();assert.strictEqual(requests.length,3);
   const pending=new URL(requests[2].url,'http://remote').searchParams;
   assert.strictEqual(pending.get('cdsrc'),'3');assert.strictEqual(pending.get('cdmul'),'0.001');
+  assert.strictEqual(pending.get('crrpmtype'),'0');
   await reply(2,data([gps],'---'));
   assert.strictEqual(elements.cdsrc.value,'3');assert.strictEqual(elements.cdsrcvalue.value,'3');
   assert(elements.cdsrc.selectedOptions[0].disabled);assert.strictEqual(elements.cdpreview.textContent,'---');
@@ -53,5 +57,20 @@ async function reply(index,body,ok=true,status=200) { requests[index].resolve({o
   elements.cdsrc.value='13';elements.cdsrc.handlers.change();assert(elements.cdmul.disabled);
   elements.cdsrc.value='1';elements.cdsrc.handlers.change();assert(!elements.cdmul.disabled);
   assert.strictEqual(elements.cdmul.value,'0.001');
+  assert(elements.rpmscale.hidden);
+  elements.cdsrc.value='16';elements.cdsrc.handlers.change();assert(!elements.rpmscale.hidden);
+  assert.strictEqual(elements.rpmspeed.hidden,false);
+  elements.crgear.value='13.1';elements.crgear.handlers.input();
+  elements.cdsrc.value='15';elements.cdsrc.handlers.change();assert(elements.rpmscale.hidden);
+  assert.strictEqual(elements.rpmspeed.hidden,false);
+  assert.strictEqual(elements.crgear.value,'13.1');
+  assert.strictEqual(elements.rpmpoles.hidden,false);
+  elements.crrpmtype.value='1';elements.crrpmtype.handlers.input();
+  assert.strictEqual(elements.rpmpoles.hidden,true);
+  assert.strictEqual(elements.crpoles.value,'4');
+  elements.crrpmtype.value='0';elements.crrpmtype.handlers.input();
+  assert.strictEqual(elements.rpmpoles.hidden,false);
+  elements.cdsrc.value='1';elements.cdsrc.handlers.change();assert.strictEqual(elements.rpmspeed.hidden,true);
+  assert.strictEqual(elements.crgear.value,'13.1');
   console.log('CRSF portal availability, pending selection, preview races, and single-request polling checks passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

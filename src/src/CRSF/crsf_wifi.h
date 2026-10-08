@@ -145,6 +145,7 @@ static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", 
 static char crsfOutputMax[ELRS_GIMBAL_AXIS_COUNT][5] = {"2000", "2000", "2000", "2000"};
 static char crsfLocalActions[ELRS_SWITCH_INPUT_COUNT][2] = {};
 static ELRSDisplayConfig crsfDisplayConfig = elrsDefaultDisplayConfig();
+static ELRSVehicleConfig crsfVehicleConfig = elrsDefaultVehicleConfig();
 static bool crsfDisplayParamsValid = true;
 
 static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
@@ -331,6 +332,7 @@ static void syncCRSFPortalBuffers()
         return;
     }
     crsfDisplayConfig = loadELRSDisplayConfig();
+    crsfVehicleConfig = loadELRSVehicleConfig();
     crsfDisplayParamsValid = true;
 
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
@@ -362,7 +364,7 @@ static void syncCRSFPortalBuffers()
 
 static bool saveCRSFPortalInputSettings()
 {
-    if(!crsfDisplayParamsValid || !elrsIsValidDisplayConfig(crsfDisplayConfig)) return false;
+    if(!crsfDisplayParamsValid || !elrsIsValidDisplayConfig(crsfDisplayConfig) || !elrsIsValidVehicleConfig(crsfVehicleConfig)) return false;
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting routing;
@@ -434,7 +436,7 @@ static bool saveCRSFPortalInputSettings()
     uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
     if(adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
     if(throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
-    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions, &crsfDisplayConfig)) return false;
+    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions, &crsfDisplayConfig, &crsfVehicleConfig)) return false;
     syncCRSFPortalBuffers();
     return true;
 }
@@ -495,7 +497,7 @@ static bool crsfParseDisplayParams(ELRSDisplayConfig &config)
         const size_t length = value.length();
         if(!length || length > 3 || strlen(value.c_str()) != length || strspn(value.c_str(), "0123456789") != length) return false;
         const int number = atoi(value.c_str());
-        if(i == 0) { if(number > ELRS_DISPLAY_NONE) return false; config.source = number; }
+        if(i == 0) { if(number > ELRS_DISPLAY_RPM_SCALED_MPH) return false; config.source = number; }
         else { if(number > 2 && number != 255) return false; config.decimalPlaces = number; }
     }
     float multiplier = config.multiplier, offset = config.offset;
@@ -506,10 +508,24 @@ static bool crsfParseDisplayParams(ELRSDisplayConfig &config)
     return elrsIsValidDisplayConfig(config);
 }
 
+static bool crsfParseVehicleParams(ELRSVehicleConfig &config)
+{
+    const char *names[] = {"crpoles", "crgear", "crdiam", "crscale", "crrpmtype"};
+    float values[] = {(float)config.motorPoles, config.gearRatio, config.tireDiameterMm, config.scaleFactor, (float)config.rpmType};
+    for(int i = 0; i < 5; i++) {
+        if(wm.server->hasArg(names[i]) && !crsfParseDisplayNumber(wm.server->arg(names[i]), values[i])) return false;
+    }
+    if(values[0] < 2 || values[0] > 64 || std::fmod(values[0], 2.0f) != 0) return false;
+    if(values[4] != ELRS_RPM_ELECTRICAL && values[4] != ELRS_RPM_SHAFT) return false;
+    config = {(uint8_t)values[0], values[1], values[2], values[3], (uint8_t)values[4]};
+    return elrsIsValidVehicleConfig(config);
+}
+
 static void crsfReadDisplayParams()
 {
     crsfDisplayConfig = loadELRSDisplayConfig();
-    crsfDisplayParamsValid = crsfParseDisplayParams(crsfDisplayConfig);
+    crsfVehicleConfig = loadELRSVehicleConfig();
+    crsfDisplayParamsValid = crsfParseDisplayParams(crsfDisplayConfig) && crsfParseVehicleParams(crsfVehicleConfig);
 }
 
 static void crsfReadExpoParams()
@@ -965,8 +981,8 @@ static const char *wmBuildCRSFYC(const char *dest, int op)
 
 static const char crsfDisplayScript[] = R"JS(<script>(function(){
 var byId=function(id){return document.getElementById(id);},source=byId('cdsrc'),hidden=byId('cdsrcvalue'),preview=byId('cdpreview'),status=byId('cdstatus'),busy=false;
-function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidden.value)+'&cdmul='+encodeURIComponent(byId('cdmul').value)+'&cdoff='+encodeURIComponent(byId('cdoff').value)+'&cddec='+encodeURIComponent(byId('cddec').value)+(unit?'&cspdu='+encodeURIComponent(unit.value):'');}
-function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});}
+function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidden.value)+'&cdmul='+encodeURIComponent(byId('cdmul').value)+'&cdoff='+encodeURIComponent(byId('cdoff').value)+'&cddec='+encodeURIComponent(byId('cddec').value)+(unit?'&cspdu='+encodeURIComponent(unit.value):'')+['crpoles','crgear','crdiam','crscale','crrpmtype'].map(function(id){return '&'+id+'='+encodeURIComponent(byId(id).value);}).join('');}
+function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});byId('rpmspeed').hidden=hidden.value!=='15'&&hidden.value!=='16';byId('rpmscale').hidden=hidden.value!=='16';byId('rpmpoles').hidden=byId('crrpmtype').value==='1';}
 function options(rows){var wanted=hidden.value,label=source.selectedOptions.length?source.selectedOptions[0].textContent:'Saved source';source.textContent='';
 function add(id,text,disabled){var option=document.createElement('option');option.value=String(id);option.textContent=text;option.disabled=!!disabled;source.appendChild(option);}
 add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){add(row.id,row.label+' ('+row.unit+')');});
@@ -974,7 +990,7 @@ if(!Array.from(source.options).some(function(option){return option.value===wante
 function fail(message){options([]);preview.textContent='---';status.textContent=message;}
 function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.available?': '+data.preview.value+(data.preview.unit?' '+data.preview.unit:''):' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
 source.addEventListener('change',function(){hidden.value=source.value;scaling();preview.textContent='…';poll();});
-['cdmul','cdoff','cddec','cspdu'].forEach(function(id){var input=byId(id);if(input)input.addEventListener('input',function(){preview.textContent='…';poll();});});
+['cdmul','cdoff','cddec','cspdu','crpoles','crgear','crdiam','crscale','crrpmtype'].forEach(function(id){var input=byId(id);if(input)input.addEventListener('input',function(){scaling();preview.textContent='…';poll();});});
 scaling();poll();setInterval(poll,500);
 })();</script>)JS";
 
@@ -991,7 +1007,7 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
     const uint8_t choices[] = {ELRS_DISPLAY_NONE, ELRS_DISPLAY_AUTO, ELRS_DISPLAY_OFF, crsfDisplayConfig.source};
     for(int i = 0; i < 4; i++) {
         const uint8_t id = choices[i];
-        if(i == 3 && (id == 0 || id >= ELRS_DISPLAY_OFF)) continue;
+        if(i == 3 && (id == ELRS_DISPLAY_AUTO || id == ELRS_DISPLAY_OFF || id == ELRS_DISPLAY_NONE)) continue;
         snprintf(buf, sizeof(buf), "<option value='%u'%s%s>%s%s</option>", id,
                  id == crsfDisplayConfig.source ? " selected" : "", i == 3 ? " disabled" : "",
                  elrsTelemetrySourceLabel(id), i == 3 ? " (unavailable)" : "");
@@ -1011,6 +1027,27 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
         html += buf;
     }
     html += "</select><p>Preview: <output id='cdpreview' style='font-family:monospace;font-size:1.5em' aria-live='polite'>---</output><br><small id='cdstatus'>Waiting for received telemetry</small></p>";
+    html += "<fieldset id='rpmspeed' hidden><legend>Motor RPM speed</legend>";
+    html += "<label for='crrpmtype'>RPM input</label><select id='crrpmtype' name='crrpmtype'>";
+    const char *rpmLabels[] = {"Electrical RPM", "Shaft RPM (already corrected)"};
+    for(int i = 0; i < 2; i++) {
+        snprintf(buf, sizeof(buf), "<option value='%u'%s>%s</option>", (unsigned)i, i == crsfVehicleConfig.rpmType ? " selected" : "", rpmLabels[i]);
+        html += buf;
+    }
+    html += "</select>";
+    const char *ids[] = {"crpoles", "crgear", "crdiam", "crscale"};
+    const char *vehicleLabels[] = {"Motor poles", "Final drive ratio", "Tire outside diameter (mm)", "Scale factor"};
+    const float values[] = {(float)crsfVehicleConfig.motorPoles, crsfVehicleConfig.gearRatio, crsfVehicleConfig.tireDiameterMm, crsfVehicleConfig.scaleFactor};
+    for(int i = 0; i < 4; i++) {
+        if(i == 0) html += "<div id='rpmpoles'>";
+        if(i == 3) html += "<div id='rpmscale' hidden>";
+        snprintf(buf, sizeof(buf), "<label for='%s'>%s</label><input type='number' id='%s' name='%s' min='%.9g' max='%u' step='%s' value='%.9g'%s>",
+                 ids[i], vehicleLabels[i], ids[i], ids[i], i == 0 ? 2.0f : (i == 2 ? 1.0f : 0.01f),
+                 i == 0 ? 64U : 1000U, i == 0 ? "2" : "any", values[i], i == 1 ? " list='rpmgears'" : "");
+        html += buf;
+        if(i == 0 || i == 3) html += "</div>";
+    }
+    html += "<datalist id='rpmgears'><option value='6.55'>TT-02R 68T/27T</option><option value='6.16'>TT-02R 64T/27T</option></datalist><p><small>Electrical RPM is divided by motor pole pairs; select Shaft RPM if the sensor already reports mechanical RPM. Actual mph uses total motor-to-wheel reduction and tire diameter. Scaled mph also applies the scale factor (10 for a 1:10 model). Use Multiplier for calibration (default 1) and Offset 0. Both RPM sources use mph. TT-02R/Firma defaults: Electrical RPM, 4 poles, 6.55:1, 64 mm tires.</small></p></fieldset>";
     html += "<p><small>Output = value × multiplier + offset. Speed units apply before scaling. Only fresh received sources are offered. HI/LO means the scaled value exceeds three digits; --- means unavailable. Auto uses GPS speed, airspeed, then uplink LQ with default scaling. Off blanks the normal readout. None keeps the gimbal speed/speedometer in Prop controls + ELRS/CRSF; in telemetry mode it uses Auto. Temporary display messages retain priority. Save and restart to apply; preview does not change the display.</small></p></fieldset>";
     html += crsfDisplayScript;
     if(op == WM_CP_LEN) { wmLenBuf = html.length() + 1; return (const char *)&wmLenBuf; }
@@ -1022,8 +1059,9 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
 static void handleELRSTelemetryRead()
 {
     ELRSDisplayConfig config = loadELRSDisplayConfig();
+    ELRSVehicleConfig vehicle = loadELRSVehicleConfig();
     uint8_t units = elrsMode.speedDisplayUnits();
-    if(!crsfParseDisplayParams(config)) {
+    if(!crsfParseDisplayParams(config) || !crsfParseVehicleParams(vehicle)) {
         wm.server->send(400, "application/json", "{\"ok\":false}"); return;
     }
     if(wm.server->hasArg("cspdu")) {
@@ -1038,8 +1076,8 @@ static void handleELRSTelemetryRead()
     json.reserve(1024);
     char buf[280], value[32];
     bool first = true;
-    for(uint8_t source = ELRS_DISPLAY_GPS_SPEED; source <= ELRS_DISPLAY_SNR; source++) {
-        const ELRSTelemetrySample sample = elrsMode.telemetrySample(source, now);
+    for(uint8_t source = ELRS_DISPLAY_GPS_SPEED; source <= ELRS_DISPLAY_RPM_SCALED_MPH; source++) {
+        const ELRSTelemetrySample sample = elrsMode.telemetrySample(source, now, &vehicle);
         if(!sample.available) continue;
         snprintf(buf, sizeof(buf), "%s{\"id\":%u,\"label\":\"%s\",\"unit\":\"%s\"}",
                  first ? "" : ",", source, elrsTelemetrySourceLabel(source), elrsTelemetrySourceUnit(source, ELRS_SPEED_UNITS_KMH));
@@ -1047,7 +1085,7 @@ static void handleELRSTelemetryRead()
         first = false;
     }
     const ELRSDisplayConfig effective = elrsEffectiveDisplayConfig(config, opModePropCRSF);
-    const ELRSTelemetrySample sample = elrsMode.telemetrySample(effective.source, now);
+    const ELRSTelemetrySample sample = elrsMode.telemetrySample(effective.source, now, &vehicle);
     if(sample.available) snprintf(value, sizeof(value), "%.9g", sample.source <= ELRS_DISPLAY_AIRSPEED && units == ELRS_SPEED_UNITS_MPH ? sample.value * 0.621371192f : sample.value);
     else strcpy(value, "null");
     char text[8];

@@ -63,7 +63,8 @@ enum ELRSTelemetrySource : uint8_t {
     ELRS_DISPLAY_BATTERY_VOLTAGE, ELRS_DISPLAY_BATTERY_CURRENT,
     ELRS_DISPLAY_BATTERY_PERCENT, ELRS_DISPLAY_CAPACITY, ELRS_DISPLAY_GPS_ALTITUDE,
     ELRS_DISPLAY_GPS_HEADING, ELRS_DISPLAY_SATELLITES, ELRS_DISPLAY_LINK_QUALITY,
-    ELRS_DISPLAY_RSSI, ELRS_DISPLAY_SNR, ELRS_DISPLAY_OFF, ELRS_DISPLAY_NONE
+    ELRS_DISPLAY_RSSI, ELRS_DISPLAY_SNR, ELRS_DISPLAY_OFF, ELRS_DISPLAY_NONE,
+    ELRS_DISPLAY_RPM_ACTUAL_MPH, ELRS_DISPLAY_RPM_SCALED_MPH
 };
 
 struct ELRSTelemetrySample {
@@ -81,8 +82,33 @@ struct ELRSDisplayConfig {
     float multiplier;
     float offset;
 };
+
+enum ELRSRpmType : uint8_t { ELRS_RPM_ELECTRICAL, ELRS_RPM_SHAFT };
+
+struct ELRSVehicleConfig {
+    uint8_t motorPoles;
+    float gearRatio;
+    float tireDiameterMm;
+    float scaleFactor;
+    uint8_t rpmType;
+};
 #pragma pack(pop)
 static_assert(sizeof(ELRSDisplayConfig) == 10, "Display settings must retain their stored layout");
+static_assert(sizeof(ELRSVehicleConfig) == 14, "Vehicle settings append the RPM type");
+
+static inline ELRSVehicleConfig elrsDefaultVehicleConfig()
+{
+    return {4, 6.55f, 64.0f, 10.0f, ELRS_RPM_ELECTRICAL};
+}
+
+static inline bool elrsIsValidVehicleConfig(const ELRSVehicleConfig &config)
+{
+    return config.rpmType <= ELRS_RPM_SHAFT &&
+        config.motorPoles >= 2 && config.motorPoles <= 64 && config.motorPoles % 2 == 0 &&
+        std::isfinite(config.gearRatio) && config.gearRatio >= 0.01f && config.gearRatio <= 1000 &&
+        std::isfinite(config.tireDiameterMm) && config.tireDiameterMm >= 1 && config.tireDiameterMm <= 1000 &&
+        std::isfinite(config.scaleFactor) && config.scaleFactor >= 0.01f && config.scaleFactor <= 1000;
+}
 
 static inline ELRSDisplayConfig elrsDefaultDisplayConfig()
 {
@@ -91,7 +117,7 @@ static inline ELRSDisplayConfig elrsDefaultDisplayConfig()
 
 static inline bool elrsIsValidDisplayConfig(const ELRSDisplayConfig &config)
 {
-    return config.source <= ELRS_DISPLAY_NONE &&
+    return config.source <= ELRS_DISPLAY_RPM_SCALED_MPH &&
         (config.decimalPlaces <= 2 || config.decimalPlaces == 255) &&
         std::isfinite(config.multiplier) && config.multiplier >= -1000 && config.multiplier <= 1000 &&
         std::isfinite(config.offset) && config.offset >= -999 && config.offset <= 999;
@@ -112,14 +138,16 @@ static inline const char *elrsTelemetrySourceLabel(uint8_t source)
     static const char * const labels[] = {
         "Auto", "GPS speed", "Airspeed", "Vehicle battery voltage", "Vehicle battery current",
         "Vehicle battery remaining", "Consumed capacity", "GPS altitude", "GPS heading",
-        "GPS satellites", "Receiver uplink LQ", "Receiver RSSI (antenna 1)", "Receiver SNR", "Off", "None (normal display)"
+        "GPS satellites", "Receiver uplink LQ", "Receiver RSSI (antenna 1)", "Receiver SNR", "Off", "None (normal display)",
+        "Motor RPM: Actual mph", "Motor RPM: Scaled mph"
     };
-    return source <= ELRS_DISPLAY_NONE ? labels[source] : "Unknown";
+    return source <= ELRS_DISPLAY_RPM_SCALED_MPH ? labels[source] : "Unknown";
 }
 
 static inline const char *elrsTelemetrySourceUnit(uint8_t source, uint8_t speedUnits)
 {
     switch(source) {
+    case ELRS_DISPLAY_RPM_ACTUAL_MPH: case ELRS_DISPLAY_RPM_SCALED_MPH: return "mph";
     case ELRS_DISPLAY_GPS_SPEED: case ELRS_DISPLAY_AIRSPEED: return speedUnits == ELRS_SPEED_UNITS_MPH ? "mph" : "km/h";
     case ELRS_DISPLAY_BATTERY_VOLTAGE: return "V";
     case ELRS_DISPLAY_BATTERY_CURRENT: return "A";
@@ -135,7 +163,8 @@ static inline const char *elrsTelemetrySourceUnit(uint8_t source, uint8_t speedU
 
 static inline uint8_t elrsTelemetrySourceDecimals(uint8_t source)
 {
-    return source >= ELRS_DISPLAY_GPS_SPEED && source <= ELRS_DISPLAY_BATTERY_CURRENT ? 1 : 0;
+    return (source >= ELRS_DISPLAY_GPS_SPEED && source <= ELRS_DISPLAY_BATTERY_CURRENT) ||
+        source == ELRS_DISPLAY_RPM_ACTUAL_MPH || source == ELRS_DISPLAY_RPM_SCALED_MPH ? 1 : 0;
 }
 
 static inline bool elrsPacketRateSupported(uint16_t packetRateHz)

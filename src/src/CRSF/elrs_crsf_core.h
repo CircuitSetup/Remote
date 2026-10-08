@@ -83,6 +83,7 @@ struct ELRSCrsfCoreConfig {
     bool levelMeterOnFakePower = false;
     uint8_t speedDisplayUnits = ELRS_SPEED_UNITS_DEFAULT;
     ELRSDisplayConfig displayConfig = elrsDefaultDisplayConfig();
+    ELRSVehicleConfig vehicleConfig = elrsDefaultVehicleConfig();
     uint8_t telemetryRatio = ELRS_TLM_RATIO_DEFAULT;
     uint8_t maxPower = ELRS_MAX_POWER_DEFAULT;
     uint8_t dynamicPower = ELRS_DYNAMIC_POWER_DEFAULT;
@@ -101,7 +102,8 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         enum SpeedSource : uint8_t {
             SPEED_SOURCE_NONE = 0,
             SPEED_SOURCE_GPS,
-            SPEED_SOURCE_AIRSPEED
+            SPEED_SOURCE_AIRSPEED,
+            SPEED_SOURCE_RPM
         };
 
         ELRSCrsfCore();
@@ -125,7 +127,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         float remoteBatteryVoltage() const;
         uint16_t gpsSpeed10() const;
         uint16_t airspeed10() const;
-        ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now) const;
+        ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now, const ELRSVehicleConfig *vehicleConfig = NULL) const;
         bool telemetryDisplayAssigned() const;
         void renderAssignedDisplay(ELRSCrsfHost &host, uint32_t now, int battWarn);
         bool telemetryActive() const;
@@ -248,6 +250,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         unsigned long _lastGpsSpeed = 0;
         unsigned long _lastAirspeed = 0;
         unsigned long _lastBattery = 0;
+        unsigned long _lastRpm = 0;
         unsigned long _batteryBlinkAt = 0;
         unsigned long _batteryBannerAt = 0;
         unsigned long _overlayUntil = 0;
@@ -270,6 +273,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         float _remoteBatteryVoltage = 0.0f;
         uint16_t _remoteCurrent10 = 0;
         uint32_t _remoteCapacity = 0;
+        int32_t _rpm = 0;
         int32_t _gpsAltitude = 0;
         uint16_t _gpsHeading100 = 0;
         uint8_t _gpsSatellites = 0;
@@ -285,6 +289,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool _haveGpsSpeed = false;
         bool _haveAirspeed = false;
         bool _haveBattery = false;
+        bool _haveRpm = false;
         uint8_t _receivedFamilies = 0;
         uint8_t _lastDisplaySource = 255;
         bool _adcFaultActive = false;

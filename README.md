@@ -978,11 +978,17 @@ If checked, the Remote will join the configured WiFi network while operating in 
 
 ##### &#9193; 3 digit display
 
-Choose GPS speed, airspeed, vehicle battery voltage/current/remaining charge/capacity, GPS altitude/heading/satellites, or receiver uplink LQ/RSSI/SNR. The list offers only valid values received within the last two seconds. A saved or pending source stays selected when unavailable; its readout becomes `---` until fresh telemetry returns. Received zero is a valid value.
+Choose GPS speed, airspeed, vehicle battery voltage/current/remaining charge/capacity, GPS altitude/heading/satellites, receiver uplink LQ/RSSI/SNR, or motor RPM speed. The list offers only valid values received within the last two seconds (six seconds for RPM). A saved or pending source stays selected when unavailable; its readout becomes `---` until fresh telemetry returns. Received zero is a valid value.
 
 **None (normal display)** is the default. In **Prop controls + ELRS/CRSF**, it keeps normal gimbal-controlled prop speed and the connected TCD speedometer. Assigning telemetry replaces the Remote's local normal readout; the gimbal still controls prop/TCD speed independently. In standalone **ELRS/CRSF**, None uses **Auto**, which selects GPS speed, then airspeed, then uplink LQ. Auto uses default scaling. **Off** blanks the normal readout. Calibration, battery warnings, volume/brightness, and time travel messages keep priority.
 
 For an assigned source, output is `value × multiplier + offset`. Speed is converted to the selected km/h or mph units first. Choose source-default precision or 0, 1, or 2 decimal places. For example, speed × `0.5` halves the displayed value; capacity × `0.001` displays Ah instead of mAh. The three digits include the minus sign; overflow shows `HI` or `LO`. Live preview uses pending settings without changing the physical display. Save and restart to apply.
+
+**Motor RPM: Actual mph** and **Motor RPM: Scaled mph** accept RPM from any ELRS serial input that forwards motor RPM telemetry, including CRSF/inverted CRSF, HoTT, Scorpion, SRXL2/Firma Smart, and MAVLink. ELRS converts the serial input to standard CRSF RPM (0x0C) or, for MAVLink, ArduPilot passthrough RPM (0x500A in 0x80 packets); the Remote accepts both. It uses the first RPM reading in the latest packet, regardless of source ID. Extra RPM readings (such as a second motor or maximum RPM) are ignored. Protocols that only output controls, such as SBUS/SUMD, supply no RPM themselves.
+
+Select **Electrical RPM** when pole-count correction is needed, as with Firma Smart: motor RPM is electrical RPM divided by half the motor pole count. Select **Shaft RPM (already corrected)** when the sensor already reports mechanical RPM; the motor-pole field then hides and its saved value is retained. Actual mph uses shaft RPM, total motor-to-wheel reduction, and tire outside diameter. Both RPM sources use mph independently of the GPS/airspeed units setting. Reverse rotation shows speed magnitude. The input type cannot be inferred from a CRSF source ID; choose it to match the sensor's output.
+
+The **Motor RPM speed** fields default to the TT-02R with the Spektrum SPMXSEMC01: **Electrical RPM, 4 poles, 6.55:1 final drive ratio, 64 mm tires**, and **10× scale factor**. They appear only for an RPM display source; the scale factor appears only for Scaled mph. The ratio field also offers **6.16:1** for the kit's 64T spur/27T pinion; enter any custom ratio and tire diameter for other setups. Scaled mph multiplies Actual mph by the scale factor, so 8.8 actual mph displays as 88.0 at 10×. Use the existing Multiplier for calibration (default 1) and Offset 0. Switching sources preserves these settings; pending vehicle edits also update live preview. RPM speed estimates wheel rollout, so wheelspin and tire deformation can differ from ground speed. RPM expires six seconds after the last received reading, allowing HoTT's five-second unchanged-value updates. A receiver may also cache readings before it stops forwarding them; the Firma Smart bridge caches for up to two seconds.
 
 ##### &#9193; ELRS Packet rate
 
@@ -990,7 +996,7 @@ Selects the RC packet rate sent to the external ELRS module. The module must be 
 
 ##### &#9193; Speed units
 
-Selects whether the Remote display prefers km/h or mph when telemetry provides speed information.
+Selects whether GPS/airspeed telemetry displays km/h or mph. The motor RPM speed sources always display mph.
 
 ##### &#9193; Telemetry Ratio
 
