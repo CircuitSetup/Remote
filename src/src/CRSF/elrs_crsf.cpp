@@ -346,14 +346,17 @@ ELRSAxesResult ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], ui
         }
         _haveAds = initAds1015();
         if(!_haveAds) return ELRS_AXES_ERROR;
-        _adsState = ADS_START;
+        _adsState = ADS_DRAIN;
         _adsChannel = 0;
+        _adsReadyAtUs = (uint32_t)micros();
         return ELRS_AXES_PENDING;
     }
     if(request == ELRS_AXES_RESTART) {
-        // A capture starts a fresh sweep. Do no extra I2C in the button's pass.
-        _adsState = ADS_START;
+        // ADS1015 ignores OS starts while busy. Discard the abandoned conversion
+        // before starting A0; do no extra I2C in the button's pass.
+        _adsState = ADS_DRAIN;
         _adsChannel = 0;
+        _adsReadyAtUs = (uint32_t)micros();
         return ELRS_AXES_PENDING;
     }
     if(_adsState == ADS_IDLE) {
@@ -370,10 +373,11 @@ ELRSAxesResult ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], ui
         _adsReadyAtUs = (uint32_t)micros() + ADS_CONVERSION_US;
         _adsState = ADS_WAIT;
         return ELRS_AXES_PENDING;
+    case ADS_DRAIN:
     case ADS_WAIT:
         if((int32_t)((uint32_t)micros() - _adsReadyAtUs) < 0) return ELRS_AXES_PENDING;
         if(!readAdsRegister(ADS_REG_CONFIG, value)) return failAdsSweep();
-        if(value & 0x8000) _adsState = ADS_COLLECT;
+        if(value & 0x8000) _adsState = _adsState == ADS_DRAIN ? ADS_START : ADS_COLLECT;
         else _adsReadyAtUs = (uint32_t)micros() + ADS_CONVERSION_US;
         return ELRS_AXES_PENDING;
     case ADS_COLLECT:

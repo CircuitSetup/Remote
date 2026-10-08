@@ -118,7 +118,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool _haveAds = false;
         bool _oeActiveLow = true;
         bool _haveFilteredAxes = false;
-        enum AdsState : uint8_t { ADS_IDLE, ADS_START, ADS_WAIT, ADS_COLLECT };
+        enum AdsState : uint8_t { ADS_IDLE, ADS_DRAIN, ADS_START, ADS_WAIT, ADS_COLLECT };
         AdsState _adsState = ADS_IDLE;
         uint8_t _adsChannel = 0;
         uint32_t _adsReadyAtUs = 0;

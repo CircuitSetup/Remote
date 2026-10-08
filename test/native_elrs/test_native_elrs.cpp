@@ -586,7 +586,7 @@ static void test_late_tx_preserves_receive_opportunity()
     const uint16_t rates[] = {50, 100, 150, 250, 500};
     for(uint16_t rate : rates) {
         for(uint32_t frameLen : {6U, 26U, 64U}) {
-            for(uint32_t extra : {0U, 1000U}) {
+            for(uint32_t delay : {201U, 1000U, 1990U, 0U, UINT32_MAX}) {
                 FakeHost host;
                 ELRSCrsfTransport transport;
                 ELRSCrsfTransportConfig config;
@@ -601,7 +601,8 @@ static void test_late_tx_preserves_receive_opportunity()
                 const uint32_t period = 1000000U / rate;
                 const uint32_t wireUs = (frameLen * 10000000U + config.baudRate - 1) / config.baudRate;
                 // Completion falls just BEFORE or AFTER the next deadline.
-                uint32_t start = period - wireUs - 230 - 10 + extra;
+                uint32_t start = delay == 0 ? period - wireUs - 230 - 10 :
+                    (delay == UINT32_MAX ? period - wireUs - 230 + 990 : delay);
                 transportAt(transport, host, start / 1000, start);
                 const uint32_t off = host.oeOffTimes.back();
                 const uint32_t on = host.oeOnTimes.back();
@@ -610,6 +611,26 @@ static void test_late_tx_preserves_receive_opportunity()
                 TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period, host.oeOnTimes.back() - on);
                 TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period - 40 - wireUs - 40, host.oeOnTimes.back() - off);
             }
+        }
+    }
+}
+
+static void test_bounded_polling_jitter_keeps_healthy_tx_cadence()
+{
+    for(uint16_t rate : {50, 100, 150, 250, 500}) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSCrsfTransportConfig config;
+        config.packetRateHz = rate;
+        config.baudRate = elrsCrsfRecommendedBaudRate(rate);
+        transport.begin(host, config, 0, 0);
+        host.costedIo = true;
+        for(uint32_t slot = 0; slot < 31; slot++) {
+            const uint32_t deadline = (uint32_t)((uint64_t)slot * 1000000 / rate);
+            const uint32_t jitter = (slot % 3) * 90; // Independently bounded at 180us.
+            transportAt(transport, host, (deadline + jitter) / 1000, deadline + jitter);
+            TEST_ASSERT_EQUAL_UINT32(slot + 1, host.txStarts.size());
+            TEST_ASSERT_EQUAL_UINT32(deadline + jitter + 40, host.txStarts.back());
         }
     }
 }
@@ -4338,6 +4359,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_oversized_parameter_restarts_from_chunk_zero_and_recovers);
     RUN_TEST(test_tx_deadline_advances_past_real_io_completion);
     RUN_TEST(test_late_tx_preserves_receive_opportunity);
+    RUN_TEST(test_bounded_polling_jitter_keeps_healthy_tx_cadence);
     RUN_TEST(test_tx_pacing_retains_fractional_periods_and_rollover);
     RUN_TEST(test_costed_service_slots_keep_rc_and_real_reply_deadlines);
     RUN_TEST(test_pending_axes_keep_filter_and_rc_slots);

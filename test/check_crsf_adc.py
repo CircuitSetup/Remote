@@ -97,13 +97,18 @@ static TestWiFi WiFi;
 #include "Arduino.h"
 struct TwoWire {
     int16_t values[4] = {1000,800,600,400}, latched = 0;
-    bool connected = true, stuck = false, changing = false;
+    bool connected = true, stuck = false, changing = false, converting = false;
     int failure = 0, failingChannel = -1;
-    int writes = 0, channel = 0, byte = 0, reg = 0;
+    int writes = 0, channel = 0, activeChannel = 0, byte = 0, reg = 0;
     uint8_t cfgHigh = 0, cfgLow = 0;
     uint64_t readyAt = 0;
     unsigned transactions = 0, sweeps = 0, starts = 0, probes = 0;
     std::vector<uint64_t> completions;
+    bool busy() {
+        if(converting && !stuck && testClockUs >= readyAt) converting = false;
+        return converting;
+    }
+    void setStuck(bool value) { busy(); stuck = value; }
     void beginTransmission(uint8_t) { writes = 0; }
     void write(uint8_t value) {
         if(++writes == 1) reg = value;
@@ -118,7 +123,11 @@ struct TwoWire {
         if(writes == 3) {
             assert(channel >= 0 && channel < 4);
             assert(cfgHigh == (0xC3 | (channel << 4)) && cfgLow == 0xE3);
+            // ADS1015 OS writes while busy do not restart the active conversion.
+            if(busy()) return 0;
             starts++; readyAt = testClockUs + 500;
+            converting = true;
+            activeChannel = channel;
             latched = changing ? 300 + (sweeps % 8) * 150 + channel * 20 : values[channel];
         }
         return 0;
@@ -128,11 +137,11 @@ struct TwoWire {
         return fails(3) ? 1 : n;
     }
     int read() {
-        const bool ready = !stuck && testClockUs >= readyAt;
+        const bool ready = !busy();
         uint16_t raw = reg == 1 ? ((cfgHigh & 0x7F) | (ready ? 0x80 : 0)) << 8 | cfgLow : (uint16_t)latched << 4;
         if(reg == 0) assert(ready); // Never return instantaneous conversions.
         const int value = byte++ ? raw & 255 : raw >> 8;
-        if(reg == 0 && byte == 2 && channel == 3) { sweeps++; completions.push_back(testClockUs); }
+        if(reg == 0 && byte == 2 && activeChannel == 3) { sweeps++; completions.push_back(testClockUs); }
         return value;
     }
 };
@@ -204,11 +213,11 @@ static void test_ads_pending_conversion_does_not_block_rc_slots() {
     assert(maxDelayUs <= 150); // The old adapter blocks 500us per channel, including begin().
     int16_t axes[4]; assert(!mode.readCurrentRawAxes(nullptr)); assert(!mode.readCurrentRawAxes(axes));
     assert(!(mode.getStatus().faultFlags & ELRS_FAULT_ADC_MISSING));
-    Wire.stuck = true; runFor(mode, 8000);
+    Wire.setStuck(true); runFor(mode, 8000);
     assert(txEvents.size() >= 4 && Wire.sweeps == 0);
     assert(!(mode.getStatus().faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE)));
     assert(ticks(0) == 992 && ticks(2) == 992);
-    Wire.stuck = false; completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
+    Wire.setStuck(false); completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
     puts("test_ads_pending_conversion_does_not_block_rc_slots passed");
 }
 static void test_500hz_rc_cadence_during_ads_scan() {
@@ -263,7 +272,7 @@ static void test_cached_axes_do_not_refresh_input_age() {
         resetFixture(UINT32_MAX-50, UINT32_MAX-1500); ELRSCrsfMode mode; beginMode(mode); completeSweep(mode);
         const uint32_t goodAt = millis();
         const uint64_t goodUs = testClockUs; int16_t axes[4];
-        Wire.stuck = !fail; Wire.connected = !fail;
+        Wire.setStuck(!fail); Wire.connected = !fail;
         runFor(mode, 98000);
         // Reader-only requests cannot probe, acquire, or refresh age.
         testClockUs = goodUs + 100000; // Same millisecond fraction as the completion.
@@ -277,7 +286,7 @@ static void test_cached_axes_do_not_refresh_input_age() {
         assert(mode.getStatus().faultFlags & ELRS_FAULT_ADC_STALE);
         runFor(mode, 4000); // Observe the fallback in the next scheduled RC slot.
         assert(ticks(0) == 992 && ticks(2) == 992);
-        Wire.connected = true; Wire.stuck = false; completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
+        Wire.connected = true; Wire.setStuck(false); completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
         assert(!(mode.getStatus().faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE)));
     }
     puts("test_cached_axes_do_not_refresh_input_age passed");
@@ -336,13 +345,13 @@ static void test_calibration_discards_inflight_sweep_and_captures_fresh_once() {
     // Freeze A2 after A0/A1 were already staged, then request a different center.
     const uint64_t limit = testClockUs + 10000;
     while(Wire.channel != 2 && testClockUs < limit) { mode.loop(0); advanceTestTime(20); }
-    assert(Wire.channel == 2); Wire.stuck = true;
+    assert(Wire.channel == 2); Wire.setStuck(true);
     for(int i = 0; i < 4; i++) Wire.values[i] = 2000;
     const size_t frames = txEvents.size(); pressCalibration(mode);
     assert(txEvents.size() >= frames + 25);
     assert(mode.isCalibrating());
     // The unchanged stale-input overlay covers the prompt for one second.
-    Wire.stuck = false; completeSweep(mode); runFor(mode, 1200000);
+    Wire.setStuck(false); completeSweep(mode); runFor(mode, 1200000);
     assert(displayText == "TLO"); runFor(mode, 220000); assert(displayText == "TLO");
     for(int point = 0; point < 8; point++) {
         for(int i = 0; i < 4; i++) Wire.values[i] = point & 1 ? 2047 : 0;

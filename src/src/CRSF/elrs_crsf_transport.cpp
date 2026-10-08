@@ -21,6 +21,8 @@ constexpr unsigned long CRSF_COMM_BURST_WINDOW_MS = 1000;
 constexpr uint8_t CRSF_COMM_BURST_THRESHOLD = 3;
 constexpr unsigned long CRSF_SERVICE_FRAME_GAP_MS = 100;
 constexpr unsigned long CRSF_BOOTSTRAP_SERVICE_REPLY_TIMEOUT_MS = 250;
+// Normal phase jitter is bounded to one short input/I2C service pass.
+constexpr uint32_t CRSF_TX_MAX_POLL_JITTER_US = 200;
 
 static bool isLikelySyncByte(uint8_t value)
 {
@@ -256,9 +258,9 @@ void ELRSCrsfTransport::sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *fram
     advanceNextTxDeadline();
     const uint32_t periodUs = _nextTxAtUs - previousDeadline;
     const uint32_t completedAtUs = (uint32_t)hal.microsNow();
-    // Small polling jitter keeps the fractional phase. A half-slot delay or
+    // Bounded polling jitter keeps the fractional phase. Longer input work or
     // I/O crossing the next slot is recovery: leave a whole period from OE on.
-    const bool recovery = latenessUs >= periodUs / 2 ||
+    const bool recovery = latenessUs > CRSF_TX_MAX_POLL_JITTER_US ||
         (int32_t)(completedAtUs - _nextTxAtUs) >= 0;
     while((int32_t)(completedAtUs - _nextTxAtUs) >= 0) {
         advanceNextTxDeadline();
