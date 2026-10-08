@@ -69,6 +69,7 @@ class ELRSCrsfTransportHal {
         virtual void setDriverEnabled(bool enabled) = 0;
         virtual void discardSerialInput() = 0;
         virtual unsigned long microsNow() = 0;
+        virtual unsigned long millisNow() = 0;
 };
 
 class ELRSCrsfTransportSink {
@@ -138,7 +139,7 @@ class ELRSCrsfTransport {
         unsigned long _lastReplyAt = 0;
         unsigned long _lastTelemetryAt = 0;
         unsigned long _replyDeadlineAt = 0;
-        unsigned long _nextTxAtUs = 0;
+        uint32_t _nextTxAtUs = 0;
         unsigned long _lastServiceTxAt = 0;
         unsigned long _echoSuppressUntil = 0;
         unsigned long _crcBurstAt = 0;
@@ -152,6 +153,7 @@ class ELRSCrsfTransport {
         bool _waitingForReply = false;
         bool _replySeenForTx = false;
         bool _haveServiceFrame = false;
+        bool _haveServiceTx = false;
 };
 
 #endif

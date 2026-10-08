@@ -72,6 +72,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         void setDriverEnabled(bool enabled) override;
         void discardSerialInput() override;
         unsigned long microsNow() override;
+        unsigned long millisNow() override;
 
         bool sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]) override;
         bool readFakePowerSwitch() override;

@@ -331,6 +331,11 @@ unsigned long ELRSCrsfMode::microsNow()
     return micros();
 }
 
+unsigned long ELRSCrsfMode::millisNow()
+{
+    return millis();
+}
+
 bool ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
     int16_t samples[ELRS_GIMBAL_AXIS_COUNT];

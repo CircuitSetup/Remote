@@ -73,6 +73,7 @@ class FakeHost : public ELRSCrsfHost {
 
         size_t serialWrite(const uint8_t *data, size_t len) override
         {
+            txStarts.push_back(fakeMicros);
             writes.push_back(std::vector<uint8_t>(data, data + len));
             driverStatesDuringWrite.push_back(driverEnabled);
             if(loopbackWriteToRx) {
@@ -91,15 +92,20 @@ class FakeHost : public ELRSCrsfHost {
 
         void serialFlush() override
         {
+            if(costedIo) advanceTime((uint32_t)((writes.back().size() * 10000000ULL + bauds.back() - 1) / bauds.back()) + extraFlushUs);
+            txStops.push_back(fakeMicros);
             flushCount++;
         }
 
         void setDriverEnabled(bool enabled) override
         {
+            if(costedIo && !enabled) advanceTime(40);
+            (enabled ? oeOnTimes : oeOffTimes).push_back(fakeMicros);
             if(driverTransitions.empty() || driverTransitions.back() != enabled) {
                 driverTransitions.push_back(enabled);
             }
             driverEnabled = enabled;
+            if(costedIo) advanceTime(enabled ? 40 : 150);
         }
 
         void discardSerialInput() override
@@ -113,8 +119,26 @@ class FakeHost : public ELRSCrsfHost {
             return fakeMicros;
         }
 
+        unsigned long millisNow() { return fakeMillis; }
+
+        void setTime(uint32_t ms, uint32_t us)
+        {
+            fakeMillis = ms;
+            fakeMicros = us;
+            subMillisUs = us % 1000;
+        }
+
+        void advanceTime(uint32_t us)
+        {
+            fakeMicros += us;
+            fakeMillis += (subMillisUs + us) / 1000;
+            subMillisUs = (subMillisUs + us) % 1000;
+        }
+
         bool sampleAxes(int16_t axesOut[ELRS_GIMBAL_AXIS_COUNT]) override
         {
+            advanceTime(sampleCostUs);
+            sampleCompletions.push_back(fakeMicros);
             if(!axesAvailable) {
                 return false;
             }
@@ -253,7 +277,10 @@ class FakeHost : public ELRSCrsfHost {
         int localScanCount = 0;
 
         bool driverEnabled = false;
-        unsigned long fakeMicros = 0;
+        uint32_t fakeMicros = 0, fakeMillis = 0, subMillisUs = 0;
+        uint32_t sampleCostUs = 0, extraFlushUs = 0;
+        bool costedIo = false;
+        std::vector<uint32_t> txStarts, txStops, oeOnTimes, oeOffTimes, sampleCompletions;
         int serialReadCount = 0;
         bool displayOnCalled = false;
         bool powerLed = false;
@@ -492,7 +519,148 @@ static ELRSCrsfStatus statusOf(ELRSCrsfCore &core)
 
 static void loopAt(ELRSCrsfCore &core, FakeHost &host, unsigned long nowMs, unsigned long nowUs, int battWarn = 0)
 {
+    host.setTime((uint32_t)nowMs, (uint32_t)nowUs);
     core.loop(host, nowMs, nowUs, battWarn);
+}
+
+static void loopAtMs(ELRSCrsfCore &core, FakeHost &host, uint32_t nowMs, int battWarn)
+{
+    loopAt(core, host, nowMs, (uint32_t)(nowMs * 1000U), battWarn);
+}
+
+static bool beginAt(ELRSCrsfCore &core, FakeHost &host, const ELRSCrsfCoreConfig &config, uint32_t ms, uint32_t us)
+{
+    host.setTime(ms, us);
+    return core.begin(host, config, ms, us);
+}
+
+static bool beginAt(ELRSCrsfCore &core, FakeHost &host, const ELRSCrsfCoreConfig &config, uint32_t ms)
+{
+    return beginAt(core, host, config, ms, (uint32_t)(ms * 1000U));
+}
+
+static void transportAt(ELRSCrsfTransport &transport, FakeHost &host, uint32_t ms, uint32_t us)
+{
+    host.setTime(ms, us);
+    transport.loop(host, ms, us);
+}
+
+static void beginAt(ELRSCrsfTransport &transport, FakeHost &host, const ELRSCrsfTransportConfig &config, uint32_t ms, uint32_t us)
+{
+    host.setTime(ms, us);
+    transport.begin(host, config, ms, us);
+}
+
+static void test_tx_deadline_advances_past_real_io_completion()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.propControls = true;
+    config.haveButtonPack = false;
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    host.costedIo = true;
+    host.sampleCostUs = 2810;
+    loopAt(core, host, 5, 5000);
+    TEST_ASSERT_EQUAL_UINT32(7810, host.sampleCompletions.back());
+    TEST_ASSERT_EQUAL_UINT32(7850, host.txStarts[0]);
+    TEST_ASSERT_EQUAL_UINT32(8500, host.txStops[0]);
+    TEST_ASSERT_EQUAL_UINT32(8540, host.oeOffTimes.back());
+    loopAt(core, host, host.fakeMillis, host.fakeMicros);
+    if(host.txStarts.size() > 1) printf("HP-1 baseline: TX interval=%luus OE off=%luus\n",
+        (unsigned long)(host.txStarts[1] - host.txStarts[0]),
+        (unsigned long)(host.oeOnTimes.back() - host.oeOffTimes[host.oeOffTimes.size() - 2]));
+    TEST_ASSERT_EQUAL_UINT32(1, host.writes.size());
+    host.sampleCostUs = 0;
+    for(uint32_t us = host.fakeMicros; us <= 16000; us += 10) loopAt(core, host, us / 1000, us);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(4000, host.oeOnTimes[1] - host.oeOnTimes[0]);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(3270, host.oeOnTimes[1] - host.oeOffTimes[1]);
+    printf("HP-1 repaired: TX interval=%luus OE off=%luus\n",
+        (unsigned long)(host.txStarts[1] - host.txStarts[0]),
+        (unsigned long)(host.oeOnTimes[1] - host.oeOffTimes[1]));
+}
+
+static void test_late_tx_preserves_receive_opportunity()
+{
+    const uint16_t rates[] = {50, 100, 150, 250, 500};
+    for(uint16_t rate : rates) {
+        for(uint32_t extra : {0U, 1000U}) {
+            FakeHost host;
+            ELRSCrsfTransport transport;
+            ELRSCrsfTransportConfig config;
+            config.packetRateHz = rate;
+            config.baudRate = elrsCrsfRecommendedBaudRate(rate);
+            transport.begin(host, config, 0, 0);
+            host.costedIo = true;
+            const uint32_t period = 1000000U / rate;
+            const uint32_t wireUs = (260000000U + config.baudRate - 1) / config.baudRate;
+            // Completion falls just BEFORE or AFTER the next deadline.
+            uint32_t start = period - wireUs - 230 - 10 + extra;
+            transportAt(transport, host, start / 1000, start);
+            const uint32_t off = host.oeOffTimes.back();
+            const uint32_t on = host.oeOnTimes.back();
+            for(uint32_t us = host.fakeMicros; host.txStarts.size() < 2; us += 10)
+                transportAt(transport, host, us / 1000, us);
+            TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period, host.oeOnTimes.back() - on);
+            TEST_ASSERT_GREATER_OR_EQUAL_UINT32(period - 40 - wireUs - 40, host.oeOnTimes.back() - off);
+        }
+    }
+}
+
+static void test_tx_pacing_retains_fractional_periods_and_rollover()
+{
+    for(uint16_t rate : {50, 100, 150, 250, 500}) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSCrsfTransportConfig config;
+        config.packetRateHz = rate;
+        config.baudRate = elrsCrsfRecommendedBaudRate(rate);
+        const uint32_t start = UINT32_MAX - 20000;
+        host.setTime(4000000, start); // millis is deliberately in another rollover domain.
+        transport.begin(host, config, host.fakeMillis, start);
+        host.costedIo = true;
+        for(uint32_t slot = 0; slot <= 30; slot++) {
+            const uint32_t elapsed = (uint32_t)((uint64_t)slot * 1000000 / rate);
+            transportAt(transport, host, 4000000 + elapsed / 1000, start + elapsed);
+            TEST_ASSERT_EQUAL_UINT32(slot + 1, host.txStarts.size());
+            TEST_ASSERT_EQUAL_UINT32(start + elapsed + 40, host.txStarts.back());
+        }
+        const uint32_t paused = start + 1000000;
+        transportAt(transport, host, 4001000, paused);
+        const size_t count = host.txStarts.size();
+        transportAt(transport, host, host.fakeMillis, host.fakeMicros);
+        TEST_ASSERT_EQUAL_UINT32(count, host.txStarts.size());
+        const uint32_t period = (1000000 + rate - 1) / rate;
+        transportAt(transport, host, 4001000 + period / 1000, paused + period);
+        TEST_ASSERT_EQUAL_UINT32(count + 1, host.txStarts.size());
+    }
+}
+
+static void test_costed_service_slots_keep_rc_and_real_reply_deadlines()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 500;
+    config.baudRate = 921600;
+    transport.begin(host, config, 0, 0);
+    host.costedIo = true;
+    host.extraFlushUs = 1500; // Real completion crosses a millisecond boundary.
+    const std::vector<uint8_t> ping = makeFrame(0x28, {0xEE, 0xEA});
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    transportAt(transport, host, UINT32_MAX - 249, 0);
+    const uint32_t releasedMs = host.fakeMillis;
+    TEST_ASSERT_EQUAL_UINT32(releasedMs, transport.status().lastTxAt);
+    host.extraFlushUs = 0;
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    for(uint32_t us = 2000; us < 100000; us += 2000)
+        transportAt(transport, host, (uint32_t)(releasedMs + us / 1000), us);
+    TEST_ASSERT_GREATER_THAN_INT(40, countWrittenFrameType(host, 0x16));
+    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
+    transportAt(transport, host, releasedMs + 249, 249000);
+    TEST_ASSERT_EQUAL_UINT32(0, transport.status().lastReplyTimeoutAt);
+    // A later service slot refreshes the transaction deadline; RC never pauses for it.
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x28));
 }
 
 static void test_rc_frame_packing_and_driver_enable()
@@ -513,8 +681,8 @@ static void test_rc_frame_packing_and_driver_enable()
     host.buttonA = true;
     host.packStates = 0b11001010;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
-    core.loop(host, 10, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[0]);
     TEST_ASSERT_FALSE(host.inversions[0]);
@@ -538,7 +706,7 @@ static void test_transport_inversion_setting_is_passed_to_hal()
 
     config.transport.invertLine = true;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
     TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[0]);
     TEST_ASSERT_TRUE(host.inversions[0]);
     TEST_ASSERT_TRUE(statusOf(core).invertLine);
@@ -553,8 +721,8 @@ static void test_transport_debug_suppresses_raw_frame_dumps_by_default()
     config.transport.debugEnabled = true;
     config.transport.rawFrameDebugEnabled = false;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
-    core.loop(host, 10, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_TRUE(logsContain(host, "ELRS/CRSF transport: UART"));
     TEST_ASSERT_FALSE(logsContain(host, "ELRS/CRSF TX len="));
@@ -572,7 +740,7 @@ static void test_transport_raw_frame_dump_requires_explicit_opt_in()
     config.transport.debugEnabled = true;
     config.transport.rawFrameDebugEnabled = true;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     host.queueFrame(makeDeviceInfoFrame("RM Ranger Micro", 33));
     loopAt(core, host, 100, 100000);
 
@@ -596,7 +764,7 @@ static void test_transport_raw_frame_dump_logs_non_rc_replies_only()
     config.transport.debugEnabled = true;
     config.transport.rawFrameDebugEnabled = true;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
 
     host.queueFrame(makeDeviceInfoFrame("RM Ranger Micro", 33));
@@ -705,7 +873,7 @@ static void test_output_limits_follow_axes_through_reverse_and_routing()
                 config.axisProfiles[axis].reverse = reverse;
                 host.axes[axis] = 900;
             }
-            TEST_ASSERT_TRUE(core.begin(host, config, 0));
+            TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
             for(int point = 0; point < 3; point++) {
                 uint16_t expectedChannels[16];
                 for(int i = 0; i < 16; i++) expectedChannels[i] = 172;
@@ -715,7 +883,7 @@ static void test_output_limits_follow_axes_through_reverse_and_routing()
                     expectedChannels[channels[axis] - 1] = point == 1 ? 992 : (point == reverse * 2 ? lowTicks[axis] : highTicks[axis]);
                 }
                 host.writes.clear();
-                core.loop(host, 20 * (point + 1), 0);
+                loopAtMs(core, host, 20 * (point + 1), 0);
                 for(int axis = 0; axis < 4; axis++) {
                     TEST_ASSERT_EQUAL_UINT16(expectedChannels[channels[axis] - 1], core.channelAt(channels[axis] - 1));
                 }
@@ -822,19 +990,19 @@ static void test_throttle_curves_preserve_idle_center_and_endpoints()
                         config.axisProfiles[AXIS_THROTTLE] = profile;
                         config.throttleIdleDeadband = band;
                         host.axes[AXIS_THROTTLE] = mid;
-                        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+                        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
                         TEST_ASSERT_EQUAL_UINT16(strength == 40 ? 746 : 377, core.channelAt(2));
                         host.axes[AXIS_THROTTLE] = full;
-                        core.loop(host, 20, 0);
+                        loopAtMs(core, host, 20, 0);
                         TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
                         host.axes[AXIS_THROTTLE] = idle;
-                        core.loop(host, 40, 0);
+                        loopAtMs(core, host, 40, 0);
                         TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                         if(band) {
                             int span = direction * (mid - idle);
                             int amount = band < span ? band : span - 1;
                             host.axes[AXIS_THROTTLE] = idle + direction * amount;
-                            core.loop(host, 60, 0);
+                            loopAtMs(core, host, 60, 0);
                             TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                         }
                         if(!narrow && !band) {
@@ -865,12 +1033,12 @@ static void test_output_limits_preserve_safe_neutral_and_idle()
         for(auto &profile : config.axisProfiles) profile.expo = 100;
         host.axes[AXIS_THROTTLE] = 0;
         host.axesAvailable = scenario != 0;
-        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         if(scenario) {
             TEST_ASSERT_EQUAL_UINT16(500, core.channelAt(1));
             if(scenario == 1) host.axesAvailable = false;
             else core.startSelfTest(0);
-            core.loop(host, 150, 0);
+            loopAtMs(core, host, 150, 0);
         }
         for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
     }
@@ -883,10 +1051,10 @@ static void test_output_limits_runtime_invalid_pairs_use_defaults()
     ELRSCrsfCoreConfig config = defaultConfig();
     config.outputLimits[0] = {1600, 1700};
     host.axes[0] = 0;
-    core.begin(host, config, 0);
+    beginAt(core, host, config, 0);
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
     host.axes[0] = 2047;
-    core.loop(host, 20, 0);
+    loopAtMs(core, host, 20, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
 }
 
@@ -900,46 +1068,46 @@ static void test_gimbal_curves_keep_direct_safe_outputs_and_reseed_on_recovery()
         config.throttleIdleDeadband = 5;
         for(int axis = 0; axis < 4; axis++) config.axisProfiles[axis] = {300, 900, 1500, 0, 0, strength};
         host.axesAvailable = false;
-        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_MISSING);
         for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
         TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
         host.axesAvailable = true;
         for(int axis = 0; axis < 4; axis++) host.axes[axis] = 900;
-        core.loop(host, 20, 0);
+        loopAtMs(core, host, 20, 0);
         TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
         TEST_ASSERT_EQUAL_UINT16(strength == 40 ? 746 : 377, core.channelAt(2));
         // Return to idle must bypass even a 32-count hold. At strength 100,
         // nearest-us rounding extends idle beyond the raw five-count band.
         host.axes[AXIS_THROTTLE] = strength == 40 ? 330 : 400;
-        core.loop(host, 40, 0);
+        loopAtMs(core, host, 40, 0);
         TEST_ASSERT_TRUE(core.channelAt(2) > 172);
         host.axes[AXIS_THROTTLE] = strength == 40 ? 305 : 380;
-        core.loop(host, 60, 0);
+        loopAtMs(core, host, 60, 0);
         TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
         host.axes[AXIS_THROTTLE] = 600;
-        core.loop(host, 80, 0);
+        loopAtMs(core, host, 80, 0);
         uint16_t beforeFailure = core.channelAt(2);
         host.axesAvailable = false;
-        core.loop(host, 100, 0);
+        loopAtMs(core, host, 100, 0);
         // A failed sample clears the raw hold, and fresh recovery reseeds it.
         host.axesAvailable = true;
         host.axes[AXIS_THROTTLE] = 620;
-        core.loop(host, 120, 0);
+        loopAtMs(core, host, 120, 0);
         TEST_ASSERT_TRUE(core.channelAt(2) > beforeFailure);
         host.axesAvailable = false;
-        core.loop(host, 260, 0);
+        loopAtMs(core, host, 260, 0);
         TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
         for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
         TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
         host.axesAvailable = true;
         for(int axis = 0; axis < 4; axis++) host.axes[axis] = 900;
-        core.loop(host, 280, 0);
+        loopAtMs(core, host, 280, 0);
         TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
         for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
         TEST_ASSERT_EQUAL_UINT16(strength == 40 ? 746 : 377, core.channelAt(2));
         core.startSelfTest(280);
-        core.loop(host, 290, 0);
+        loopAtMs(core, host, 290, 0);
         TEST_ASSERT_TRUE(statusOf(core).selfTestActive);
         for(int channel : {0, 1, 3}) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
         TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
@@ -970,7 +1138,7 @@ static void test_gimbal_curves_preserve_neutral_direction_and_deadbands()
                     ELRSCrsfCoreConfig config = defaultConfig();
                     config.axisProfiles[axis] = profile;
                     host.axes[axis] = 900 - direction * 310;
-                    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+                    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
                     uint8_t channel = axis == AXIS_RUDDER ? 3 : axis;
                     TEST_ASSERT_EQUAL_UINT16(reverse ? (strength == 40 ? 1278 : 1095) : (strength == 40 ? 705 : 888), core.channelAt(channel));
                 }
@@ -1019,17 +1187,17 @@ static void test_gimbal_curves_are_independent_and_follow_channel_routing()
             config.axisProfiles[axis] = {300, 900, 1500, 0, 0, strengths[axis]};
             host.axes[axis] = 600;
         }
-        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
         // Changing Elevator cannot change the other three physical outputs.
         config.axisProfiles[AXIS_ELEVATOR].expo = 100;
-        TEST_ASSERT_TRUE(core.begin(host, config, 20));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 20));
         TEST_ASSERT_EQUAL_UINT16(888, core.channelAt(channels[permuted][AXIS_ELEVATOR]));
         for(int axis : {AXIS_AILERON, AXIS_RUDDER, AXIS_THROTTLE}) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
         // Curves shape calibrated input before travel limits scale each physical axis.
         config.axisProfiles[AXIS_ELEVATOR].expo = strengths[AXIS_ELEVATOR];
         for(auto &limits : config.outputLimits) limits = {1200, 1800};
-        TEST_ASSERT_TRUE(core.begin(host, config, 40));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 40));
         const uint16_t limited[] = {819, 746, 929, 654};
         for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(limited[axis], core.channelAt(channels[permuted][axis]));
     }
@@ -1222,12 +1390,12 @@ static void test_echoed_tx_frame_is_ignored_as_reply()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 10, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
     host.queueFrame(host.writes[0]);
-    core.loop(host, 11, 0);
+    loopAtMs(core, host, 11, 0);
 
     ELRSCrsfStatus status = statusOf(core);
     TEST_ASSERT_FALSE(status.replyActive);
@@ -1242,12 +1410,12 @@ static void test_delayed_echoed_tx_frame_is_ignored_as_reply()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 10, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
     host.queueFrame(host.writes[0]);
-    core.loop(host, 16, 0);
+    loopAtMs(core, host, 16, 0);
 
     ELRSCrsfStatus status = statusOf(core);
     TEST_ASSERT_FALSE(status.replyActive);
@@ -1266,11 +1434,11 @@ static void test_rc_frames_do_not_arm_reply_timeouts()
     config.transport.replyTimeoutMs = 20;
     config.transport.packetRateHz = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
-    core.loop(host, 10, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    loopAtMs(core, host, 10, 0);
     TEST_ASSERT_EQUAL_UINT32(0, statusOf(core).lastReplyTimeoutAt);
 
-    core.loop(host, 35, 0);
+    loopAtMs(core, host, 35, 0);
     TEST_ASSERT_EQUAL_UINT32(0, statusOf(core).lastReplyTimeoutAt);
     TEST_ASSERT_EQUAL_INT(2, (int)host.writes.size());
 }
@@ -1284,7 +1452,7 @@ static void test_service_frame_reply_timeout_is_reported()
     config.transport.replyTimeoutMs = 20;
     config.transport.packetRateHz = 500;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
 
     loopAt(core, host, 0, 0);
     TEST_ASSERT_EQUAL_UINT32(0, statusOf(core).lastReplyTimeoutAt);
@@ -1309,7 +1477,7 @@ static void test_service_reply_without_telemetry_does_not_report_replies_lost()
     config.transport.replyTimeoutMs = 20;
     config.transport.packetRateHz = 500;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
 
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
@@ -1329,10 +1497,10 @@ static void test_unknown_frame_updates_raw_frame_status()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x28, std::vector<uint8_t>{ 0x01, 0x02 }));
 
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     ELRSCrsfStatus status = statusOf(core);
     TEST_ASSERT_TRUE(status.replyActive);
@@ -1372,11 +1540,11 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     config250.transport.packetRateHz = 250;
     config500.transport.packetRateHz = 500;
 
-    TEST_ASSERT_TRUE(core50.begin(host50, config50, 0, 0));
-    TEST_ASSERT_TRUE(core100.begin(host100, config100, 0, 0));
-    TEST_ASSERT_TRUE(core150.begin(host150, config150, 0, 0));
-    TEST_ASSERT_TRUE(core250.begin(host250, config250, 0, 0));
-    TEST_ASSERT_TRUE(core500.begin(host500, config500, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core50, host50, config50, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core100, host100, config100, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core150, host150, config150, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core250, host250, config250, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core500, host500, config500, 0, 0));
 
     loopAt(core50, host50, 0, 0);
     loopAt(core100, host100, 0, 0);
@@ -1466,9 +1634,9 @@ static void test_self_test_emits_known_frame()
     uint16_t channels[16];
     uint8_t expected[26];
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     core.startSelfTest(0);
-    core.loop(host, 10, 0);
+    loopAtMs(core, host, 10, 0);
 
     channels[0] = 992;
     channels[1] = 992;
@@ -1492,7 +1660,7 @@ static void test_adc_missing_at_boot_sets_fault_and_safe_channels()
 
     host.axesAvailable = false;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
 
     ELRSCrsfStatus status = statusOf(core);
     TEST_ASSERT_TRUE(status.faultFlags & ELRS_FAULT_ADC_MISSING);
@@ -1513,13 +1681,13 @@ static void test_adc_stale_after_valid_samples_uses_safe_fallback()
     host.axes[AXIS_THROTTLE] = 1500;
     host.axes[AXIS_RUDDER] = 1100;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 20, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    loopAtMs(core, host, 20, 0);
 
     TEST_ASSERT_FALSE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
 
     host.axesAvailable = false;
-    core.loop(host, 150, 0);
+    loopAtMs(core, host, 150, 0);
 
     ELRSCrsfStatus status = statusOf(core);
     TEST_ASSERT_TRUE(status.faultFlags & ELRS_FAULT_ADC_STALE);
@@ -1540,12 +1708,12 @@ static void test_adc_fault_and_self_test_keep_remapped_throttle_neutral()
         config.inputRouting.throttleChannel = 2;
         host.axes[AXIS_THROTTLE] = 0;
         host.axesAvailable = scenario != 0;
-        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         if(scenario) {
             TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(1));
             if(scenario == 1) host.axesAvailable = false;
             else core.startSelfTest(0);
-            core.loop(host, 150, 0);
+            loopAtMs(core, host, 150, 0);
         }
         TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
         TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
@@ -1558,15 +1726,15 @@ static void test_button_pack_stale_holds_last_valid_states()
     ELRSCrsfCore core;
 
     host.packStates = 0b10101010;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 20, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    loopAtMs(core, host, 20, 0);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(9));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(8));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(11));
 
     host.packAvailable = false;
-    core.loop(host, 160, 0);
+    loopAtMs(core, host, 160, 0);
 
     ELRSCrsfStatus status = statusOf(core);
     TEST_ASSERT_TRUE(status.faultFlags & ELRS_FAULT_BUTTONPACK_STALE);
@@ -1582,8 +1750,8 @@ static void test_button_pack_missing_at_boot_defaults_low()
 
     host.packAvailable = false;
     host.packStates = 0xFF;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
-    core.loop(host, 20, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    loopAtMs(core, host, 20, 0);
 
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(8));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(9));
@@ -1597,7 +1765,7 @@ static void test_status_fault_transitions_clear_on_recovery()
     ELRSCrsfCore core;
 
     host.axesAvailable = false;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_MISSING);
 
     host.axesAvailable = true;
@@ -1605,20 +1773,20 @@ static void test_status_fault_transitions_clear_on_recovery()
     host.axes[AXIS_ELEVATOR] = 1300;
     host.axes[AXIS_THROTTLE] = 1400;
     host.axes[AXIS_RUDDER] = 1500;
-    core.loop(host, 30, 0);
+    loopAtMs(core, host, 30, 0);
     TEST_ASSERT_FALSE(statusOf(core).faultFlags & ELRS_FAULT_ADC_MISSING);
 
     host.packStates = 0b00001111;
-    core.loop(host, 40, 0);
+    loopAtMs(core, host, 40, 0);
     TEST_ASSERT_FALSE(statusOf(core).faultFlags & ELRS_FAULT_BUTTONPACK_STALE);
 
     host.packAvailable = false;
-    core.loop(host, 160, 0);
+    loopAtMs(core, host, 160, 0);
     TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_BUTTONPACK_STALE);
 
     host.packAvailable = true;
     host.packStates = 0b11110000;
-    core.loop(host, 170, 0);
+    loopAtMs(core, host, 170, 0);
     TEST_ASSERT_FALSE(statusOf(core).faultFlags & ELRS_FAULT_BUTTONPACK_STALE);
 }
 
@@ -1640,8 +1808,8 @@ static void test_control_mapping_and_reversed_axis_calibration()
     config.axisProfiles[AXIS_RUDDER] = elrsDefaultInputAxisProfile();
     config.axisProfiles[AXIS_RUDDER].reverse = 1;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
-    core.loop(host, 10, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
@@ -1661,7 +1829,7 @@ static void test_control_mapping_and_reversed_axis_calibration()
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
 
     host.axes[AXIS_RUDDER] = 0;
-    core.loop(host, 20, 0);
+    loopAtMs(core, host, 20, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(3));
 }
 
@@ -1680,7 +1848,7 @@ static void test_axis_order_aileron_elevator_throttle_rudder_matches_runtime_ban
     host.axes[AXIS_ELEVATOR] = 1536;
     host.axes[AXIS_AILERON] = 2047;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     loopAt(core, host, 20, 20000);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
@@ -1729,7 +1897,7 @@ static void test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapp
     config.axisProfiles[AXIS_AILERON].center = 0;
     config.axisProfiles[AXIS_AILERON].maximum = 1023;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
     loopAt(core, host, 20, 20000);
 
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
@@ -1756,7 +1924,7 @@ static void test_gimbal_routing_collision_uses_defaults()
     host.buttonB = true;
     host.packStates = 0b00000001;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
     loopAt(core, host, 20, 20000);
 
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
@@ -1777,14 +1945,14 @@ static void test_telemetry_parsing_and_bad_crc_rejection()
     ELRSCrsfCore core;
     std::vector<uint8_t> badLink;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     host.queueFrame(makeFrame(0x08, std::vector<uint8_t>{ 0, 126, 0, 0, 0, 0, 0, 77 }));
     host.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 126, 0, 0, 0, 0, 0 }));
     host.queueFrame(makeFrame(0x0A, std::vector<uint8_t>{ 0x00, 0x4D }));
 
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     TEST_ASSERT_TRUE(core.synced());
     TEST_ASSERT_TRUE(core.telemetryActive());
@@ -1798,7 +1966,7 @@ static void test_telemetry_parsing_and_bad_crc_rejection()
     badLink = makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 5, 0, 0, 0, 0, 0, 0, 0 });
     badLink[badLink.size() - 1] ^= 0xFF;
     host.queueFrame(badLink);
-    core.loop(host, 200, 0);
+    loopAtMs(core, host, 200, 0);
 
     TEST_ASSERT_EQUAL_UINT8(88, core.linkQuality());
 }
@@ -1808,10 +1976,10 @@ static void test_non_c8_sync_frame_is_accepted()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrameWithSync(0x00, 0x14, std::vector<uint8_t>{ 0, 0, 68, 0, 0, 0, 0, 0, 0, 0 }));
 
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     TEST_ASSERT_TRUE(statusOf(core).replyActive);
     TEST_ASSERT_TRUE(core.synced());
@@ -1825,11 +1993,11 @@ static void test_parser_recovers_after_garbage_before_valid_frame()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     queueBytes(host, makeGarbage());
     queueBytes(host, makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 67, 0, 0, 0, 0, 0, 0, 0 }));
 
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     TEST_ASSERT_TRUE(core.synced());
     TEST_ASSERT_EQUAL_UINT8(67, core.linkQuality());
@@ -1843,11 +2011,11 @@ static void test_parser_recovers_after_bad_crc_followed_by_valid_frame()
     std::vector<uint8_t> bad = makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 12, 0, 0, 0, 0, 0, 0, 0 });
     bad.back() ^= 0xFF;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     queueBytes(host, bad);
     queueBytes(host, makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 91, 0, 0, 0, 0, 0, 0, 0 }));
 
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     TEST_ASSERT_TRUE(core.synced());
     TEST_ASSERT_EQUAL_UINT8(91, core.linkQuality());
@@ -1858,9 +2026,9 @@ static void test_comm_codes_show_no_sync_until_valid_frame()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
 
-    core.loop(host, 2000, 0);
+    loopAtMs(core, host, 2000, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NRY, statusOf(core).commCode);
     TEST_ASSERT_FALSE(statusOf(core).everSynced);
     TEST_ASSERT_FALSE(statusOf(core).replyActive);
@@ -1869,13 +2037,13 @@ static void test_comm_codes_show_no_sync_until_valid_frame()
     TEST_ASSERT_EQUAL_INT(1, (int)host.writes.size());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 73, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 2100, 0);
+    loopAtMs(core, host, 2100, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
     TEST_ASSERT_TRUE(statusOf(core).everSynced);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("NRY", host.displayText.c_str());
 
-    core.loop(host, 3800, 0);
+    loopAtMs(core, host, 3800, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("73", host.displayText.c_str());
 }
@@ -1885,20 +2053,20 @@ static void test_lost_telemetry_sets_los_until_valid_frame()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 44, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
     TEST_ASSERT_TRUE(statusOf(core).everSynced);
 
-    core.loop(host, 2100, 0);
+    loopAtMs(core, host, 2100, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_RLS, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("RLS", host.displayText.c_str());
     TEST_ASSERT_EQUAL_INT(2, (int)host.writes.size());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 45, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 2200, 0);
+    loopAtMs(core, host, 2200, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
     TEST_ASSERT_TRUE(statusOf(core).everSynced);
 }
@@ -1911,26 +2079,26 @@ static void test_crc_burst_sets_crc_comm_code()
 
     bad.back() ^= 0xFF;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 55, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     host.queueFrame(bad);
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
 
     host.queueFrame(bad);
-    core.loop(host, 1300, 0);
+    loopAtMs(core, host, 1300, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
 
     host.queueFrame(bad);
-    core.loop(host, 1400, 0);
+    loopAtMs(core, host, 1400, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_CRC, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("CRC", host.displayText.c_str());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 56, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 1500, 0);
+    loopAtMs(core, host, 1500, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
 }
 
@@ -1939,26 +2107,26 @@ static void test_frame_burst_sets_frm_comm_code()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 61, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
 
     queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
-    core.loop(host, 1300, 0);
+    loopAtMs(core, host, 1300, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
 
     queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
-    core.loop(host, 1400, 0);
+    loopAtMs(core, host, 1400, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_FRM, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("FRM", host.displayText.c_str());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 62, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 1500, 0);
+    loopAtMs(core, host, 1500, 0);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_NONE, statusOf(core).commCode);
 }
 
@@ -1967,26 +2135,26 @@ static void test_display_policy_prefers_gps_then_airspeed_then_link_quality()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     host.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0xCE, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     host.queueFrame(makeFrame(0x0A, std::vector<uint8_t>{ 0x00, 0x4D }));
-    core.loop(host, 1500, 0);
+    loopAtMs(core, host, 1500, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("HI", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_GPS, core.activeSpeedSource());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 2301, 0);
+    loopAtMs(core, host, 2301, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("7.7", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_AIRSPEED, core.activeSpeedSource());
 
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 3600, 0);
+    loopAtMs(core, host, 3600, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
     TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
@@ -2010,20 +2178,20 @@ static void test_speed_display_can_convert_kmh_to_mph()
 
     configMph.speedDisplayUnits = ELRS_SPEED_UNITS_MPH;
 
-    TEST_ASSERT_TRUE(coreKmh.begin(hostKmh, configKmh, 0));
-    TEST_ASSERT_TRUE(coreMph.begin(hostMph, configMph, 0));
+    TEST_ASSERT_TRUE(beginAt(coreKmh, hostKmh, configKmh, 0));
+    TEST_ASSERT_TRUE(beginAt(coreMph, hostMph, configMph, 0));
 
     hostKmh.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     hostKmh.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0xCE, 0, 0, 0, 0, 0 }));
     hostMph.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     hostMph.queueFrame(makeFrame(0x02, std::vector<uint8_t>{ 0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0xCE, 0, 0, 0, 0, 0 }));
 
-    coreKmh.loop(hostKmh, 100, 0);
-    coreMph.loop(hostMph, 100, 0);
+    loopAtMs(coreKmh, hostKmh, 100, 0);
+    loopAtMs(coreMph, hostMph, 100, 0);
     hostKmh.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
     hostMph.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 88, 0, 0, 0, 0, 0, 0, 0 }));
-    coreKmh.loop(hostKmh, 1500, 0);
-    coreMph.loop(hostMph, 1500, 0);
+    loopAtMs(coreKmh, hostKmh, 1500, 0);
+    loopAtMs(coreMph, hostMph, 1500, 0);
 
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, hostKmh.displayMode);
     TEST_ASSERT_EQUAL_STRING("HI", hostKmh.displayText.c_str());
@@ -2036,11 +2204,11 @@ static void test_battery_overlay_beats_comm_overlay()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 42, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
-    core.loop(host, 30000, 1);
+    loopAtMs(core, host, 30000, 1);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_RLS, statusOf(core).commCode);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
@@ -2051,14 +2219,14 @@ static void test_calibration_prompt_beats_comm_overlay()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 42, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     host.calibrationButton = true;
-    core.loop(host, 200, 0);
-    core.loop(host, 300, 0);
-    core.loop(host, 2301, 0);
+    loopAtMs(core, host, 200, 0);
+    loopAtMs(core, host, 300, 0);
+    loopAtMs(core, host, 2301, 0);
 
     TEST_ASSERT_TRUE(core.isCalibrating());
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_RLS, statusOf(core).commCode);
@@ -2074,17 +2242,17 @@ static void test_adc_overlay_beats_comm_overlay()
 
     bad.back() ^= 0xFF;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 52, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
 
     host.axesAvailable = false;
     host.queueFrame(bad);
-    core.loop(host, 250, 0);
+    loopAtMs(core, host, 250, 0);
     host.queueFrame(bad);
-    core.loop(host, 350, 0);
+    loopAtMs(core, host, 350, 0);
     host.queueFrame(bad);
-    core.loop(host, 450, 0);
+    loopAtMs(core, host, 450, 0);
 
     TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_CRC, statusOf(core).commCode);
@@ -2097,18 +2265,18 @@ static void test_button_pack_overlay_beats_comm_overlay()
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 57, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
-    core.loop(host, 120, 0);
+    loopAtMs(core, host, 100, 0);
+    loopAtMs(core, host, 120, 0);
 
     host.packAvailable = false;
     queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
-    core.loop(host, 1300, 0);
+    loopAtMs(core, host, 1300, 0);
     queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
-    core.loop(host, 1400, 0);
+    loopAtMs(core, host, 1400, 0);
     queueBytes(host, std::vector<uint8_t>{ 0xC8, 0x01 });
-    core.loop(host, 1500, 0);
+    loopAtMs(core, host, 1500, 0);
 
     TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_BUTTONPACK_STALE);
     TEST_ASSERT_EQUAL_UINT8(ELRS_COMM_FRM, statusOf(core).commCode);
@@ -2121,21 +2289,21 @@ static void test_battery_overlay_and_calibration_prompt_still_override_normal_di
     FakeHost host;
     ELRSCrsfCore core;
 
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x14, std::vector<uint8_t>{ 0, 0, 42, 0, 0, 0, 0, 0, 0, 0 }));
-    core.loop(host, 100, 0);
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 100, 0);
+    loopAtMs(core, host, 1200, 0);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("42", host.displayText.c_str());
 
-    core.loop(host, 60000, 1);
+    loopAtMs(core, host, 60000, 1);
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
 
     host.calibrationButton = true;
-    core.loop(host, 61100, 0);
-    core.loop(host, 61200, 0);
-    core.loop(host, 63301, 0);
+    loopAtMs(core, host, 61100, 0);
+    loopAtMs(core, host, 61200, 0);
+    loopAtMs(core, host, 63301, 0);
     TEST_ASSERT_TRUE(core.isCalibrating());
     TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
     TEST_ASSERT_EQUAL_STRING("CEN", host.displayText.c_str());
@@ -2147,16 +2315,16 @@ static void test_expired_overlays_do_not_return_after_millis_rollover()
     for(int adcFault = 0; adcFault < 2; adcFault++) {
         FakeHost host;
         ELRSCrsfCore core;
-        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0, 0));
         host.axesAvailable = !adcFault;
-        core.loop(host, 3600000UL, 1000, 0);
+        loopAt(core, host, 3600000UL, 1000, 0);
         TEST_ASSERT_EQUAL_STRING(adcFault ? "ADC" : "NRY", host.displayText.c_str());
 
         host.axesAvailable = true;
         const unsigned long times[] = {3600200UL, 3602000UL, 0xffffff00UL, 100UL};
         for(unsigned long now : times) {
             host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
-            core.loop(host, now, 2000, 0);
+            loopAt(core, host, now, 2000, 0);
             if(now != 3600200UL) TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
         }
         TEST_ASSERT_EQUAL_UINT8(ELRS_FAULT_NONE, core.getStatus().faultFlags);
@@ -2170,21 +2338,21 @@ static void test_adc_overlay_expires_across_millis_rollover()
     for(unsigned long start : starts) {
         FakeHost host;
         ELRSCrsfCore core;
-        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), start - 2000, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), start - 2000, 0));
         host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
-        core.loop(host, start - 300, 1000, 0);
+        loopAt(core, host, start - 300, 1000, 0);
         TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
 
         host.axesAvailable = false;
         host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
-        core.loop(host, start, 2000, 0);
+        loopAt(core, host, start, 2000, 0);
         TEST_ASSERT_EQUAL_STRING("ADC", host.displayText.c_str());
         host.axesAvailable = true;
         const unsigned long offsets[] = {200, 700, 1000, 1200};
         for(unsigned long offset : offsets) {
             host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
             const uint32_t now = (uint32_t)(start + offset);
-            core.loop(host, now, 2000 + offset, 0);
+            loopAt(core, host, now, 2000 + offset, 0);
             TEST_ASSERT_EQUAL_STRING(offset < 1000 ? "ADC" : "88", host.displayText.c_str());
         }
         TEST_ASSERT_EQUAL_UINT8(ELRS_FAULT_NONE, core.getStatus().faultFlags);
@@ -2195,13 +2363,13 @@ static void test_comm_overlay_expires_across_millis_rollover()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xfffff000UL, 0));
-    core.loop(host, 0xfffffe00UL, 1000, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0xfffff000UL, 0));
+    loopAt(core, host, 0xfffffe00UL, 1000, 0);
     TEST_ASSERT_EQUAL_STRING("NRY", host.displayText.c_str());
     const unsigned long times[] = {0xffffff00UL, 100UL, 1000UL};
     for(unsigned long now : times) {
         host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
-        core.loop(host, now, 2000, 0);
+        loopAt(core, host, now, 2000, 0);
         TEST_ASSERT_EQUAL_STRING(now == 1000UL ? "88" : "NRY", host.displayText.c_str());
     }
 }
@@ -2211,22 +2379,22 @@ static void test_telemetry_received_at_millis_zero_is_fresh()
     for(int source = 0; source < 5; source++) {
         FakeHost host;
         ELRSCrsfCore core;
-        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xffffff00UL, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0xffffff00UL, 0));
         if(source == 0) host.queueFrame(makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0}));
         if(source == 1 || source == 3) host.queueFrame(makeFrame(0x02, {0, 0, 0, 0, 0, 0, 0, 0, 0, (uint8_t)(source == 1 ? 126 : 0), 0, 0, 0, 0, 0}));
         if(source == 2 || source == 4) host.queueFrame(makeFrame(0x0A, {0, (uint8_t)(source == 2 ? 77 : 0)}));
-        core.loop(host, 0, 1000, 0);
-        core.loop(host, 1000, 2000, 0);
+        loopAt(core, host, 0, 1000, 0);
+        loopAt(core, host, 1000, 2000, 0);
         if(source == 0) {
             TEST_ASSERT_EQUAL_STRING("88", host.displayText.c_str());
         } else {
             TEST_ASSERT_EQUAL(DISPLAY_TEXT, host.displayMode);
             TEST_ASSERT_EQUAL_STRING(source == 1 ? "12.6" : (source == 2 ? "7.7" : "0.0"), host.displayText.c_str());
         }
-        core.loop(host, 2501, 3000, 0);
+        loopAt(core, host, 2501, 3000, 0);
         TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
-        core.loop(host, 0xffffff00UL, 4000, 0);
-        core.loop(host, 1000, 5000, 0);
+        loopAt(core, host, 0xffffff00UL, 4000, 0);
+        loopAt(core, host, 1000, 5000, 0);
         TEST_ASSERT_EQUAL(ELRSCrsfCore::SPEED_SOURCE_NONE, core.activeSpeedSource());
     }
 }
@@ -2237,10 +2405,10 @@ static void test_self_test_expires_across_millis_rollover()
     for(unsigned long start : starts) {
         FakeHost host;
         ELRSCrsfCore core;
-        TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), start - 2000, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), start - 2000, 0));
         core.startSelfTest(start, 1000);
         for(unsigned long offset : {0UL, 200UL, 999UL, 1000UL}) {
-            core.loop(host, (uint32_t)(start + offset), 1000 + offset, 0);
+            loopAt(core, host, (uint32_t)(start + offset), 1000 + offset, 0);
             TEST_ASSERT_EQUAL(offset < 1000, core.getStatus().selfTestActive);
         }
     }
@@ -2258,7 +2426,7 @@ static void test_module_settings_are_discovered_and_written()
     config.maxPower = ELRS_MAX_POWER_500MW;
     config.dynamicPower = ELRS_DYNAMIC_POWER_DYNAMIC;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2333,7 +2501,7 @@ static void test_module_settings_retry_without_blocking_rc_output()
 
     config.transport.packetRateHz = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2353,7 +2521,7 @@ static void test_unanswered_module_probes_stop_until_reconnect_or_save()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     for(unsigned long now = 0; now <= 60000; now += 20) loopAt(core, host, now, now * 1000UL);
     TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x28));
     TEST_ASSERT_GREATER_THAN_INT(2900, countWrittenFrameType(host, 0x16));
@@ -2388,7 +2556,7 @@ static void test_module_settings_request_remaining_chunks_before_advancing_field
 
     config.transport.packetRateHz = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2442,7 +2610,7 @@ static void test_module_settings_retry_timed_out_chunk_before_scan_backoff()
 
     config.transport.packetRateHz = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2505,7 +2673,7 @@ static void test_module_start_and_save_delay_survive_millis_rollover()
             FakeHost host;
             ELRSCrsfCore core;
             const ELRSCrsfCoreConfig config = defaultConfig();
-            core.begin(host, config, save ? 0 : start, 0);
+            beginAt(core, host, config, save ? 0 : start, 0);
             if(save) core.requestModuleConfigUpdate(config.telemetryRatio, config.maxPower, config.dynamicPower, start);
             moduleTimerLoopAt(core, host, start, 20);
             moduleTimerLoopAt(core, host, start, 980);
@@ -2524,7 +2692,7 @@ static void test_module_probe_zero_deadline_still_retries_after_500ms()
     FakeHost host;
     ELRSCrsfCore core;
     const uint32_t start = 0UL - 1500UL;
-    core.begin(host, defaultConfig(), start, 0);
+    beginAt(core, host, defaultConfig(), start, 0);
     moduleTimerLoopAt(core, host, start, 1000); // Probe deadline is exactly zero.
     moduleTimerLoopAt(core, host, start, 1020);
     moduleTimerLoopAt(core, host, start, 1499);
@@ -2543,7 +2711,7 @@ static void test_module_parameter_zero_deadline_still_retries_after_500ms()
     FakeHost host;
     ELRSCrsfCore core;
     const uint32_t start = 0UL - 1540UL;
-    core.begin(host, defaultConfig(), start, 0);
+    beginAt(core, host, defaultConfig(), start, 0);
     moduleTimerLoopAt(core, host, start, 1000);
     moduleTimerLoopAt(core, host, start, 1020);
     host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
@@ -2567,7 +2735,7 @@ static void test_module_write_delay_survives_zero_deadline()
     ELRSCrsfCoreConfig config = defaultConfig();
     config.telemetryRatio = ELRS_TLM_RATIO_1_4;
     const uint32_t start = 0UL - 1600UL;
-    core.begin(host, config, start, 0);
+    beginAt(core, host, config, start, 0);
     moduleTimerLoopAt(core, host, start, 1000);
     moduleTimerLoopAt(core, host, start, 1020);
     host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
@@ -2589,7 +2757,7 @@ static void test_module_settings_ignore_duplicate_chunk_after_retry()
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
     config.telemetryRatio = ELRS_TLM_RATIO_1_4;
-    core.begin(host, config, 0, 0);
+    beginAt(core, host, config, 0, 0);
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2598,6 +2766,7 @@ static void test_module_settings_ignore_duplicate_chunk_after_retry()
     loopAt(core, host, 1120, 1120000);
     loopAt(core, host, 1530, 1530000);
     loopAt(core, host, 1540, 1540000);
+    loopAt(core, host, 1550, 1550000); // Recovery leaves one full 50Hz slot after 1530.
     TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(0, (*findWrittenFrameType(host, 0x2C, 1))[6]);
 
@@ -2609,6 +2778,7 @@ static void test_module_settings_ignore_duplicate_chunk_after_retry()
     host.queueFrame(makeParameterChunkFrame(1, 1, first));
     loopAt(core, host, 1560, 1560000);
     loopAt(core, host, 1640, 1640000);
+    loopAt(core, host, 1660, 1660000); // First slot after the 100ms service gap. // Service spacing is measured from the actual retry slot.
     TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
     host.queueFrame(makeParameterChunkFrame(1, 0, last));
@@ -2626,7 +2796,7 @@ static void test_module_settings_preserve_chunks_when_retry_read_is_still_queued
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
     config.telemetryRatio = ELRS_TLM_RATIO_1_4;
-    core.begin(host, config, 0, 0);
+    beginAt(core, host, config, 0, 0);
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2643,9 +2813,11 @@ static void test_module_settings_preserve_chunks_when_retry_read_is_still_queued
     host.queueFrame(makeParameterChunkFrame(1, 2, first));
     loopAt(core, host, 1532, 1532000);
     loopAt(core, host, 1540, 1540000);
+    loopAt(core, host, 1550, 1550000);
     host.queueFrame(makeParameterChunkFrame(1, 2, first));
     loopAt(core, host, 1550, 1550000);
     loopAt(core, host, 1640, 1640000);
+    loopAt(core, host, 1660, 1660000); // First slot after the 100ms service gap.
     TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
 
@@ -2662,18 +2834,19 @@ static void test_module_settings_preserve_chunks_when_retry_read_is_still_queued
     }
     loopAt(core, host, 2040, 2040000);
     loopAt(core, host, 2060, 2060000);
+    loopAt(core, host, 2080, 2080000); // Retry queued at 2060 uses the next scheduled slot.
     TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 3))[6]);
     host.queueFrame(makeParameterChunkFrame(1, 1, middle));
-    loopAt(core, host, 2070, 2070000);
+    loopAt(core, host, 2090, 2090000);
     host.queueFrame(makeParameterChunkFrame(1, 2, first));
     host.queueFrame(makeParameterChunkFrame(1, 1, middle));
-    loopAt(core, host, 2080, 2080000);
-    loopAt(core, host, 2160, 2160000);
+    loopAt(core, host, 2100, 2100000);
+    loopAt(core, host, 2180, 2180000);
     TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2C, 4))[6]);
     host.queueFrame(makeParameterChunkFrame(1, 0, last));
-    for(unsigned long now = 2180; now <= 2800; now += 20) loopAt(core, host, now, now * 1000UL);
+    for(unsigned long now = 2200; now <= 2820; now += 20) loopAt(core, host, now, now * 1000UL);
     TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
     TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2D, 0))[6]);
     TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
@@ -2688,7 +2861,7 @@ static void test_module_settings_retry_probe_before_long_backoff()
 
     config.transport.packetRateHz = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2712,7 +2885,7 @@ static void test_module_probe_does_not_lower_configured_500hz_runtime_rate()
     config.transport.packetRateHz = 500;
     config.transport.replyTimeoutMs = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2741,7 +2914,7 @@ static void test_bootstrap_probe_waits_long_enough_for_late_first_module_reply()
     config.transport.packetRateHz = 500;
     config.transport.replyTimeoutMs = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
 
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
@@ -2770,7 +2943,7 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     config.maxPower = ELRS_MAX_POWER_100MW;
     config.dynamicPower = ELRS_DYNAMIC_POWER_OFF;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2831,7 +3004,7 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     config.maxPower = ELRS_MAX_POWER_100MW;
     config.dynamicPower = ELRS_DYNAMIC_POWER_OFF;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
@@ -2891,7 +3064,7 @@ static void test_module_ping_keeps_rc_running_while_waiting_for_settings()
         ELRSCrsfCore core;
         ELRSCrsfCoreConfig config = defaultConfig();
         config.transport.packetRateHz = rate;
-        TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
         const unsigned long interval = 1000 / rate;
         loopAt(core, host, 1000, 1000000);
         loopAt(core, host, 1000 + interval, (1000 + interval) * 1000UL);
@@ -2916,7 +3089,7 @@ static void test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer
     config.transport.packetRateHz = 500;
     config.transport.replyTimeoutMs = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
 
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
@@ -2938,7 +3111,7 @@ static void test_service_probe_drain_preserves_following_module_reply_bytes()
     config.transport.packetRateHz = 500;
     config.transport.replyTimeoutMs = 50;
 
-    TEST_ASSERT_TRUE(core.begin(host, config, 0, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
 
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
@@ -2986,7 +3159,7 @@ static void test_invalid_button_calibration_preserves_minimum_throttle()
     FakeHost host;
     ELRSCrsfCore core;
     host.axes[AXIS_THROTTLE] = 0;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     unsigned long now = 0;
     calibrationPress(core, host, now, true);
     for(int i = 0; i < 9; i++) calibrationPress(core, host, now);
@@ -2999,7 +3172,7 @@ static void test_failed_button_capture_does_not_advance_calibration()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     unsigned long now = 0;
     calibrationPress(core, host, now, true);
     host.axesAvailable = false;
@@ -3016,7 +3189,7 @@ static void test_valid_descending_button_calibration_is_saved()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     unsigned long now = 0;
     calibrationPress(core, host, now, true);
     for(int point = 0; point < 9; point++) {
@@ -3034,7 +3207,7 @@ static void test_failed_button_calibration_save_reports_error()
     FakeHost host;
     ELRSCrsfCore core;
     host.calibrationWriteOk = false;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     unsigned long now = 0;
     calibrationPress(core, host, now, true);
     for(int point = 0; point < 9; point++) {
@@ -3057,11 +3230,11 @@ static void test_transport_sends_across_micros_rollover()
         config.packetRateHz = rate;
         const unsigned long interval = (1000000UL + rate - 1) / rate;
         const unsigned long before = 0xFFFFFFFFUL - interval / 2;
-        transport.begin(host, config, 0, before);
-        transport.loop(host, 0, before);
-        transport.loop(host, 1, (uint32_t)(before + interval));
+        beginAt(transport, host, config, 0, before);
+        transportAt(transport, host, 0, before);
+        transportAt(transport, host, 1, (uint32_t)(before + interval));
         TEST_ASSERT_EQUAL_INT(2, host.writes.size());
-        transport.loop(host, 2, (uint32_t)(before + 2 * interval));
+        transportAt(transport, host, 2, (uint32_t)(before + 2 * interval));
         TEST_ASSERT_EQUAL_INT(3, host.writes.size());
     }
 }
@@ -3070,7 +3243,7 @@ static void test_malformed_parameter_reply_keeps_retries_active()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     for(unsigned long now = 20; now <= 1020; now += 20) loopAt(core, host, now, now * 1000UL);
     host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
     loopAt(core, host, 1040, 1040000);
@@ -3094,16 +3267,16 @@ static void test_service_reply_window_and_echo_cross_millis_rollover()
     config.packetRateHz = 250;
     const unsigned long before = 0xFFFFFFFFUL - 249;
     const std::vector<uint8_t> ping = makeFrame(0x28, std::vector<uint8_t>{0, 0xEA});
-    transport.begin(host, config, before, 1000);
+    beginAt(transport, host, config, before, 1000);
     transport.queueServiceFrame(ping.data(), ping.size());
-    transport.loop(host, before, 1000); // Bootstrap reply deadline wraps exactly to zero.
+    transportAt(transport, host, before, 1000); // Bootstrap reply deadline wraps exactly to zero.
     host.queueFrame(ping); // Delayed local echo must not release the reply window.
-    transport.loop(host, before + 10, 11000);
+    transportAt(transport, host, before + 10, 11000);
     TEST_ASSERT_FALSE(transport.status().everReplied);
     TEST_ASSERT_EQUAL_INT(2, host.writes.size());
-    transport.loop(host, 0xFFFFFFFFUL, 250000);
+    transportAt(transport, host, 0xFFFFFFFFUL, 250000);
     TEST_ASSERT_EQUAL_INT(3, host.writes.size());
-    transport.loop(host, 0, 251000);
+    transportAt(transport, host, 0, 251000);
     TEST_ASSERT_EQUAL_INT(3, host.writes.size());
     TEST_ASSERT_EQUAL_UINT32(0, transport.status().lastReplyTimeoutAt);
     TEST_ASSERT_EQUAL_HEX8(0x16, host.writes.back()[2]);
@@ -3115,23 +3288,23 @@ static void test_delayed_outbound_frames_do_not_count_as_module_replies()
     ELRSCrsfTransport transport;
     ELRSCrsfTransportConfig config;
     config.packetRateHz = 250;
-    transport.begin(host, config, 0, 0);
+    beginAt(transport, host, config, 0, 0);
     const std::vector<uint8_t> ping = makeFrame(0x28, std::vector<uint8_t>{0, 0xEA});
     transport.queueServiceFrame(ping.data(), ping.size());
-    transport.loop(host, 0, 0);
-    transport.loop(host, 4, 4000);
+    transportAt(transport, host, 0, 0);
+    transportAt(transport, host, 4, 4000);
     const std::vector<uint8_t> oldRc = host.writes.back();
     uint16_t channels[16] = {};
     channels[0] = 1200;
     transport.setChannels(channels);
-    transport.loop(host, 8, 8000);
+    transportAt(transport, host, 8, 8000);
     host.queueFrame(ping);
     host.queueFrame(oldRc);
     host.queueFrame(makeFrame(0x2C, std::vector<uint8_t>{0xEE, 0xEF, 1, 0}));
-    transport.loop(host, 12, 12000);
+    transportAt(transport, host, 12, 12000);
     TEST_ASSERT_FALSE(transport.status().everReplied);
     host.queueFrame(makeDeviceInfoFrame("ELRS", 0));
-    transport.loop(host, 16, 16000);
+    transportAt(transport, host, 16, 16000);
     TEST_ASSERT_TRUE(transport.status().everReplied);
 }
 
@@ -3139,7 +3312,7 @@ static void test_oversized_parameter_restarts_from_chunk_zero_and_recovers()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    core.begin(host, defaultConfig(), 0, 0);
+    beginAt(core, host, defaultConfig(), 0, 0);
     for(unsigned long now = 20; now <= 1020; now += 20) loopAt(core, host, now, now * 1000UL);
     host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
     loopAt(core, host, 1040, 1040000);
@@ -3164,16 +3337,16 @@ static void test_hysteresis_holds_jitter_and_tracks_slow_motion()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    core.begin(host, defaultConfig(), 0);
+    beginAt(core, host, defaultConfig(), 0);
     unsigned long now = 0;
     for(int offset = -4; offset <= 5; offset++) {
         for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1024 + offset;
         now += 20;
-        core.loop(host, now, 0);
+        loopAtMs(core, host, now, 0);
         for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
     }
     for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1030;
-    core.loop(host, now + 20, 0);
+    loopAtMs(core, host, now + 20, 0);
     for(int channel = 0; channel < 4; channel++) TEST_ASSERT_NOT_EQUAL(992, core.channelAt(channel));
 }
 
@@ -3182,20 +3355,20 @@ static void test_hysteresis_reaches_endpoints_and_reseeds_after_error()
     FakeHost host;
     ELRSCrsfCore core;
     host.axes[0] = 2;
-    core.begin(host, defaultConfig(), 0);
+    beginAt(core, host, defaultConfig(), 0);
     host.axes[0] = 0;
-    core.loop(host, 20, 0);
+    loopAtMs(core, host, 20, 0);
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
     host.axes[0] = 2045;
-    core.loop(host, 40, 0);
+    loopAtMs(core, host, 40, 0);
     host.axes[0] = 2047;
-    core.loop(host, 60, 0);
+    loopAtMs(core, host, 60, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
     host.axesAvailable = false;
-    core.loop(host, 80, 0);
+    loopAtMs(core, host, 80, 0);
     host.axesAvailable = true;
     host.axes[0] = 2043;
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
     TEST_ASSERT_EQUAL_UINT16(1808, core.channelAt(0));
 }
 
@@ -3217,14 +3390,14 @@ static void test_hysteresis_returns_to_neutral_for_all_profile_directions()
                     config.axisProfiles[axis].reverse = reverse;
                     host.axes[axis] = 1010 + side * 4;
                 }
-                core.begin(host, config, 0);
+                beginAt(core, host, config, 0);
                 for(int channel = 0; channel < 4; channel++) TEST_ASSERT_NOT_EQUAL(992, core.channelAt(channel));
                 for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1010;
-                core.loop(host, 20, 0);
+                loopAtMs(core, host, 20, 0);
                 for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
                 // Once neutral, small ADC excursions must still be held.
                 for(int axis = 0; axis < 4; axis++) host.axes[axis] = 1010 + side * 4;
-                core.loop(host, 40, 0);
+                loopAtMs(core, host, 40, 0);
                 for(int channel = 0; channel < 4; channel++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(channel));
             }
         }
@@ -3249,19 +3422,19 @@ static void test_throttle_idle_band_handles_all_profile_directions()
                 FakeHost host;
                 ELRSCrsfCore core;
                 host.axes[AXIS_THROTTLE] = idle + direction * offset;
-                core.begin(host, config, 0);
+                beginAt(core, host, config, 0);
                 TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
             }
             FakeHost host;
             ELRSCrsfCore core;
             host.axes[AXIS_THROTTLE] = profile.center;
-            core.begin(host, config, 0);
+            beginAt(core, host, config, 0);
             TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
             host.axes[AXIS_THROTTLE] = full;
-            core.loop(host, 20, 0);
+            loopAtMs(core, host, 20, 0);
             TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
             host.axes[AXIS_THROTTLE] = idle + direction * 20;
-            core.loop(host, 40, 0);
+            loopAtMs(core, host, 40, 0);
             TEST_ASSERT_TRUE(core.channelAt(2) > 172);
         }
     }
@@ -3285,19 +3458,19 @@ static void test_throttle_idle_entry_bypasses_hysteresis()
                 FakeHost host;
                 ELRSCrsfCore core;
                 host.axes[AXIS_THROTTLE] = idle + direction * 10;
-                core.begin(host, config, 0);
+                beginAt(core, host, config, 0);
                 TEST_ASSERT_TRUE(core.channelAt(2) > 172);
                 host.axes[AXIS_THROTTLE] = idle + direction * (narrow ? 9 : 5);
                 for(unsigned long now = 20; now <= 60; now += 20) {
-                    core.loop(host, now, 0);
+                    loopAtMs(core, host, now, 0);
                     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                 }
                 if(!narrow) {
                     host.axes[AXIS_THROTTLE] = idle + direction * 10;
-                    core.loop(host, 80, 0);
+                    loopAtMs(core, host, 80, 0);
                     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                     host.axes[AXIS_THROTTLE] = idle + direction * 11;
-                    core.loop(host, 100, 0);
+                    loopAtMs(core, host, 100, 0);
                     TEST_ASSERT_TRUE(core.channelAt(2) > 172);
                 }
             }
@@ -3311,18 +3484,18 @@ static void test_input_tolerances_are_adjustable_and_can_be_disabled()
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     config.adcHysteresis = 8;
-    core.begin(host, config, 0);
+    beginAt(core, host, config, 0);
     host.axes[0] = 1032;
-    core.loop(host, 20, 0);
+    loopAtMs(core, host, 20, 0);
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
     host.axes[0] = 1033;
-    core.loop(host, 40, 0);
+    loopAtMs(core, host, 40, 0);
     TEST_ASSERT_EQUAL_UINT16(998, core.channelAt(0));
     config.adcHysteresis = 0;
     host.axes[0] = 1024;
-    core.begin(host, config, 60);
+    beginAt(core, host, config, 60);
     host.axes[0] = 1028;
-    core.loop(host, 80, 0);
+    loopAtMs(core, host, 80, 0);
     TEST_ASSERT_EQUAL_UINT16(995, core.channelAt(0));
     config.throttleIdleDeadband = 0;
     config.axisProfiles[AXIS_THROTTLE] = elrsDefaultInputAxisProfile();
@@ -3330,7 +3503,7 @@ static void test_input_tolerances_are_adjustable_and_can_be_disabled()
     config.axisProfiles[AXIS_THROTTLE].center = 900;
     config.axisProfiles[AXIS_THROTTLE].maximum = 1500;
     host.axes[AXIS_THROTTLE] = 305;
-    core.begin(host, config, 100);
+    beginAt(core, host, config, 100);
     TEST_ASSERT_EQUAL_UINT16(179, core.channelAt(2));
 }
 
@@ -3379,14 +3552,14 @@ static void test_switch_mapping_routes_each_input_without_leaking_old_channels()
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) config.switchRouting.channels[i] = 5 + (i + 3) % 12;
-    core.begin(host, config, 0);
+    beginAt(core, host, config, 0);
     for(int input = 0; input < ELRS_SWITCH_INPUT_COUNT; input++) {
         host.stop = input == 0;
         host.fakePower = input == 1;
         host.buttonA = input == 2;
         host.buttonB = input == 3;
         host.packStates = input >= 4 ? 1 << (input - 4) : 0;
-        core.loop(host, 20 * (input + 1), 0);
+        loopAtMs(core, host, 20 * (input + 1), 0);
         for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
             TEST_ASSERT_EQUAL_UINT16(i == input ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
         }
@@ -3395,7 +3568,7 @@ static void test_switch_mapping_routes_each_input_without_leaking_old_channels()
         TEST_ASSERT_EQUAL(host.fakePower, core.fakePowerOn());
     }
     host.axesAvailable = false;
-    core.loop(host, 500, 0);
+    loopAtMs(core, host, 500, 0);
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[11] - 1));
 }
@@ -3407,17 +3580,17 @@ static void test_switch_mapping_preserves_self_test_and_buttonpack_fallback()
     ELRSCrsfCoreConfig config = defaultConfig();
     for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) config.switchRouting.channels[i] = 16 - i;
     host.packAvailable = false;
-    core.begin(host, config, 0);
-    core.loop(host, 200, 0);
+    beginAt(core, host, config, 0);
+    loopAtMs(core, host, 200, 0);
     for(int i = 4; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(config.switchRouting.channels[i] - 1));
     host.packAvailable = true;
     host.packStates = 1;
-    core.loop(host, 220, 0);
+    loopAtMs(core, host, 220, 0);
     host.packAvailable = false;
-    core.loop(host, 500, 0);
+    loopAtMs(core, host, 500, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[4] - 1));
     core.startSelfTest(500);
-    core.loop(host, 520, 0);
+    loopAtMs(core, host, 520, 0);
     for(int i = 0; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(i == 0 ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
 }
 
@@ -3436,7 +3609,7 @@ static void test_switch_mapping_rejects_duplicates_and_invalid_channels()
         ELRSCrsfCoreConfig config = defaultConfig();
         config.switchRouting = routing;
         host.stop = true;
-        core.begin(host, config, 0);
+        beginAt(core, host, config, 0);
         TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
         TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(5));
     }
@@ -3453,24 +3626,24 @@ static void test_all_inputs_can_use_every_channel_without_collisions()
             (uint8_t)(1 + (2 + rotation) % 16), (uint8_t)(1 + (3 + rotation) % 16)
         };
         for(int i = 0; i < 12; i++) config.switchRouting.channels[i] = 1 + (4 + i + rotation) % 16;
-        core.begin(host, config, 0);
+        beginAt(core, host, config, 0);
         for(int input = 0; input < 12; input++) {
             host.stop = input == 0;
             host.fakePower = input == 1;
             host.buttonA = input == 2;
             host.buttonB = input == 3;
             host.packStates = input >= 4 ? 1 << (input - 4) : 0;
-            core.loop(host, 20 * (input + 1), 0);
+            loopAtMs(core, host, 20 * (input + 1), 0);
             for(int i = 0; i < 12; i++) {
                 TEST_ASSERT_EQUAL_UINT16(i == input ? 1811 : 172, core.channelAt(config.switchRouting.channels[i] - 1));
             }
             for(int i = 0; i < 4; i++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt((i + rotation) % 16));
         }
         host.axesAvailable = false;
-        core.loop(host, 500, 0);
+        loopAtMs(core, host, 500, 0);
         for(int i = 0; i < 4; i++) TEST_ASSERT_EQUAL_UINT16(992, core.channelAt((i + rotation) % 16));
         core.startSelfTest(500);
-        core.loop(host, 520, 0);
+        loopAtMs(core, host, 520, 0);
         TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(config.switchRouting.channels[0] - 1));
         for(int i = 1; i < 12; i++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(config.switchRouting.channels[i] - 1));
     }
@@ -3484,16 +3657,16 @@ static void test_local_actions_require_release_after_startup_and_suppression()
     for(uint8_t &enabled : config.localActions) enabled = 1;
     host.stop = host.fakePower = host.buttonA = host.buttonB = true;
     host.packStates = 255;
-    core.begin(host, config, 1000);
-    core.loop(host, 1100, 0);
+    beginAt(core, host, config, 1000);
+    loopAtMs(core, host, 1100, 0);
     TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask);
     host.stop = host.fakePower = host.buttonA = host.buttonB = false;
     host.packStates = 0;
-    core.loop(host, 1110, 0);
+    loopAtMs(core, host, 1110, 0);
     TEST_ASSERT_EQUAL_UINT16(0xfff, host.localValidMask);
     host.stop = host.fakePower = host.buttonA = host.buttonB = true;
     host.packStates = 255;
-    core.loop(host, 1120, 0);
+    loopAtMs(core, host, 1120, 0);
     TEST_ASSERT_EQUAL_UINT16(0xfff, host.localStates);
     TEST_ASSERT_EQUAL_UINT16(0xfff, host.localValidMask);
     for(int input = 0; input < ELRS_SWITCH_INPUT_COUNT; input++) {
@@ -3501,14 +3674,14 @@ static void test_local_actions_require_release_after_startup_and_suppression()
     }
     host.stop = host.fakePower = host.buttonA = host.buttonB = false;
     host.packStates = 0;
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     core.startSelfTest(1300, 100);
     host.buttonA = true;
-    core.loop(host, 1390, 0); // A press near self-test expiry must remain blocked after expiry.
-    core.loop(host, 1450, 0);
+    loopAtMs(core, host, 1390, 0); // A press near self-test expiry must remain blocked after expiry.
+    loopAtMs(core, host, 1450, 0);
     TEST_ASSERT_EQUAL_UINT16(0xffb, host.localValidMask);
     host.buttonA = false;
-    core.loop(host, 1460, 0);
+    loopAtMs(core, host, 1460, 0);
     TEST_ASSERT_EQUAL_UINT16(0xfff, host.localValidMask);
 }
 
@@ -3521,30 +3694,30 @@ static void test_local_actions_opt_in_and_ignore_failed_pack_reads()
     config.localActions[2] = 1;
     config.localActions[0] = 255;
     host.packAvailable = false;
-    core.begin(host, config, 1000);
+    beginAt(core, host, config, 1000);
     TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
     host.packStates = 1;
     host.packAvailable = true;
-    core.loop(host, 1100, 0);
+    loopAtMs(core, host, 1100, 0);
     TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask); // Held on initial successful read.
     host.packStates = 0;
-    core.loop(host, 1110, 0);
+    loopAtMs(core, host, 1110, 0);
     TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
     host.packStates = 1;
-    core.loop(host, 1120, 0);
+    loopAtMs(core, host, 1120, 0);
     TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
     host.packAvailable = false;
-    core.loop(host, 1120, 0); // Two loops can share millis(); this read still failed.
+    loopAtMs(core, host, 1120, 0); // Two loops can share millis(); this read still failed.
     TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
-    core.loop(host, 1170, 0);
+    loopAtMs(core, host, 1170, 0);
     TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
     host.packAvailable = true;
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask); // Recovery cannot continue a pending press.
     host.packStates = 0;
-    core.loop(host, 1210, 0);
+    loopAtMs(core, host, 1210, 0);
     TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
-    core.begin(host, defaultConfig(), 1300);
+    beginAt(core, host, defaultConfig(), 1300);
     TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask); // None enabled by default.
 }
 
@@ -3555,18 +3728,18 @@ static void test_local_actions_require_release_after_calibration()
     ELRSCrsfCoreConfig config = defaultConfig();
     config.localActions[2] = 1;
     unsigned long now = 1000;
-    core.begin(host, config, now);
+    beginAt(core, host, config, now);
     calibrationPress(core, host, now, true);
     TEST_ASSERT_TRUE(core.isCalibrating());
     host.buttonA = true;
-    core.loop(host, ++now, 0);
+    loopAtMs(core, host, ++now, 0);
     TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask);
     calibrationPress(core, host, now, true); // Cancel, with O.O still held.
     TEST_ASSERT_FALSE(core.isCalibrating());
-    core.loop(host, ++now, 0);
+    loopAtMs(core, host, ++now, 0);
     TEST_ASSERT_EQUAL_UINT16(0, host.localValidMask);
     host.buttonA = false;
-    core.loop(host, ++now, 0);
+    loopAtMs(core, host, ++now, 0);
     TEST_ASSERT_EQUAL_UINT16(4, host.localValidMask);
 }
 
@@ -3579,7 +3752,7 @@ static void test_prop_controls_keep_display_leds_and_calibration_while_transmitt
     config.usePowerLed = config.useLevelMeter = true;
     for(uint8_t &enabled : config.localActions) enabled = 1;
     host.powerLed = host.levelMeter = host.stopLed = true;
-    core.begin(host, config, 1000);
+    beginAt(core, host, config, 1000);
     TEST_ASSERT_TRUE(host.powerLed && host.levelMeter && host.stopLed);
     host.axes[AXIS_AILERON] = 2047;
     host.stop = true;
@@ -3589,13 +3762,13 @@ static void test_prop_controls_keep_display_leds_and_calibration_while_transmitt
     TEST_ASSERT_EQUAL_INT(0, host.displayShows);
     unsigned long now = 1300;
     calibrationPress(core, host, now, true);
-    core.loop(host, now + 1000, 1); // Battery alerts also belong to the prop loop.
+    loopAtMs(core, host, now + 1000, 1); // Battery alerts also belong to the prop loop.
     TEST_ASSERT_FALSE(core.isCalibrating());
     TEST_ASSERT_EQUAL_INT(0, host.displayShows);
     TEST_ASSERT_EQUAL_INT(0, host.localScanCount);
     TEST_ASSERT_TRUE(host.powerLed && host.levelMeter && host.stopLed);
     host.axesAvailable = false;
-    core.loop(host, now + 1200, 0);
+    loopAtMs(core, host, now + 1200, 0);
     TEST_ASSERT_TRUE(core.getStatus().faultFlags & ELRS_FAULT_ADC_STALE);
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.aileronChannel - 1));
 }
@@ -3635,11 +3808,11 @@ static void test_none_switch_keeps_local_actions_and_other_channels_independent(
     config.switchRouting.channels[2] = 0;
     config.switchRouting.channels[4] = 0;
     config.localActions[2] = config.localActions[4] = 1;
-    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 1000));
     host.buttonA = true;
     host.packStates = 1;
     host.buttonB = true;
-    core.loop(host, 1020, 0);
+    loopAtMs(core, host, 1020, 0);
     TEST_ASSERT_EQUAL_UINT16(20, host.localValidMask);
     TEST_ASSERT_EQUAL_UINT16(28, host.localStates);
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(6));
@@ -3656,17 +3829,17 @@ static void test_none_gimbals_leave_free_channels_and_preserve_assigned_axes()
     config.inputRouting = {0, 2, 0, 4};
     host.axes[AXIS_AILERON] = host.axes[AXIS_ELEVATOR] = 2047;
     host.axes[AXIS_RUDDER] = host.axes[AXIS_THROTTLE] = 0;
-    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 1000));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(1));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(3));
     core.startSelfTest(1000, 100);
-    core.loop(host, 1020, 0);
+    loopAtMs(core, host, 1020, 0);
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(1));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     unsigned long now = 1200;
     calibrationPress(core, host, now, true);
     TEST_ASSERT_TRUE(core.isCalibrating());
@@ -3685,7 +3858,7 @@ static void test_none_frees_channels_for_other_input_types()
     host.stop = true;
     host.axes[AXIS_THROTTLE] = 2047;
     TEST_ASSERT_TRUE(elrsIsValidInputRouting(config.inputRouting, config.switchRouting));
-    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 1000));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
@@ -3704,13 +3877,13 @@ static void test_all_none_configuration_survives_sanitizing_and_core_modes()
     for(uint8_t channel : elrsSanitizeSwitchRouting(config.switchRouting).channels) TEST_ASSERT_EQUAL_UINT8(0, channel);
     host.stop = host.fakePower = host.buttonA = host.buttonB = true;
     host.packStates = 255;
-    TEST_ASSERT_TRUE(core.begin(host, config, 1000));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 1000));
     for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
     core.startSelfTest(1000, 100);
-    core.loop(host, 1020, 0);
+    loopAtMs(core, host, 1020, 0);
     for(int channel = 0; channel < 16; channel++) TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(channel));
     host.fakePower = false;
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     unsigned long now = 1200;
     calibrationPress(core, host, now, true);
     TEST_ASSERT_TRUE(core.isCalibrating());
@@ -3722,12 +3895,12 @@ static void test_telemetry_samples_decode_supported_numeric_sources()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0,126,0x30,0x39,0x03,0xB6,8}));
     host.queueFrame(makeFrame(0x0A, {0,77}));
     host.queueFrame(makeFrame(0x08, {0,126,0,34,0,9,196,77}));
     host.queueFrame(makeFrame(0x14, {105,0,85,253,0,0,0,0,0,0}));
-    core.loop(host, 100, 0);
+    loopAtMs(core, host, 100, 0);
     const float expected[] = {12.6f,7.7f,12.6f,3.4f,77,2500,-50,123.45f,8,85,-105,-3};
     for(uint8_t source = 1; source <= 12; source++) {
         const ELRSTelemetrySample sample = core.telemetrySample(source, 100);
@@ -3747,18 +3920,18 @@ static void test_telemetry_samples_track_presence_freshness_and_invalid_fields()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     TEST_ASSERT_FALSE(core.telemetrySample(3, 0).received);
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, core.telemetrySample(3, 0).ageMs);
     host.queueFrame(makeFrame(0x02, std::vector<uint8_t>(15, 0)));
     host.queueFrame(makeFrame(0x08, {0,126,0,0,0,0,0,77}));
-    core.loop(host, 0, 0);
+    loopAtMs(core, host, 0, 0);
     TEST_ASSERT_TRUE(core.telemetrySample(1, 0).available);
     TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(1, 0).value);
     TEST_ASSERT_TRUE(core.telemetrySample(9, 0).available); // Zero satellites is received, not proof of a fix.
     TEST_ASSERT_TRUE(core.telemetrySample(3, 1999).available);
     host.queueFrame(makeFrame(0x14, {0,0,80,0,0,0,0,0,0,0}));
-    core.loop(host, 2000, 0);
+    loopAtMs(core, host, 2000, 0);
     TEST_ASSERT_FALSE(core.telemetrySample(1, 2000).available);
     TEST_ASSERT_TRUE(core.telemetrySample(1, 2000).received);
     TEST_ASSERT_FALSE(core.telemetrySample(3, 2000).available);
@@ -3769,22 +3942,22 @@ static void test_telemetry_samples_track_presence_freshness_and_invalid_fields()
     host.queueFrame(badBattery);
     host.queueFrame(makeFrame(0x08, {0,100}));
     host.queueFrame(makeFrame(0x22, {1,2,3}));
-    core.loop(host, 2100, 0);
+    loopAtMs(core, host, 2100, 0);
     TEST_ASSERT_EQUAL_UINT32(2100, core.telemetrySample(3, 2100).ageMs);
     host.queueFrame(makeFrame(0x08, {0,126,0,34,0,9,196,255}));
     host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0,126,255,255,0,0,0}));
     host.queueFrame(makeFrame(0x14, {105,0,255,253,0,0,0,0,0,0}));
-    core.loop(host, 2200, 0);
+    loopAtMs(core, host, 2200, 0);
     TEST_ASSERT_FALSE(core.telemetrySample(5, 2200).available);
     TEST_ASSERT_TRUE(core.telemetrySample(3, 2200).available);
     TEST_ASSERT_FALSE(core.telemetrySample(8, 2200).available);
     TEST_ASSERT_TRUE(core.telemetrySample(1, 2200).available);
     TEST_ASSERT_FALSE(core.telemetrySample(10, 2200).available);
     TEST_ASSERT_TRUE(core.telemetrySample(12, 2200).available);
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0xfffffff0UL));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0xfffffff0UL));
     TEST_ASSERT_FALSE(core.telemetrySample(3, 0xfffffff0UL).received);
     host.queueFrame(makeFrame(0x08, {0,126,0,0,0,0,0,77}));
-    core.loop(host, 0xfffffff0UL, 0);
+    loopAtMs(core, host, 0xfffffff0UL, 0);
     TEST_ASSERT_TRUE(core.telemetrySample(3, 1983).available);
     TEST_ASSERT_FALSE(core.telemetrySample(3, 1984).available);
 }
@@ -3847,32 +4020,32 @@ static void test_display_assignment_outage_recovery_units_and_overlays()
     auto config = defaultConfig();
     config.displayConfig = {1,1,0.5f,0};
     config.propControls = true;
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
     TEST_ASSERT_TRUE(core.telemetryDisplayAssigned());
     host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0x03,0xE8,0,0,0,0,0}));
-    core.loop(host, 1200, 0);
+    loopAtMs(core, host, 1200, 0);
     TEST_ASSERT_EQUAL_INT(0, host.displayShows);
     core.renderAssignedDisplay(host, 1200, 0);
     TEST_ASSERT_EQUAL_STRING("50.0", host.displayText.c_str());
     host.queueFrame(makeFrame(0x14, {0,0,88,0,0,0,0,0,0,0}));
-    core.loop(host, 3200, 0);
+    loopAtMs(core, host, 3200, 0);
     core.renderAssignedDisplay(host, 3200, 0);
     TEST_ASSERT_EQUAL_STRING("---", host.displayText.c_str());
     host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,0x03,0xE8,0,0,0,0,0}));
-    core.loop(host, 3400, 0);
+    loopAtMs(core, host, 3400, 0);
     core.renderAssignedDisplay(host, 3400, 0);
     TEST_ASSERT_EQUAL_STRING("50.0", host.displayText.c_str());
     config.displayConfig.source = 14;
-    TEST_ASSERT_TRUE(core.begin(host, config, 3500));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 3500));
     TEST_ASSERT_FALSE(core.telemetryDisplayAssigned());
     const int shown = host.displayShows;
     core.renderAssignedDisplay(host, 4000, 0);
     TEST_ASSERT_EQUAL_INT(shown, host.displayShows);
     config.propControls = false; config.displayConfig.source = ELRS_DISPLAY_OFF;
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
-    core.loop(host, 1500, 0);
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    loopAtMs(core, host, 1500, 0);
     TEST_ASSERT_EQUAL_STRING("", host.displayText.c_str());
-    core.loop(host, 30001, 1);
+    loopAtMs(core, host, 30001, 1);
     TEST_ASSERT_EQUAL_STRING("BAT", host.displayText.c_str());
 }
 
@@ -3883,10 +4056,10 @@ static void test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph()
         ELRSCrsfCore core;
         auto config = defaultConfig();
         config.displayConfig = {source, 255, 1, 0};
-        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         // 10,000 eRPM / 2 pole pairs / 6.55 reduction, with 64 mm tires.
         host.queueFrame(makeFrame(0x0C, {0, 0, 0x27, 0x10}));
-        core.loop(host, 1500, 0); // Startup ELR banner retains priority for one second.
+        loopAtMs(core, host, 1500, 0); // Startup ELR banner retains priority for one second.
         const auto sample = core.telemetrySample(source, 1500);
         TEST_ASSERT_TRUE(sample.available);
         TEST_ASSERT_FLOAT_WITHIN(0.001f, source == 15 ? 5.722172f : 57.22172f, sample.value);
@@ -3901,18 +4074,18 @@ static void test_rpm_accepts_elrs_serial_sources_and_hott_update_interval()
         FakeHost host;
         ELRSCrsfCore core;
         auto config = defaultConfig(); config.displayConfig = {15, 255, 1, 0};
-        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         host.queueFrame(makeFrame(0x0C, {id, 0, 0x27, 0x10, 0x7F, 0xFF, 0xFF}));
-        core.loop(host, 1500, 0);
+        loopAtMs(core, host, 1500, 0);
         TEST_ASSERT_EQUAL_STRING("5.7", host.displayText.c_str()); // Use the first RPM, not RPM max/other sensors.
-        core.loop(host, 6699, 0); // HoTT can leave unchanged RPM unsent for five seconds.
+        loopAtMs(core, host, 6699, 0); // HoTT can leave unchanged RPM unsent for five seconds.
         TEST_ASSERT_TRUE(core.telemetrySample(15, 6699).available);
         host.queueFrame(makeFrame(0x0C, {id, 0, 0x27, 0x10, 0})); // Ignore trailing extension bytes.
-        core.loop(host, 6700, 0);
+        loopAtMs(core, host, 6700, 0);
         TEST_ASSERT_EQUAL_UINT32(0, core.telemetrySample(15, 6700).ageMs);
-        core.loop(host, 12700, 0);
+        loopAtMs(core, host, 12700, 0);
         TEST_ASSERT_FALSE(core.telemetrySample(15, 12700).available);
-        core.loop(host, 6700, 0);
+        loopAtMs(core, host, 6700, 0);
         TEST_ASSERT_FALSE(core.telemetrySample(15, 6700).available);
     }
 }
@@ -3921,13 +4094,13 @@ static void test_rpm_accepts_elrs_mavlink_passthrough()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     // ELRS MAVLink RPM -> ArduPilot 0x500A: signed little-endian RPM/10 pairs.
     host.queueFrame(makeFrame(0x80, {0xF0, 0x0A, 0x50, 0xE8, 0x03, 0xD0, 0x07}));
-    core.loop(host, 1500, 0);
+    loopAtMs(core, host, 1500, 0);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 1500).value);
     host.queueFrame(makeFrame(0x80, {0xF2, 2, 0x01, 0x50, 0, 0, 0, 0, 0x0A, 0x50, 0x18, 0xFC, 0, 0}));
-    core.loop(host, 1600, 0);
+    loopAtMs(core, host, 1600, 0);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 1600).value); // -10,000 RPM.
     const std::vector<std::vector<uint8_t>> invalid = {
         {}, {0xF0}, {0xF0, 0x0A, 0x50, 0, 0, 0}, // Truncated single item.
@@ -3937,10 +4110,10 @@ static void test_rpm_accepts_elrs_mavlink_passthrough()
     };
     for(const auto &payload : invalid) host.queueFrame(makeFrame(0x80, payload));
     auto bad = makeFrame(0x80, {0xF0, 0x0A, 0x50, 0, 0, 0, 0}); bad.back() ^= 0xFF; host.queueFrame(bad);
-    core.loop(host, 1700, 0);
+    loopAtMs(core, host, 1700, 0);
     TEST_ASSERT_EQUAL_UINT32(100, core.telemetrySample(15, 1700).ageMs);
     host.queueFrame(makeFrame(0x80, {0xF0, 0x0A, 0x50, 0, 0, 0, 0}));
-    core.loop(host, 1800, 0);
+    loopAtMs(core, host, 1800, 0);
     TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(15, 1800).value);
 }
 
@@ -3948,25 +4121,25 @@ static void test_rpm_presence_zero_reverse_and_independent_expiry()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
     host.queueFrame(makeFrame(0x0C, {0, 0, 0, 0}));
-    core.loop(host, 0, 0);
+    loopAtMs(core, host, 0, 0);
     TEST_ASSERT_TRUE(core.telemetrySample(15, 0).available);
     TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(15, 0).value);
     host.queueFrame(makeFrame(0x0C, {0, 0xFF, 0xD8, 0xF0})); // -10,000 RPM.
-    core.loop(host, 200, 0);
+    loopAtMs(core, host, 200, 0);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 200).value);
     host.queueFrame(makeFrame(0x0C, {0, 0, 0}));
     host.queueFrame(makeFrame(0x0C, {0, 0}));
     auto bad = makeFrame(0x0C, {0, 0, 0, 0}); bad.back() ^= 0xFF;
     host.queueFrame(bad);
     host.queueFrame(makeFrame(0x08, {0,123,0,30,0,0,0,0}));
-    core.loop(host, 6100, 0);
+    loopAtMs(core, host, 6100, 0);
     TEST_ASSERT_EQUAL_UINT32(5900, core.telemetrySample(15, 6100).ageMs);
-    core.loop(host, 6200, 0);
+    loopAtMs(core, host, 6200, 0);
     TEST_ASSERT_FALSE(core.telemetrySample(15, 6200).available);
     TEST_ASSERT_TRUE(core.telemetrySample(3, 6200).available);
-    core.loop(host, 200, 0); // The same counter value after a full wrap cannot revive expired RPM.
+    loopAtMs(core, host, 200, 0); // The same counter value after a full wrap cannot revive expired RPM.
     TEST_ASSERT_FALSE(core.telemetrySample(15, 200).available);
 }
 
@@ -3978,9 +4151,9 @@ static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
     config.vehicleConfig = {4, 10.0f, 101.6f, 15.0f};
     config.displayConfig = {ELRS_DISPLAY_RPM_SCALED_MPH, 255, 1, 0};
     config.speedDisplayUnits = ELRS_SPEED_UNITS_MPH;
-    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
     host.queueFrame(makeFrame(0x0C, {0, 0, 0x27, 0x10}));
-    core.loop(host, 1500, 0);
+    loopAtMs(core, host, 1500, 0);
     TEST_ASSERT_EQUAL_STRING("89.2", host.displayText.c_str());
     auto preview = config.vehicleConfig;
     preview.rpmType = ELRS_RPM_SHAFT;
@@ -4004,7 +4177,7 @@ static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
     }
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.949986f, core.telemetrySample(15, 1500).value);
     host.queueFrame(makeFrame(0x0C, {0, 0x80, 0, 0})); // Minimum signed 24-bit RPM.
-    core.loop(host, 1700, 0);
+    loopAtMs(core, host, 1700, 0);
     TEST_ASSERT_EQUAL_STRING("HI", host.displayText.c_str());
 }
 
@@ -4062,6 +4235,10 @@ int main(int argc, char **argv)
     RUN_TEST(test_service_reply_window_and_echo_cross_millis_rollover);
     RUN_TEST(test_delayed_outbound_frames_do_not_count_as_module_replies);
     RUN_TEST(test_oversized_parameter_restarts_from_chunk_zero_and_recovers);
+    RUN_TEST(test_tx_deadline_advances_past_real_io_completion);
+    RUN_TEST(test_late_tx_preserves_receive_opportunity);
+    RUN_TEST(test_tx_pacing_retains_fractional_periods_and_rollover);
+    RUN_TEST(test_costed_service_slots_keep_rc_and_real_reply_deadlines);
     RUN_TEST(test_rc_frame_packing_and_driver_enable);
     RUN_TEST(test_transport_inversion_setting_is_passed_to_hal);
     RUN_TEST(test_transport_debug_suppresses_raw_frame_dumps_by_default);

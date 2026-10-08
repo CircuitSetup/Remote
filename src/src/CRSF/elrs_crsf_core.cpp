@@ -114,7 +114,7 @@ ELRSCrsfCore::ELRSCrsfCore()
 
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now)
 {
-    return begin(host, config, now, now * 1000UL);
+    return begin(host, config, now, host.microsNow());
 }
 
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
@@ -268,7 +268,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 
 void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, int battWarn)
 {
-    loop(host, now, now * 1000UL, battWarn);
+    loop(host, now, host.microsNow(), battWarn);
 }
 
 void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long nowUs, int battWarn)
@@ -283,6 +283,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     if(!_config.propControls) host.setStopLed(stopOn);
 
     sampleAxes(host, now);
+    now = host.millisNow();
     updateInputFaults(host, now);
 
     if(_selfTestActive && (int32_t)(now - _selfTestUntil) >= 0) {
@@ -310,6 +311,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
 #endif
     _transport.setChannels(_channels);
     _transport.loop(host, now, nowUs);
+    now = host.millisNow();
     if(!_config.propControls) {
         updateLocalSwitches(host, (packStates << 4) | (buttonBOn << 3) |
                            (buttonAOn << 2) | (fakePower << 1) | stopOn);
@@ -594,7 +596,7 @@ bool ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
     }
     _haveStableAxes = true;
     _haveAds = true;
-    _lastGoodAxesAt = now;
+    _lastGoodAxesAt = host.millisNow();
 
     return true;
 }
