@@ -3894,6 +3894,56 @@ static void test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph()
     }
 }
 
+static void test_rpm_accepts_elrs_serial_sources_and_hott_update_interval()
+{
+    // SRXL2/Scorpion use 0; HoTT EAM/GAM/ESC use 1/2/3. CRSF permits any source ID.
+    for(uint8_t id : {0, 1, 2, 3, 128, 255}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        auto config = defaultConfig(); config.displayConfig = {15, 255, 1, 0};
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        host.queueFrame(makeFrame(0x0C, {id, 0, 0x27, 0x10, 0x7F, 0xFF, 0xFF}));
+        core.loop(host, 1500, 0);
+        TEST_ASSERT_EQUAL_STRING("5.7", host.displayText.c_str()); // Use the first RPM, not RPM max/other sensors.
+        core.loop(host, 6699, 0); // HoTT can leave unchanged RPM unsent for five seconds.
+        TEST_ASSERT_TRUE(core.telemetrySample(15, 6699).available);
+        host.queueFrame(makeFrame(0x0C, {id, 0, 0x27, 0x10, 0})); // Ignore trailing extension bytes.
+        core.loop(host, 6700, 0);
+        TEST_ASSERT_EQUAL_UINT32(0, core.telemetrySample(15, 6700).ageMs);
+        core.loop(host, 12700, 0);
+        TEST_ASSERT_FALSE(core.telemetrySample(15, 12700).available);
+        core.loop(host, 6700, 0);
+        TEST_ASSERT_FALSE(core.telemetrySample(15, 6700).available);
+    }
+}
+
+static void test_rpm_accepts_elrs_mavlink_passthrough()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(core.begin(host, defaultConfig(), 0));
+    // ELRS MAVLink RPM -> ArduPilot 0x500A: signed little-endian RPM/10 pairs.
+    host.queueFrame(makeFrame(0x80, {0xF0, 0x0A, 0x50, 0xE8, 0x03, 0xD0, 0x07}));
+    core.loop(host, 1500, 0);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 1500).value);
+    host.queueFrame(makeFrame(0x80, {0xF2, 2, 0x01, 0x50, 0, 0, 0, 0, 0x0A, 0x50, 0x18, 0xFC, 0, 0}));
+    core.loop(host, 1600, 0);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 1600).value); // -10,000 RPM.
+    const std::vector<std::vector<uint8_t>> invalid = {
+        {}, {0xF0}, {0xF0, 0x0A, 0x50, 0, 0, 0}, // Truncated single item.
+        {0xF0, 0x01, 0x50, 0, 0, 0, 0}, // Another ArduPilot sensor.
+        {0xF2, 0}, {0xF2, 2, 0x0A, 0x50, 0, 0, 0, 0}, // Invalid count/length.
+        {0xF1, 0x0A, 0x50, 0, 0, 0, 0} // Status text, not RPM.
+    };
+    for(const auto &payload : invalid) host.queueFrame(makeFrame(0x80, payload));
+    auto bad = makeFrame(0x80, {0xF0, 0x0A, 0x50, 0, 0, 0, 0}); bad.back() ^= 0xFF; host.queueFrame(bad);
+    core.loop(host, 1700, 0);
+    TEST_ASSERT_EQUAL_UINT32(100, core.telemetrySample(15, 1700).ageMs);
+    host.queueFrame(makeFrame(0x80, {0xF0, 0x0A, 0x50, 0, 0, 0, 0}));
+    core.loop(host, 1800, 0);
+    TEST_ASSERT_EQUAL_FLOAT(0, core.telemetrySample(15, 1800).value);
+}
+
 static void test_rpm_presence_zero_reverse_and_independent_expiry()
 {
     FakeHost host;
@@ -3906,17 +3956,16 @@ static void test_rpm_presence_zero_reverse_and_independent_expiry()
     host.queueFrame(makeFrame(0x0C, {0, 0xFF, 0xD8, 0xF0})); // -10,000 RPM.
     core.loop(host, 200, 0);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.722172f, core.telemetrySample(15, 200).value);
-    host.queueFrame(makeFrame(0x0C, {1, 0, 0, 0})); // Another motor cannot refresh motor 1.
     host.queueFrame(makeFrame(0x0C, {0, 0, 0}));
-    host.queueFrame(makeFrame(0x0C, {0, 0, 0, 0, 0}));
+    host.queueFrame(makeFrame(0x0C, {0, 0}));
     auto bad = makeFrame(0x0C, {0, 0, 0, 0}); bad.back() ^= 0xFF;
     host.queueFrame(bad);
     host.queueFrame(makeFrame(0x08, {0,123,0,30,0,0,0,0}));
-    core.loop(host, 2100, 0);
-    TEST_ASSERT_EQUAL_UINT32(1900, core.telemetrySample(15, 2100).ageMs);
-    core.loop(host, 2200, 0);
-    TEST_ASSERT_FALSE(core.telemetrySample(15, 2200).available);
-    TEST_ASSERT_TRUE(core.telemetrySample(3, 2200).available);
+    core.loop(host, 6100, 0);
+    TEST_ASSERT_EQUAL_UINT32(5900, core.telemetrySample(15, 6100).ageMs);
+    core.loop(host, 6200, 0);
+    TEST_ASSERT_FALSE(core.telemetrySample(15, 6200).available);
+    TEST_ASSERT_TRUE(core.telemetrySample(3, 6200).available);
     core.loop(host, 200, 0); // The same counter value after a full wrap cannot revive expired RPM.
     TEST_ASSERT_FALSE(core.telemetrySample(15, 200).available);
 }
@@ -3934,19 +3983,23 @@ static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
     core.loop(host, 1500, 0);
     TEST_ASSERT_EQUAL_STRING("89.2", host.displayText.c_str());
     auto preview = config.vehicleConfig;
+    preview.rpmType = ELRS_RPM_SHAFT;
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 11.899973f, core.telemetrySample(15, 1500, &preview).value);
+    preview = config.vehicleConfig;
     preview.motorPoles = 8;
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.974993f, core.telemetrySample(15, 1500, &preview).value);
     preview = config.vehicleConfig; preview.tireDiameterMm = 203.2f;
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 11.899973f, core.telemetrySample(15, 1500, &preview).value);
     preview = config.vehicleConfig; preview.gearRatio = 20;
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.974993f, core.telemetrySample(15, 1500, &preview).value);
-    for(int bad = 0; bad < 5; bad++) {
+    for(int bad = 0; bad < 6; bad++) {
         preview = config.vehicleConfig;
         if(bad == 0) preview.motorPoles = 3;
         if(bad == 1) preview.gearRatio = 0;
         if(bad == 2) preview.tireDiameterMm = NAN;
         if(bad == 3) preview.scaleFactor = INFINITY;
         if(bad == 4) preview.tireDiameterMm = 0;
+        if(bad == 5) preview.rpmType = 2;
         TEST_ASSERT_FALSE(core.telemetrySample(15, 1500, &preview).available);
     }
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 5.949986f, core.telemetrySample(15, 1500).value);
@@ -3963,6 +4016,8 @@ int main(int argc, char **argv)
 
     UNITY_BEGIN();
     RUN_TEST(test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph);
+    RUN_TEST(test_rpm_accepts_elrs_serial_sources_and_hott_update_interval);
+    RUN_TEST(test_rpm_accepts_elrs_mavlink_passthrough);
     RUN_TEST(test_rpm_presence_zero_reverse_and_independent_expiry);
     RUN_TEST(test_rpm_vehicle_parameters_preview_and_existing_formatting);
     RUN_TEST(test_display_assignment_scaling_and_formatting);

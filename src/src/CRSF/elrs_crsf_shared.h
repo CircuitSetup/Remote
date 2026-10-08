@@ -83,24 +83,28 @@ struct ELRSDisplayConfig {
     float offset;
 };
 
+enum ELRSRpmType : uint8_t { ELRS_RPM_ELECTRICAL, ELRS_RPM_SHAFT };
+
 struct ELRSVehicleConfig {
     uint8_t motorPoles;
     float gearRatio;
     float tireDiameterMm;
     float scaleFactor;
+    uint8_t rpmType;
 };
 #pragma pack(pop)
 static_assert(sizeof(ELRSDisplayConfig) == 10, "Display settings must retain their stored layout");
-static_assert(sizeof(ELRSVehicleConfig) == 13, "Vehicle settings must retain their stored layout");
+static_assert(sizeof(ELRSVehicleConfig) == 14, "Vehicle settings append the RPM type");
 
 static inline ELRSVehicleConfig elrsDefaultVehicleConfig()
 {
-    return {4, 6.55f, 64.0f, 10.0f};
+    return {4, 6.55f, 64.0f, 10.0f, ELRS_RPM_ELECTRICAL};
 }
 
 static inline bool elrsIsValidVehicleConfig(const ELRSVehicleConfig &config)
 {
-    return config.motorPoles >= 2 && config.motorPoles <= 64 && config.motorPoles % 2 == 0 &&
+    return config.rpmType <= ELRS_RPM_SHAFT &&
+        config.motorPoles >= 2 && config.motorPoles <= 64 && config.motorPoles % 2 == 0 &&
         std::isfinite(config.gearRatio) && config.gearRatio >= 0.01f && config.gearRatio <= 1000 &&
         std::isfinite(config.tireDiameterMm) && config.tireDiameterMm >= 1 && config.tireDiameterMm <= 1000 &&
         std::isfinite(config.scaleFactor) && config.scaleFactor >= 0.01f && config.scaleFactor <= 1000;

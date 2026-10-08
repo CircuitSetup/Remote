@@ -183,7 +183,7 @@ std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
 bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
-    valid = min(119, (int)stored.size());
+    valid = min(120, (int)stored.size());
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
@@ -273,8 +273,8 @@ int main() {
     crsf_load_settings();
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
     auto fullDisplay = stored;
-    assert(fullDisplay.size() == 119 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
-    for(int length = 96; length <= 119; length++) {
+    assert(fullDisplay.size() == 120 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
+    for(int length = 96; length <= 120; length++) {
         stored = fullDisplay; stored.resize(length); crsf_load_settings();
         auto loaded = loadELRSDisplayConfig();
         assert(loaded.source == (length >= 106 ? 1 : 14));
@@ -315,18 +315,19 @@ int main() {
         server.args = {pair}; crsfReadDisplayParams(); assert(!saveCRSFPortalInputSettings() && stored == validDisplay);
     }
     server.args.clear(); crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings() && stored == validDisplay);
-    server.args = {{"cdsrc","16"},{"crpoles","8"},{"crgear","13.1"},{"crdiam","80"},{"crscale","7.5"}};
+    server.args = {{"cdsrc","16"},{"crpoles","8"},{"crgear","13.1"},{"crdiam","80"},{"crscale","7.5"},{"crrpmtype","1"}};
     crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings());
     const auto fullVehicle = stored;
     assert(!memcmp(fullVehicle.data(), validDisplay.data(), 96));
-    for(int length = 106; length <= 119; length++) {
+    for(int length = 106; length <= 120; length++) {
         stored = fullVehicle; stored.resize(length); crsf_load_settings();
         const auto vehicle = loadELRSVehicleConfig();
         assert(loadELRSDisplayConfig().source == 16);
-        assert(vehicle.motorPoles == (length == 119 ? 8 : 4));
-        assert(vehicle.gearRatio == (length == 119 ? 13.1f : 6.55f));
-        assert(vehicle.tireDiameterMm == (length == 119 ? 80 : 64));
-        assert(vehicle.scaleFactor == (length == 119 ? 7.5f : 10));
+        assert(vehicle.motorPoles == (length >= 119 ? 8 : 4));
+        assert(vehicle.gearRatio == (length >= 119 ? 13.1f : 6.55f));
+        assert(vehicle.tireDiameterMm == (length >= 119 ? 80 : 64));
+        assert(vehicle.scaleFactor == (length >= 119 ? 7.5f : 10));
+        assert(vehicle.rpmType == (length == 120 ? ELRS_RPM_SHAFT : ELRS_RPM_ELECTRICAL));
         assert(!memcmp(&crsfSettings, fullVehicle.data(), 106));
     }
     stored = fullVehicle; crsf_load_settings(); const auto vehicleHash = crsfSettingsHash;
@@ -335,12 +336,20 @@ int main() {
     assert(!saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&changedVehicle));
     assert(stored == fullVehicle && loadELRSVehicleConfig().gearRatio == 13.1f && crsfSettingsHash == vehicleHash);
     storageWriteOk = true;
+    server.args = {{"crgear","13.1"}}; crsfReadDisplayParams();
+    assert(crsfVehicleConfig.rpmType == ELRS_RPM_SHAFT && saveCRSFPortalInputSettings() && stored == fullVehicle);
     for(const char *field : {"crpoles","crgear","crdiam","crscale"}) {
         for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "1junk", " 1", std::string("1\0x",3), "0", "-1", "1001"}) {
             server.args = {{field,bad}}; crsfReadDisplayParams();
             assert(!saveCRSFPortalInputSettings() && stored == fullVehicle);
         }
     }
+    for(const auto &bad : std::vector<std::string>{"", "-1", "2", "0.5", "NaN", "1junk", std::string("1\0x",3)}) {
+        server.args = {{"crrpmtype",bad}}; crsfReadDisplayParams();
+        assert(!saveCRSFPortalInputSettings() && stored == fullVehicle);
+    }
+    stored = fullVehicle; ((ELRSCrsfSettingsBlob*)stored.data())->vehicleConfig.rpmType = 2;
+    crsf_load_settings(); assert(loadELRSVehicleConfig().rpmType == ELRS_RPM_ELECTRICAL && loadELRSDisplayConfig().source == 16);
     stored = fullVehicle; ((ELRSCrsfSettingsBlob*)stored.data())->vehicleConfig.tireDiameterMm = NAN;
     crsf_load_settings(); assert(loadELRSVehicleConfig().tireDiameterMm == 64 && loadELRSDisplayConfig().source == 16);
     stored = fullVehicle; crsf_load_settings(); syncCRSFPortalBuffers();
@@ -437,7 +446,7 @@ int main() {
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(previous.size() == 56 && mapped.size() == 119);
+    assert(previous.size() == 56 && mapped.size() == 120);
     for(int partial = 0; partial < 12; partial++) {
         stored = mapped;
         stored.resize(previous.size() + partial);
@@ -824,7 +833,7 @@ int main() {
     // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
     assert(sizeof(ELRSInputAxisProfile) == 12);
     assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
-    assert(sizeof(ELRSCrsfSettingsBlob) == 119 && sizeof(ELRSOutputLimits) == 4);
+    assert(sizeof(ELRSCrsfSettingsBlob) == 120 && sizeof(ELRSOutputLimits) == 4);
     const ELRSOutputLimits limits[4] = {{1100,1700},{1200,1800},{1300,1900},{1400,1600}};
     ELRSOutputLimits loaded[4];
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits));
@@ -1399,7 +1408,7 @@ int main() {
         other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
-    assert(before.size() == 122);
+    assert(before.size() == 123);
         for(int count : {0, 3, 86, 98}) {
             storage.allowedWrite = count;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));

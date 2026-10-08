@@ -146,6 +146,10 @@ int main() {
     handleELRSTelemetryRead(); assert(server.status == 200 && server.body.find("\"text\":\"85.8\"") != String::npos);
     server.args.erase("crscale");
     handleELRSTelemetryRead(); assert(server.status == 200 && server.body.find("\"text\":\"57.2\"") != String::npos);
+    server.args = {{"cdsrc","15"},{"crrpmtype","1"},{"cdmul","1"},{"cdoff","0"},{"cddec","255"}};
+    handleELRSTelemetryRead(); assert(server.status == 200 && server.body.find("\"text\":\"11.4\"") != String::npos);
+    server.args = {{"cdsrc","16"},{"crrpmtype","1"},{"cddec","0"},{"cdmul","1"},{"cdoff","0"}};
+    handleELRSTelemetryRead(); assert(server.status == 200 && server.body.find("\"text\":\"114\"") != String::npos);
     server.args = {{"cdsrc","15"},{"cdmul","0.5"},{"cdoff","0"},{"cddec","255"}};
     handleELRSTelemetryRead(); assert(server.status == 200 && server.body.find("\"text\":\"2.9\"") != String::npos);
     for(const char *field : {"crpoles","crgear","crdiam","crscale"}) {
@@ -156,11 +160,14 @@ int main() {
     for(const char *bad : {"3","4.5","65"}) {
         server.args = {{"crpoles",bad}}; handleELRSTelemetryRead(); assert(server.status == 400);
     }
+    for(const auto &bad : std::vector<std::string>{"", "-1", "2", "0.5", "NaN", "1junk", String("1\0x",3)}) {
+        server.args = {{"crrpmtype",bad}}; handleELRSTelemetryRead(); assert(server.status == 400);
+    }
     assert(crsfVehicleConfig.gearRatio == 6.55f && crsfVehicleConfig.scaleFactor == 10);
     crsfDisplayConfig.source = 16;
     html = wmBuildCRSFDisplay(nullptr, 2);
     assert(strstr(html, "value='16' selected disabled>Motor RPM: Scaled mph (unavailable)"));
-    assert(strstr(html, "name='crgear'") && strstr(html, "name='crdiam'"));
+    assert(strstr(html, "name='crgear'") && strstr(html, "name='crdiam'") && strstr(html, "name='crrpmtype'"));
     wmBuildCRSFDisplay(html, WM_CP_DESTROY);
     if(const char *path = getenv("CRSF_DISPLAY_BOUNDARY")) {
         crsfVehicleConfig.gearRatio = crsfVehicleConfig.scaleFactor = 0.01f;
@@ -170,7 +177,7 @@ int main() {
         fprintf(file, "<!doctype html><html><meta charset='utf-8'><title>Telemetry lower bounds</title><meta name='viewport' content='width=device-width,initial-scale=1'>%s</style><body><div id='wrap'><form>%s</form></div></body></html>", HTTP_STYLE, html);
         fclose(file); wmBuildCRSFDisplay(html, WM_CP_DESTROY);
     }
-    testNow += 2000; core.loop(host, testNow, 0);
+    testNow += 6000; core.loop(host, testNow, 0);
     server.args = {{"cdsrc","15"}}; handleELRSTelemetryRead();
     assert(server.status == 200 && server.body.find("\"text\":\"---\"") != String::npos);
     puts("CRSF telemetry preview, validation, and pending-source form checks passed");
@@ -189,7 +196,7 @@ with tempfile.TemporaryDirectory(prefix='crsf-display-') as work:
                 assert float(attrs['min']) <= float(attrs['value']) <= float(attrs['max']), 'A valid saved boundary must remain submittable'
     Bounds().feed(boundary.read_text())
     responses = [json.loads(line) for line in path.read_text().splitlines()]
-    assert len(responses) == 28
+    assert len(responses) == 30
     if os.environ.get('CRSF_DISPLAY_RESPONSES'):
         Path(os.environ['CRSF_DISPLAY_RESPONSES']).write_text(json.dumps(responses))
     assert responses[0]['sources'] == [], 'Sources must be absent before reception'

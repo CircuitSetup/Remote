@@ -88,7 +88,8 @@ static_assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68, "Preserve the 
 static_assert(offsetof(ELRSCrsfSettingsBlob, localActions) == 84, "Preserve travel limits before local actions");
 static_assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96, "Preserve the existing CRSF settings prefix");
 static_assert(offsetof(ELRSCrsfSettingsBlob, vehicleConfig) == 106, "Preserve the complete display settings tail");
-static_assert(sizeof(ELRSCrsfSettingsBlob) == 119, "CRSF settings include the complete vehicle tail");
+static_assert(offsetof(ELRSVehicleConfig, rpmType) == 13, "Preserve existing vehicle settings");
+static_assert(sizeof(ELRSCrsfSettingsBlob) == 120, "CRSF settings append the RPM type");
 
 struct [[gnu::packed]] ELRSCrsfLegacySettingsBlob {
     ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT];
@@ -346,7 +347,7 @@ void crsf_load_settings()
             const int localOffset = offsetof(ELRSCrsfSettingsBlob, localActions);
             const int displayOffset = offsetof(ELRSCrsfSettingsBlob, displayConfig);
             const int vehicleOffset = offsetof(ELRSCrsfSettingsBlob, vehicleConfig);
-            if(bytes > vehicleOffset && bytes < (int)sizeof(crsfSettings)) bytes = vehicleOffset;
+            if(bytes > vehicleOffset && bytes < vehicleOffset + (int)offsetof(ELRSVehicleConfig, rpmType)) bytes = vehicleOffset;
             if(bytes > displayOffset && bytes < vehicleOffset) bytes = displayOffset;
             // A partial permutation cannot safely replace the complete default map.
             if(bytes > switchOffset && bytes < limitsOffset) bytes = switchOffset;
