@@ -95,11 +95,12 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 >- press the _Calibration_ button and keep it pressed,
 >- power-up the device,
 >- wait until the displays shows an animation,
->- press button _O.O_ twice within 10 seconds,
+>- press button _O.O_ twice within 10 seconds<!--the display will show "RST" after the second press-->,
 >- wait until the display shows "RST",
 >- then release the _Calibration_ button.
 >
 >This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
+<!--The device will continue booting, but - this once - use DHCP and ignore static IP data. This gives your an opportunity to correct or clear that data, otherwise it will be effective again after the next reboot.-->
 </details>
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
@@ -666,7 +667,7 @@ To reset your Remote to factory default settings,
 - press the _Calibration_ button and keep it pressed,
 - power-up the device,
 - wait until the display shows an animation,
-- press the _RESET_ button five times within 10 seconds (the display will show "FAC" on the fifth time),
+- press the _RESET_ button five times within 10 seconds (the display will show "FAC" after the fifth press),
 - then release the _Calibration_ button.
 
 This clears all settings to their defaults except
@@ -772,11 +773,11 @@ If you forget this password and are thereby locked out of your Remote,
 - press the _Calibration_ button and keep it pressed,
 - power-up the device,
 - wait until the display shows an animation,
-- press button _O.O_ twice within 10 seconds,
+- press button _O.O_ twice within 10 seconds<!-- (the display will show "RST" after the second press) -->,
 - wait until the display shows "RST",
 - then release the _Calibration_ button.
 
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP address data; the device will return to using DHCP after a reboot.)
+The Remote will boot and start the access point - this once - without a password, thereby giving you an opportunity to connect without a password and to either look up or change said password. When you reboot or power-cycle the Remote, the AP will be password protected again.
 
 ##### &#9193; WiFi channel
 
