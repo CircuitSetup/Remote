@@ -4371,6 +4371,76 @@ static void test_logic_rejects_bad_sources_and_cycles()
     TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
 }
 
+
+static void test_mix_weight_offset_order_and_limits()
+{
+    static_assert(sizeof(ELRSMixLine)==6,"Compact mixer line");
+    static_assert(sizeof(ELRSMixConfig)==48,"Eight mix lines");
+    ELRSMixConfig c=elrsDefaultMixConfig();
+    ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
+    ELRSLogicResult logic={1,1}; int16_t base[16];
+    for(auto &v:base) v=1000; base[0]=1600;
+    TEST_ASSERT_EQUAL_INT16(1600,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[0]={1,25,0,50,-20,0};
+    TEST_ASSERT_EQUAL_INT16(1750,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[0]={1,25,0,50,0,1};
+    TEST_ASSERT_EQUAL_INT16(1550,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[0]={1,25,0,-100,0,2};
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    base[0]=2000; c.lines[0]={1,25,0,50,0,0}; c.lines[1]={1,25,0,-100,0,0};
+    TEST_ASSERT_EQUAL_INT16(1750,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[1].multiplex=2;
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    std::swap(c.lines[0],c.lines[1]);
+    TEST_ASSERT_EQUAL_INT16(1250,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    for(auto &line:c.lines) line={1,25,0,100,100,1};
+    TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+}
+
+static void test_mix_sources_gates_and_unavailability()
+{
+    ELRSMixConfig c={}; c.lines[0]={9,17,0,100,0,2};
+    ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
+    ELRSLogicResult logic={1,1}; int16_t base[16]; for(auto &v:base)v=1000;
+    TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    logic.states=0;
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    c.lines[0].source=145;
+    TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    logic.valid=0;
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    c.lines[1]={9,25,0,100,0,2};
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    c.lines[1]={}; c.lines[0].switchSource=5;
+    TEST_ASSERT_EQUAL_UINT16(0,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    TEST_ASSERT_EQUAL_INT16(1500,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[7]);
+    c.lines[0].switchSource=133; in.validSwitches=0xffe;
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    in.validSwitches=0xfff; c.lines[0]={9,1,0,100,0,2};
+    TEST_ASSERT_EQUAL_INT16(1700,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    in.axesUs[0]=1501; c.lines[0].weight=-50;
+    TEST_ASSERT_EQUAL_INT16(1500,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    in.axesUs[0]=-32768;
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    for(int source=5;source<=16;source++) {
+        c.lines[0]={9,(uint8_t)source,0,100,0,2}; in.switchStates=(1<<(source-5));
+        TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+        c.lines[0].source |= 128;
+        TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    }
+}
+
+static void test_mix_rejects_malformed_lines()
+{
+    const ELRSMixLine bad[]={{17,25,0,100,0,0},{1,0,0,100,0,0},{1,26,0,100,0,0},
+        {1,153,0,100,0,0},{1,129,0,100,0,0},{1,25,1,100,0,0},
+        {1,25,0,101,0,0},{1,25,0,100,-101,0},{1,25,0,100,0,3},{0,25,0,0,0,0}};
+    for(const auto &line:bad){ELRSMixConfig c={};c.lines[0]=line;TEST_ASSERT_FALSE(elrsIsValidMixConfig(c));}
+    ELRSMixConfig c={}; c.lines[0]={1,24,152,100,0,2}; c.lines[1]=c.lines[0];
+    TEST_ASSERT_TRUE(elrsIsValidMixConfig(c));
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -4378,6 +4448,9 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_mix_weight_offset_order_and_limits);
+    RUN_TEST(test_mix_sources_gates_and_unavailability);
+    RUN_TEST(test_mix_rejects_malformed_lines);
     RUN_TEST(test_logic_thresholds_and_layout);
     RUN_TEST(test_logic_truth_tables_gates_and_invalidity);
     RUN_TEST(test_logic_rejects_bad_sources_and_cycles);

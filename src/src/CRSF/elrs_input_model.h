@@ -81,4 +81,19 @@ ELRSLogicConfig elrsDefaultLogicConfig();
 bool elrsIsValidLogicConfig(const ELRSLogicConfig &config);
 ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogicInputs &inputs);
 
+
+constexpr uint8_t ELRS_MIX_COUNT = 8;
+struct ELRSMixLine {
+    uint8_t channel, source, switchSource;
+    int8_t weight, offset;
+    uint8_t multiplex;
+};
+struct ELRSMixConfig { ELRSMixLine lines[ELRS_MIX_COUNT]; };
+struct ELRSMixResult { int16_t valuesUs[16]; uint16_t invalidChannels; };
+static_assert(sizeof(ELRSMixLine) == 6, "Preserve compact mix storage");
+ELRSMixConfig elrsDefaultMixConfig();
+bool elrsIsValidMixConfig(const ELRSMixConfig &config);
+ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInputs &inputs,
+    const ELRSLogicResult &logic, const int16_t baseChannelsUs[16], uint16_t baseClaimedChannels);
+
 #endif

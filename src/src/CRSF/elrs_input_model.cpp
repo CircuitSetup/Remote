@@ -375,4 +375,80 @@ ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogic
     return result;
 }
 
+
+ELRSMixConfig elrsDefaultMixConfig() { return {}; }
+
+bool elrsIsValidMixConfig(const ELRSMixConfig &config)
+{
+    for(const ELRSMixLine &r : config.lines) {
+        if(!r.channel) {
+            if(r.source || r.switchSource || r.weight || r.offset || r.multiplex) return false;
+            continue;
+        }
+        if(r.channel > 16 || r.multiplex > 2 || r.weight < -100 || r.weight > 100 ||
+           r.offset < -100 || r.offset > 100) return false;
+        if(!((r.source >= 1 && r.source <= 4) || r.source == 25 || validBooleanSource(r.source, 24))) return false;
+        if(r.switchSource && !validBooleanSource(r.switchSource, 24)) return false;
+    }
+    return true;
+}
+
+ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInputs &inputs,
+    const ELRSLogicResult &logic, const int16_t baseChannelsUs[16], uint16_t baseClaimedChannels)
+{
+    ELRSMixResult result = {};
+    int32_t values[16];
+    for(int i = 0; i < 16; i++) {
+        result.valuesUs[i] = (int16_t)clampLong(baseChannelsUs[i], 1000, 2000);
+        values[i] = result.valuesUs[i] - 1500;
+    }
+    if(!elrsIsValidMixConfig(config)) return result;
+    uint16_t targets = 0;
+    for(const ELRSMixLine &r : config.lines) {
+        if(!r.channel) continue;
+        const uint16_t bit = (uint16_t)1 << (r.channel - 1);
+        targets |= bit;
+        if(!(baseClaimedChannels & bit)) values[r.channel - 1] = 0;
+    }
+    for(const ELRSMixLine &r : config.lines) {
+        if(!r.channel) continue;
+        const uint16_t bit = (uint16_t)1 << (r.channel - 1);
+        bool state;
+        if(r.switchSource) {
+            if(!readBooleanSource(r.switchSource, inputs, logic, state)) {
+                result.invalidChannels |= bit;
+                continue;
+            }
+            if(!state) continue;
+        }
+        int32_t source;
+        if(r.source <= 4) {
+            const int16_t us = inputs.axesUs[r.source - 1];
+            if(!inputs.axesValid || us < 1000 || us > 2000) {
+                result.invalidChannels |= bit;
+                continue;
+            }
+            source = us - 1500;
+        } else if(r.source == 25) source = 500;
+        else {
+            if(!readBooleanSource(r.source, inputs, logic, state)) {
+                result.invalidChannels |= bit;
+                continue;
+            }
+            source = state ? 500 : -500;
+        }
+        const int32_t contribution = source * r.weight / 100 + r.offset * 5;
+        int32_t &value = values[r.channel - 1];
+        if(r.multiplex == 0) value += contribution;
+        else if(r.multiplex == 1) value = value * contribution / 500;
+        else value = contribution;
+    }
+    for(int i = 0; i < 16; i++) {
+        const uint16_t bit = (uint16_t)1 << i;
+        if(targets & bit) result.valuesUs[i] = (result.invalidChannels & bit) ? 1000 :
+            (int16_t)(1500 + clampLong(values[i], -500, 500));
+    }
+    return result;
+}
+
 #endif // HAVE_CRSF
