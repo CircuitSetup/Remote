@@ -98,6 +98,8 @@ struct ELRSCrsfCoreConfig {
     ELRSGimbalRouting inputRouting = elrsDefaultGimbalRouting();
     ELRSSwitchRouting switchRouting = elrsDefaultSwitchRouting();
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT] = {};
+    ELRSLogicConfig logic = {};
+    ELRSMixConfig mixes = {};
     ELRSCrsfTransportConfig transport;
 };
 
@@ -176,7 +178,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void writeGimbalChannel(uint8_t channel, uint16_t ticks);
         void writeFixedChannelIfUnclaimed(uint8_t channel, uint16_t ticks);
         bool channelClaimedByGimbal(uint8_t channel) const;
+        int16_t axisToUs(uint8_t axis) const;
         uint16_t axisToTicks(uint8_t axis) const;
+        void applyMixes(unsigned long now, uint16_t switchStates);
 
         void applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn);
         void updateBatteryWarning(ELRSCrsfHost &host, unsigned long now, int battWarn, bool fakePowerOn);

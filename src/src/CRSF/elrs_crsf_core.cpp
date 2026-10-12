@@ -120,6 +120,10 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
 {
     _config = config;
+    if(!elrsIsValidLogicConfig(_config.logic) || !elrsIsValidMixConfig(_config.mixes)) {
+        _config.logic = {};
+        _config.mixes = {};
+    }
     if(!elrsIsValidDisplayConfig(_config.displayConfig)) _config.displayConfig = elrsDefaultDisplayConfig();
     if(!elrsIsValidVehicleConfig(_config.vehicleConfig)) _config.vehicleConfig = elrsDefaultVehicleConfig();
     elrsSanitizeInputRouting(_config.inputRouting, _config.switchRouting);
@@ -942,6 +946,8 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     for(int i = 0; i < 8; i++) {
         writeFixedChannelIfUnclaimed(_config.switchRouting.channels[4 + i], (packStates & (1 << i)) ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN);
     }
+    applyMixes(now, (uint16_t)(stopOn | (fakePowerOn << 1) | (buttonAOn << 2) |
+                               (buttonBOn << 3) | ((uint16_t)packStates << 4)));
 }
 
 void ELRSCrsfCore::resetChannels(uint16_t defaultTicks)
@@ -981,19 +987,68 @@ bool ELRSCrsfCore::channelClaimedByGimbal(uint8_t channel) const
            _inputRouting.rudderChannel == channel;
 }
 
-uint16_t ELRSCrsfCore::axisToTicks(uint8_t axis) const
+int16_t ELRSCrsfCore::axisToUs(uint8_t axis) const
 {
+    if(axis >= ELRS_GIMBAL_AXIS_COUNT) return ELRS_INPUT_US_MID;
     const ELRSInputAxisProfile &profile = _axisProfiles[axis];
-
-    if(axis >= ELRS_GIMBAL_AXIS_COUNT) {
-        return CRSF_CHANNEL_MID;
-    }
-
-    int16_t us = (axis == AXIS_THROTTLE)
+    return axis == AXIS_THROTTLE
         ? elrsInputModelThrottleToUs(profile, _stableAxes[axis], _config.throttleIdleDeadband)
         : elrsInputModelAxisToUs(profile, _stableAxes[axis]);
-    return elrsInputUsToCrsfTicks(elrsApplyOutputLimits(_config.outputLimits[axis], us));
 }
+
+uint16_t ELRSCrsfCore::axisToTicks(uint8_t axis) const
+{
+    if(axis >= ELRS_GIMBAL_AXIS_COUNT) return CRSF_CHANNEL_MID;
+    return elrsInputUsToCrsfTicks(elrsApplyOutputLimits(_config.outputLimits[axis], axisToUs(axis)));
+}
+
+void ELRSCrsfCore::applyMixes(unsigned long now, uint16_t switchStates)
+{
+    uint16_t targets = 0;
+    for(const auto &line : _config.mixes.lines) {
+        if(line.channel) targets |= (uint16_t)1 << (line.channel - 1);
+    }
+    if(!targets || isCalibrating()) return;
+    ELRSLogicInputs inputs = {};
+    inputs.axesValid = !adcFaultActive(now);
+    inputs.switchStates = switchStates;
+    inputs.validSwitches = 0x000f | (_localPackSampleValid ? 0x0ff0 : 0);
+    const uint8_t gimbals[] = {_inputRouting.aileronChannel, _inputRouting.elevatorChannel,
+                              _inputRouting.rudderChannel, _inputRouting.throttleChannel};
+    int16_t base[16];
+    for(auto &value : base) value = ELRS_INPUT_US_MIN;
+    uint16_t claimed = 0;
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        inputs.axesUs[i] = axisToUs(i);
+        if(gimbals[i]) {
+            claimed |= (uint16_t)1 << (gimbals[i] - 1);
+            base[gimbals[i] - 1] = inputs.axesValid ? inputs.axesUs[i] : ELRS_INPUT_US_MID;
+        }
+    }
+    for(int i = 0; i < ELRS_SWITCH_INPUT_COUNT; i++) {
+        const uint8_t channel = _config.switchRouting.channels[i];
+        if(channel) {
+            claimed |= (uint16_t)1 << (channel - 1);
+            base[channel - 1] = (switchStates & ((uint16_t)1 << i)) ? ELRS_INPUT_US_MAX : ELRS_INPUT_US_MIN;
+        }
+    }
+    const ELRSLogicResult logic = elrsEvaluateLogic(_config.logic, inputs);
+    const ELRSMixResult mixed = elrsEvaluateMixes(_config.mixes, inputs, logic, base, claimed);
+    for(uint8_t channel = 1; channel <= 16; channel++) {
+        const uint16_t bit = (uint16_t)1 << (channel - 1);
+        if(!(targets & bit)) continue;
+        int16_t us = mixed.valuesUs[channel - 1];
+        for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+            if(gimbals[i] != channel) continue;
+            // Fault neutral has priority over every constant, gate and output limit.
+            us = (!inputs.axesValid || (mixed.invalidChannels & bit)) ? ELRS_INPUT_US_MID
+                 : elrsApplyOutputLimits(_config.outputLimits[i], us);
+            break;
+        }
+        _channels[channel - 1] = elrsInputUsToCrsfTicks(us);
+    }
+}
+
 
 void ELRSCrsfCore::applyIdleOutputs(ELRSCrsfHost &host, bool fakePowerOn)
 {

@@ -67,12 +67,13 @@ void saveELRSGimbalRouting(const ELRSGimbalRouting &routing);
 void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing = NULL,
                          uint16_t *adcHysteresis = NULL, uint16_t *throttleIdleDeadband = NULL,
                          ELRSSwitchRouting *switchRouting = NULL, ELRSOutputLimits *outputLimits = NULL,
-                         uint8_t *localActions = NULL);
+                         uint8_t *localActions = NULL, ELRSLogicConfig *logicConfig = NULL, ELRSMixConfig *mixConfig = NULL);
 bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing = NULL,
                          const uint16_t *adcHysteresis = NULL, const uint16_t *throttleIdleDeadband = NULL,
                          const ELRSSwitchRouting *switchRouting = NULL, const ELRSOutputLimits *outputLimits = NULL,
                          const uint8_t *localActions = NULL, const ELRSDisplayConfig *displayConfig = NULL,
-                         const ELRSVehicleConfig *vehicleConfig = NULL);
+                         const ELRSVehicleConfig *vehicleConfig = NULL,
+                         const ELRSLogicConfig *logicConfig = NULL, const ELRSMixConfig *mixConfig = NULL);
 bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
 

@@ -982,6 +982,19 @@ To use the gimbal as a prop speed control with optional radio output, choose **P
 
 Prop throttle calibration and CRSF gimbal calibration serve different purposes. Use the normal [Calibration button procedure](#calibration) to set prop throttle neutral and endpoints, and the portal's **Gimbal Calibration** captures, reversal, curves, and travel limits for the transmitted radio channel. Calibrating one does not replace the other. Select the switch/gimbal channels as usual, ensure they are unique, and match the ELRS packet rate/RF mode to the module and receiver. Save and restart to apply mode and mapping changes.
 
+
+##### Logical Switches and Mixes
+
+The ELRS page provides 16 logical switches (L01-L16) and 16 additional mix lines, using an EdgeTX-style setup. Use **Add logical switch** or **Add mix** to create rows as needed, up to 16 of each. Only populated rows are listed. Select **Edit** to change a row. Changes apply after saving and restarting. Existing eight-row settings retain their sources and order; the new rows start disabled.
+
+Logical switches support `a>x`, `a<x`, AND, OR, XOR, and an optional **AND switch**. Comparisons use the calibrated, reversed, expo-shaped gimbal value: -100% is 1000, 0% is 1500, and +100% is 2000. Boolean sources include the physical switches and earlier logical switches. `!` means Not. **Delete** removes an unused logical switch; change references in other logical switches and mixes before deleting a switch they use. Source and gate lists offer only populated logical switches. Existing unavailable references remain intact and must be corrected before applying an edited row. Logical IDs stay fixed when rows are added or deleted. Timers and latches are not included in this version.
+
+In **Mixes**, existing channel mappings provide the base assignments. Additional lines choose a **Source**, **Weight**, **Offset**, optional **Switch**, and **Multiplex** operation. Add combines a contribution, Multiply scales previous contributions, and Replace replaces them. Multiple additional lines may share a channel; their displayed order matters. Use **Up/Down** to reorder lines on the same channel, and **Delete** to remove a line. MAX is a constant +100% source. A logical switch used as Source produces -100%/+100%; using it as Switch enables another source. Local Settings actions retain their physical button bindings.
+
+For example, configure L01 as `a<x`, V1=Throttle, V2=-90%; L02 as AND, V1=ButtonPack 1, V2=L01; and an additional CH9 mix with Source=L02, Weight=100%, Offset=0%, Switch=---, Replace. CH9 goes high only when the button is on and throttle is below the threshold. A second mix can reuse the same logical condition.
+
+Gimbal output limits apply after mixing. Missing/stale inputs remain unavailable even when inverted; affected gimbal channels use neutral and other affected channels use low. Calibration and self-test suppress additional mixes. With no additional mixes, existing channel behavior is retained. Older settings load with both sections disabled, and saving calibration preserves the new configuration. ELRS RF mode still determines which channels reach the receiver.
+
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
 If checked, the Remote will join the configured WiFi network while operating in ELRS/CRSF mode. If unchecked, it remains in AP mode during ELRS/CRSF operation.
@@ -1110,6 +1123,19 @@ Choose one of three modes, then save and restart:
 To use the gimbal as a prop speed control with optional radio output, choose **Prop controls + ELRS/CRSF**. The physical **Throttle** gimbal on ADS1015 **AIN3** accelerates/decelerates the simulated prop speed through the normal auto-throttle/coasting/movie settings. Its CRSF output still follows the **Throttle target channel** selection; moving it from CH3 to another channel does not move the prop speed-control function to another gimbal. Choosing **None** for the Throttle channel disables only its radio output; the physical AIN3 throttle still controls prop speed. The other three gimbals keep their independent CRSF mappings.
 
 Prop throttle calibration and CRSF gimbal calibration serve different purposes. Use the normal [Calibration button procedure](#calibration) to set prop throttle neutral and endpoints, and the portal's **Gimbal Calibration** captures, reversal, curves, and travel limits for the transmitted radio channel. Calibrating one does not replace the other. Select the switch/gimbal channels as usual, ensure they are unique, and match the ELRS packet rate/RF mode to the module and receiver. Save and restart to apply mode and mapping changes.
+
+
+##### Logical Switches and Mixes
+
+The ELRS page provides 16 logical switches (L01-L16) and 16 additional mix lines, using an EdgeTX-style setup. Use **Add logical switch** or **Add mix** to create rows as needed, up to 16 of each. Only populated rows are listed. Select **Edit** to change a row. Changes apply after saving and restarting. Existing eight-row settings retain their sources and order; the new rows start disabled.
+
+Logical switches support `a>x`, `a<x`, AND, OR, XOR, and an optional **AND switch**. Comparisons use the calibrated, reversed, expo-shaped gimbal value: -100% is 1000, 0% is 1500, and +100% is 2000. Boolean sources include the physical switches and earlier logical switches. `!` means Not. **Delete** removes an unused logical switch; change references in other logical switches and mixes before deleting a switch they use. Source and gate lists offer only populated logical switches. Existing unavailable references remain intact and must be corrected before applying an edited row. Logical IDs stay fixed when rows are added or deleted. Timers and latches are not included in this version.
+
+In **Mixes**, existing channel mappings provide the base assignments. Additional lines choose a **Source**, **Weight**, **Offset**, optional **Switch**, and **Multiplex** operation. Add combines a contribution, Multiply scales previous contributions, and Replace replaces them. Multiple additional lines may share a channel; their displayed order matters. Use **Up/Down** to reorder lines on the same channel, and **Delete** to remove a line. MAX is a constant +100% source. A logical switch used as Source produces -100%/+100%; using it as Switch enables another source. Local Settings actions retain their physical button bindings.
+
+For example, configure L01 as `a<x`, V1=Throttle, V2=-90%; L02 as AND, V1=ButtonPack 1, V2=L01; and an additional CH9 mix with Source=L02, Weight=100%, Offset=0%, Switch=---, Replace. CH9 goes high only when the button is on and throttle is below the threshold. A second mix can reuse the same logical condition.
+
+Gimbal output limits apply after mixing. Missing/stale inputs remain unavailable even when inverted; affected gimbal channels use neutral and other affected channels use low. Calibration and self-test suppress additional mixes. With no additional mixes, existing channel behavior is retained. Older settings load with both sections disabled, and saving calibration preserves the new configuration. ELRS RF mode still determines which channels reach the receiver.
 
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 

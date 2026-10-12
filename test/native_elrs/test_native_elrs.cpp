@@ -318,6 +318,14 @@ static ELRSCrsfCoreConfig defaultConfig()
     return config;
 }
 
+static void enableAllLogicAndMixes(ELRSCrsfCoreConfig &config)
+{
+    for(uint8_t i = 0; i < ELRS_LOGIC_COUNT; i++) {
+        config.logic.rules[i] = {3, 133, (uint8_t)(i ? 16 + i + (i > 8) : 134), 0, 0};
+        config.mixes.lines[i] = {(uint8_t)(i + 1), (uint8_t)(17 + i + (i >= 8)), 0, 100, 0, 2};
+    }
+}
+
 static std::vector<uint8_t> makeFrame(uint8_t type, const std::vector<uint8_t> &payload)
 {
     std::vector<uint8_t> frame;
@@ -635,6 +643,51 @@ static void test_bounded_polling_jitter_keeps_healthy_tx_cadence()
     }
 }
 
+static void test_full_logic_mixes_keep_costed_500hz_io_cadence()
+{
+    std::vector<uint32_t> baselineTx, baselineSamples;
+    for(bool enabled : {false, true}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.transport.packetRateHz = 500;
+        config.transport.baudRate = 921600;
+        if(enabled) enableAllLogicAndMixes(config);
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+        host.costedIo = true;
+        host.sampleCostUs = 80;
+        const auto reply = makeFrame(0x28, {1, 2});
+        const int initialScanCount = host.localScanCount;
+        for(uint32_t slot = 0; slot < 50; slot++) {
+            const uint32_t deadline = slot * 2000;
+            const uint32_t jitter = (slot % 3) * 60; // ADC + polling delay stays within the existing 200us allowance.
+            if(slot == 4) host.queueFrame(reply);
+            host.stop = slot >= 25;
+            loopAt(core, host, (deadline + jitter) / 1000, deadline + jitter);
+            TEST_ASSERT_EQUAL_UINT32(slot + 1, host.txStarts.size());
+            TEST_ASSERT_GREATER_OR_EQUAL_UINT32(deadline + 40, host.txStarts.back());
+            TEST_ASSERT_LESS_OR_EQUAL_UINT32(deadline + 120 + 80 + 40, host.txStarts.back());
+            if(slot) {
+                TEST_ASSERT_GREATER_OR_EQUAL_UINT32(1800, host.txStarts[slot] - host.txStarts[slot - 1]);
+                TEST_ASSERT_LESS_OR_EQUAL_UINT32(2200, host.txStarts[slot] - host.txStarts[slot - 1]);
+                TEST_ASSERT_GREATER_OR_EQUAL_UINT32(1300, host.oeOnTimes.back() - host.oeOffTimes[host.oeOffTimes.size() - 2]);
+            }
+            for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(enabled && !host.stop ? 1811 : 172, core.channelAt(ch));
+            TEST_ASSERT_FALSE(host.driverEnabled);
+        }
+        TEST_ASSERT_EQUAL_UINT32(reply.size(), host.serialReadCount);
+        TEST_ASSERT_EQUAL_UINT32(initialScanCount + 50, host.localScanCount);
+        TEST_ASSERT_TRUE(statusOf(core).replyActive);
+        TEST_ASSERT_TRUE(statusOf(core).lastRawFrameCrcValid);
+        if(!enabled) { baselineTx = host.txStarts; baselineSamples = host.sampleCompletions; }
+        else {
+            TEST_ASSERT_EQUAL_UINT32(baselineSamples.size(), host.sampleCompletions.size());
+            TEST_ASSERT_EQUAL_UINT32_ARRAY(baselineTx.data(), host.txStarts.data(), baselineTx.size());
+            TEST_ASSERT_EQUAL_UINT32_ARRAY(baselineSamples.data(), host.sampleCompletions.data(), baselineSamples.size());
+        }
+    }
+}
+
 static void test_tx_pacing_retains_fractional_periods_and_rollover()
 {
     for(uint16_t rate : {50, 100, 150, 250, 500}) {
@@ -693,27 +746,31 @@ static void test_costed_service_slots_keep_rc_and_real_reply_deadlines()
 
 static void test_pending_axes_keep_filter_and_rc_slots()
 {
-    FakeHost host;
-    ELRSCrsfCore core;
-    ELRSCrsfCoreConfig config = defaultConfig();
-    config.propControls = true;
-    config.transport.packetRateHz = 500;
-    host.axes[0] = 1800;
-    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
-    host.axesPending = true;
-    int16_t axes[4];
-    for(uint32_t ms = 2; ms <= 100; ms += 2) {
-        loopAt(core, host, ms, ms * 1000);
-        TEST_ASSERT_TRUE(core.readFilteredAxes(axes));
-        TEST_ASSERT_EQUAL_INT16(1800, axes[0]);
-        TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+    for(bool enabled : {false, true}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.propControls = true;
+        config.transport.packetRateHz = 500;
+        if(enabled) enableAllLogicAndMixes(config);
+        host.axes[0] = 1800;
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+        host.axesPending = true;
+        int16_t axes[4];
+        for(uint32_t ms = 2; ms <= 100; ms += 2) {
+            loopAt(core, host, ms, ms * 1000);
+            TEST_ASSERT_TRUE(core.readFilteredAxes(axes));
+            TEST_ASSERT_EQUAL_INT16(1800, axes[0]);
+            for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(enabled ? 1811 : 172, core.channelAt(ch));
+            TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+        }
+        TEST_ASSERT_EQUAL_UINT32(50, host.txStarts.size());
+        loopAt(core, host, 101, 101000);
+        TEST_ASSERT_FALSE(core.readFilteredAxes(axes));
+        TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
     }
-    TEST_ASSERT_EQUAL_UINT32(50, host.txStarts.size());
-    loopAt(core, host, 101, 101000);
-    TEST_ASSERT_FALSE(core.readFilteredAxes(axes));
-    TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
-    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
-    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_new_identical_samples_and_separate_input_rollover()
@@ -1611,6 +1668,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     config150.transport.packetRateHz = 150;
     config250.transport.packetRateHz = 250;
     config500.transport.packetRateHz = 500;
+    enableAllLogicAndMixes(config500);
 
     TEST_ASSERT_TRUE(beginAt(core50, host50, config50, 0, 0));
     TEST_ASSERT_TRUE(beginAt(core100, host100, config100, 0, 0));
@@ -1629,6 +1687,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host500.writes.size());
+    for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(1811, core500.channelAt(ch));
 
     loopAt(core50, host50, 19, 19999);
     loopAt(core100, host100, 9, 9999);
@@ -1641,6 +1700,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host500.writes.size());
+    for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(1811, core500.channelAt(ch));
 
     loopAt(core50, host50, 20, 20000);
     loopAt(core100, host100, 10, 10000);
@@ -4301,6 +4361,256 @@ static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
     TEST_ASSERT_EQUAL_STRING("HI", host.displayText.c_str());
 }
 
+
+static void test_sixteen_logic_slots_and_stable_source_ids()
+{
+    TEST_ASSERT_EQUAL_UINT8(16, ELRS_LOGIC_COUNT);
+    TEST_ASSERT_EQUAL_UINT8(16, ELRS_MIX_COUNT);
+    ELRSLogicConfig c = {};
+    ELRSLogicInputs in = {{1500,1500,1500,1500},0,0xfff,true};
+    c.rules[0] = {3,133,134,0,0};
+    for(uint8_t i = 1; i < 16; i++) c.rules[i] = {3,(uint8_t)(16 + i + (i > 8)),133,0,0};
+    TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+    auto logical = elrsEvaluateLogic(c,in);
+    TEST_ASSERT_EQUAL_UINT16(0xffff, logical.states);
+    TEST_ASSERT_EQUAL_UINT16(0xffff, logical.valid);
+    int16_t base[16]; for(auto &us : base) us = 1500;
+    ELRSMixConfig mixes = {};
+    mixes.lines[15] = {16,33,0,100,0,2};
+    TEST_ASSERT_TRUE(elrsIsValidMixConfig(mixes));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsEvaluateMixes(mixes,in,logical,base,0).valuesUs[15]);
+    mixes.lines[15].source = 161;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsEvaluateMixes(mixes,in,logical,base,0).valuesUs[15]);
+    mixes.lines[15].source = 25;
+    TEST_ASSERT_EQUAL_INT16(2000, elrsEvaluateMixes(mixes,in,logical,base,0).valuesUs[15]);
+    mixes.lines[15].switchSource = 25;
+    TEST_ASSERT_FALSE(elrsIsValidMixConfig(mixes));
+    mixes.lines[15].switchSource = 0; mixes.lines[15].source = 34;
+    TEST_ASSERT_FALSE(elrsIsValidMixConfig(mixes));
+    for(uint8_t source : {25,26,27}) {
+        auto bad = c; bad.rules[8].sourceA = source;
+        TEST_ASSERT_FALSE(elrsIsValidLogicConfig(bad));
+    }
+    auto bad = c; bad.rules[15].sourceA = 33;
+    TEST_ASSERT_FALSE(elrsIsValidLogicConfig(bad));
+    c.rules[14] = {}; c.rules[15].sourceA = 160;
+    logical = elrsEvaluateLogic(c,in);
+    TEST_ASSERT_EQUAL_UINT16(0x3fff, logical.valid);
+    TEST_ASSERT_EQUAL_UINT16(0x3fff, logical.states);
+}
+
+static void test_sixteen_multiply_lines_keep_wide_intermediates()
+{
+    TEST_ASSERT_EQUAL_UINT8(16, ELRS_MIX_COUNT);
+    ELRSLogicInputs in = {{1500,1500,1500,1500},0,0xfff,true};
+    ELRSLogicResult logical = {};
+    ELRSMixConfig c = {};
+    for(auto &line : c.lines) line = {1,25,0,100,100,1};
+    int16_t base[16]; for(auto &us : base) us = 1500;
+    base[0] = 2000;
+    TEST_ASSERT_EQUAL_INT16(2000, elrsEvaluateMixes(c,in,logical,base,1).valuesUs[0]);
+    base[0] = 1000;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsEvaluateMixes(c,in,logical,base,1).valuesUs[0]);
+    c.lines[15] = {1,25,0,50,0,2};
+    TEST_ASSERT_EQUAL_INT16(1750, elrsEvaluateMixes(c,in,logical,base,1).valuesUs[0]);
+}
+
+static void test_logic_thresholds_and_layout()
+{
+    static_assert(sizeof(ELRSLogicRule) == 5, "Compact logical rule");
+    static_assert(sizeof(ELRSLogicConfig) == 5 * ELRS_LOGIC_COUNT, "Compact logical array");
+    ELRSLogicConfig c = elrsDefaultLogicConfig();
+    ELRSLogicInputs in = {{1500,1500,1500,1050},0,0xfff,true};
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).valid);
+    c.rules[0] = {1,4,0,-90,0};
+    TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+    TEST_ASSERT_EQUAL_UINT8(1, elrsEvaluateLogic(c,in).valid);
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).states);
+    in.axesUs[3]=1051;
+    TEST_ASSERT_EQUAL_UINT8(1, elrsEvaluateLogic(c,in).states);
+    c.rules[0].function=2; in.axesUs[3]=1050;
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).states);
+    in.axesUs[3]=1049;
+    TEST_ASSERT_EQUAL_UINT8(1, elrsEvaluateLogic(c,in).states);
+    in.axesValid=false;
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).valid);
+    for(int x : {-100,100}) {
+        c.rules[0].threshold=x; TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+    }
+}
+
+static void test_logic_truth_tables_gates_and_invalidity()
+{
+    const uint8_t truth[3][4]={{0,0,0,1},{0,1,1,1},{0,1,1,0}};
+    ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
+    for(int op=3;op<=5;op++) for(int mask=0;mask<4;mask++) {
+        ELRSLogicConfig c={}; c.rules[0]={(uint8_t)op,5,6,0,0};
+        in.switchStates=mask;
+        TEST_ASSERT_EQUAL_UINT8(truth[op-3][mask],elrsEvaluateLogic(c,in).states);
+        c.rules[0].sourceA=133;
+        TEST_ASSERT_EQUAL_UINT8(truth[op-3][mask^1],elrsEvaluateLogic(c,in).states);
+    }
+    ELRSLogicConfig c={}; c.rules[0]={1,1,0,0,6};
+    in.switchStates=0;
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).states);
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).valid);
+    in.switchStates=2;
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).states);
+    in.validSwitches &= ~2;
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).valid);
+    c.rules[0].andSwitch=134;
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).valid);
+    c.rules[0].andSwitch=0; c.rules[1]={3,9,17,0,0};
+    in.switchStates=16; in.validSwitches=0xfff;
+    TEST_ASSERT_EQUAL_UINT8(3,elrsEvaluateLogic(c,in).states);
+    in.validSwitches &= ~16; c.rules[1].sourceA=137;
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).valid);
+    c.rules[2]={4,146,5,0,0}; in.switchStates=1;
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).valid);
+    c.rules[0]={};
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).valid);
+}
+
+static void test_logic_rejects_bad_sources_and_cycles()
+{
+    const ELRSLogicRule bad[]={{6,0,0,0,0},{1,129,0,0,0},{1,25,0,0,0},
+        {3,1,5,0,0},{3,5,17,0,0},{3,5,18,0,0},{3,5,6,0,17},
+        {1,1,0,101,0},{1,1,5,0,0},{3,5,6,1,0},{0,5,0,0,0}};
+    for(const auto &rule:bad) {
+        ELRSLogicConfig c={}; c.rules[0]=rule;
+        TEST_ASSERT_FALSE(elrsIsValidLogicConfig(c));
+    }
+    ELRSLogicConfig c={}; c.rules[0]={1,1,0,0,0}; c.rules[1]={3,5,145,0,133};
+    TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+}
+
+
+static void test_mix_weight_offset_order_and_limits()
+{
+    static_assert(sizeof(ELRSMixLine)==6,"Compact mixer line");
+    static_assert(sizeof(ELRSMixConfig)==6 * ELRS_MIX_COUNT,"Compact mix array");
+    ELRSMixConfig c=elrsDefaultMixConfig();
+    ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
+    ELRSLogicResult logic={1,1}; int16_t base[16];
+    for(auto &v:base) v=1000; base[0]=1600;
+    TEST_ASSERT_EQUAL_INT16(1600,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[0]={1,25,0,50,-20,0};
+    TEST_ASSERT_EQUAL_INT16(1750,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[0]={1,25,0,50,0,1};
+    TEST_ASSERT_EQUAL_INT16(1550,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[0]={1,25,0,-100,0,2};
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    base[0]=2000; c.lines[0]={1,25,0,50,0,0}; c.lines[1]={1,25,0,-100,0,0};
+    TEST_ASSERT_EQUAL_INT16(1750,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    c.lines[1].multiplex=2;
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    std::swap(c.lines[0],c.lines[1]);
+    TEST_ASSERT_EQUAL_INT16(1250,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+    for(auto &line:c.lines) line={1,25,0,100,100,1};
+    TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,1).valuesUs[0]);
+}
+
+static void test_mix_sources_gates_and_unavailability()
+{
+    ELRSMixConfig c={}; c.lines[0]={9,17,0,100,0,2};
+    ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
+    ELRSLogicResult logic={1,1}; int16_t base[16]; for(auto &v:base)v=1000;
+    TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    logic.states=0;
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    c.lines[0].source=145;
+    TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    logic.valid=0;
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    c.lines[1]={9,25,0,100,0,2};
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    c.lines[1]={}; c.lines[0].switchSource=5;
+    TEST_ASSERT_EQUAL_UINT16(0,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    TEST_ASSERT_EQUAL_INT16(1500,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[7]);
+    c.lines[0].switchSource=133; in.validSwitches=0xffe;
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    in.validSwitches=0xfff; c.lines[0]={9,1,0,100,0,2};
+    TEST_ASSERT_EQUAL_INT16(1700,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    in.axesUs[0]=1501; c.lines[0].weight=-50;
+    TEST_ASSERT_EQUAL_INT16(1500,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    in.axesUs[0]=-32768;
+    TEST_ASSERT_EQUAL_UINT16(256,elrsEvaluateMixes(c,in,logic,base,0).invalidChannels);
+    for(int source=5;source<=16;source++) {
+        c.lines[0]={9,(uint8_t)source,0,100,0,2}; in.switchStates=(1<<(source-5));
+        TEST_ASSERT_EQUAL_INT16(2000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+        c.lines[0].source |= 128;
+        TEST_ASSERT_EQUAL_INT16(1000,elrsEvaluateMixes(c,in,logic,base,0).valuesUs[8]);
+    }
+}
+
+static void test_mix_rejects_malformed_lines()
+{
+    const ELRSMixLine bad[]={{17,25,0,100,0,0},{1,0,0,100,0,0},{1,34,0,100,0,0},
+        {1,153,0,100,0,0},{1,129,0,100,0,0},{1,25,1,100,0,0},
+        {1,25,0,101,0,0},{1,25,0,100,-101,0},{1,25,0,100,0,3},{0,25,0,0,0,0}};
+    for(const auto &line:bad){ELRSMixConfig c={};c.lines[0]=line;TEST_ASSERT_FALSE(elrsIsValidMixConfig(c));}
+    ELRSMixConfig c={}; c.lines[0]={1,24,152,100,0,2}; c.lines[1]=c.lines[0];
+    TEST_ASSERT_TRUE(elrsIsValidMixConfig(c));
+}
+
+
+static void test_logic_mix_core_chain_and_post_mix_limits()
+{
+    FakeHost host; ELRSCrsfCore core; auto c=defaultConfig();
+    host.axes[AXIS_AILERON]=2047; host.axes[AXIS_THROTTLE]=0; host.packStates=1;
+    c.logic.rules[0]={2,4,0,-90,0}; c.logic.rules[1]={3,9,17,0,0};
+    c.mixes.lines[0]={9,18,0,100,0,2}; c.mixes.lines[1]={10,18,0,100,0,2};
+    c.mixes.lines[2]={1,1,17,50,0,2};
+    c.outputLimits[AXIS_AILERON]={1200,1700};
+    TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(9));
+    TEST_ASSERT_EQUAL_UINT16(1155,core.channelAt(0)); // Half input, then destination limits once.
+    host.axes[AXIS_THROTTLE]=2047; loopAt(core,host,40,40000);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(9));
+    TEST_ASSERT_EQUAL_UINT16(1319,core.channelAt(0)); // Inactive gate restores full base travel.
+}
+
+static void test_mix_core_stale_inputs_selftest_and_corrupt_config()
+{
+    FakeHost host; ELRSCrsfCore core; auto c=defaultConfig(); host.packStates=1;
+    c.logic.rules[0]={3,9,9,0,0}; c.mixes.lines[0]={9,145,0,100,0,2};
+    c.mixes.lines[1]={1,25,0,100,0,2};
+    TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(0));
+    host.packAvailable=false; loopAt(core,host,40,40000);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8)); // Invalid !L01 cannot activate.
+    host.axesAvailable=false; loopAt(core,host,500,500000);
+    TEST_ASSERT_EQUAL_UINT16(992,core.channelAt(0)); // MAX cannot defeat ADC neutral.
+    core.startSelfTest(510); loopAt(core,host,520,520000);
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(4));
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(992,core.channelAt(0));
+    c.logic.rules[0].function=6; host.packAvailable=true; host.axesAvailable=true;
+    ELRSCrsfCore fallback; TEST_ASSERT_TRUE(fallback.begin(host,c,0)); loopAt(fallback,host,20,20000);
+    TEST_ASSERT_EQUAL_UINT16(1811,fallback.channelAt(8)); // Original physical map survives invalid new block.
+}
+
+static void test_mix_core_none_sources_calibration_and_prop_mode()
+{
+    for(bool prop:{false,true}) {
+        FakeHost host; ELRSCrsfCore core; auto c=defaultConfig(); c.propControls=prop;
+        c.inputRouting.aileronChannel=0; host.axes[AXIS_AILERON]=2047;
+        c.mixes.lines[0]={9,1,0,50,0,2};
+        TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+        TEST_ASSERT_EQUAL_UINT16(1401,core.channelAt(8));
+        TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(0));
+        if(!prop) {
+            unsigned long now=30; calibrationPress(core,host,now,true);
+            TEST_ASSERT_TRUE(core.isCalibrating());
+            TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -4308,6 +4618,17 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_logic_mix_core_chain_and_post_mix_limits);
+    RUN_TEST(test_mix_core_stale_inputs_selftest_and_corrupt_config);
+    RUN_TEST(test_mix_core_none_sources_calibration_and_prop_mode);
+    RUN_TEST(test_mix_weight_offset_order_and_limits);
+    RUN_TEST(test_mix_sources_gates_and_unavailability);
+    RUN_TEST(test_mix_rejects_malformed_lines);
+    RUN_TEST(test_sixteen_logic_slots_and_stable_source_ids);
+    RUN_TEST(test_sixteen_multiply_lines_keep_wide_intermediates);
+    RUN_TEST(test_logic_thresholds_and_layout);
+    RUN_TEST(test_logic_truth_tables_gates_and_invalidity);
+    RUN_TEST(test_logic_rejects_bad_sources_and_cycles);
     RUN_TEST(test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph);
     RUN_TEST(test_rpm_accepts_elrs_serial_sources_and_hott_update_interval);
     RUN_TEST(test_rpm_accepts_elrs_mavlink_passthrough);
@@ -4360,6 +4681,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_tx_deadline_advances_past_real_io_completion);
     RUN_TEST(test_late_tx_preserves_receive_opportunity);
     RUN_TEST(test_bounded_polling_jitter_keeps_healthy_tx_cadence);
+    RUN_TEST(test_full_logic_mixes_keep_costed_500hz_io_cadence);
     RUN_TEST(test_tx_pacing_retains_fractional_periods_and_rollover);
     RUN_TEST(test_costed_service_slots_keep_rc_and_real_reply_deadlines);
     RUN_TEST(test_pending_axes_keep_filter_and_rc_slots);

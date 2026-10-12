@@ -22,6 +22,9 @@ static void crsfReadSwitchParams();
 static void crsfReadDisplayParams();
 static const char *wmBuildCRSFDisplay(const char *dest, int op);
 static void crsfReadExpoParams();
+static void crsfReadLogicParams();
+static void crsfReadMixParams();
+static const char *wmBuildCRSFLogicMix(const char *dest, int op);
 
 static void syncCRSFPortalBuffers();
 static bool saveCRSFPortalInputSettings();
@@ -147,6 +150,9 @@ static char crsfLocalActions[ELRS_SWITCH_INPUT_COUNT][2] = {};
 static ELRSDisplayConfig crsfDisplayConfig = elrsDefaultDisplayConfig();
 static ELRSVehicleConfig crsfVehicleConfig = elrsDefaultVehicleConfig();
 static bool crsfDisplayParamsValid = true;
+static ELRSLogicConfig crsfLogicConfig = {};
+static ELRSMixConfig crsfMixConfig = {};
+static bool crsfLogicParamsValid = true, crsfMixParamsValid = true;
 
 static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)
 {
@@ -182,7 +188,8 @@ WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
 WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
 WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP);
 WiFiManagerParameter custom_crsfdisplay(wmBuildCRSFDisplay);
-WiFiManagerParameter custom_ss_crsfmap("<h3>Channel Mappings</h3><p style='margin:0 0 10px'><small>Changes apply after saving and restarting.</small></p>", WFM_SECTS|WFM_HL);
+WiFiManagerParameter custom_crsflogicmix(wmBuildCRSFLogicMix);
+WiFiManagerParameter custom_ss_crsfmap("<h3>Mixes: Base assignments</h3><p style='margin:0 0 10px'><small>Changes apply after saving and restarting.</small></p>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfrc(wmBuildCRSFRC);
 WiFiManagerParameter custom_crsfrr("Reverse Aileron", settings.elrsRollRev, "class='mt5 ml20'", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpc(wmBuildCRSFPC);
@@ -207,6 +214,7 @@ WiFiManagerParameter * const crsfParmArray[] = {
       &custom_crsfmp,
       &custom_crsfdp,
       &custom_crsfdisplay,
+      &custom_crsflogicmix,
       &custom_ss_crsfmap,
       &custom_crsfrc,
       &custom_crsfrr,
@@ -266,6 +274,8 @@ static void crsf_wifi_saveParamsCallback()
     crsfReadOutputLimitParams();
     crsfReadExpoParams();
     crsfReadDisplayParams();
+    crsfReadLogicParams();
+    crsfReadMixParams();
     if(opModeCRSF) {
         crsfReadInputParam("chyst", settings.elrsAdcHysteresis, 2, 0, ELRS_INPUT_TOLERANCE_MAX, 0);
         crsfReadInputParam("cthid", settings.elrsThrIdleDeadband, 2, 0, ELRS_INPUT_TOLERANCE_MAX, 0);
@@ -334,6 +344,8 @@ static void syncCRSFPortalBuffers()
     crsfDisplayConfig = loadELRSDisplayConfig();
     crsfVehicleConfig = loadELRSVehicleConfig();
     crsfDisplayParamsValid = true;
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &crsfLogicConfig, &crsfMixConfig);
+    crsfLogicParamsValid = crsfMixParamsValid = true;
 
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
     loadELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions);
@@ -364,6 +376,7 @@ static void syncCRSFPortalBuffers()
 
 static bool saveCRSFPortalInputSettings()
 {
+    if(!crsfLogicParamsValid || !crsfMixParamsValid) return false;
     if(!crsfDisplayParamsValid || !elrsIsValidDisplayConfig(crsfDisplayConfig) || !elrsIsValidVehicleConfig(crsfVehicleConfig)) return false;
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
     ELRSOutputLimits limits[ELRS_GIMBAL_AXIS_COUNT];
@@ -436,7 +449,7 @@ static bool saveCRSFPortalInputSettings()
     uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
     if(adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
     if(throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
-    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions, &crsfDisplayConfig, &crsfVehicleConfig)) return false;
+    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions, &crsfDisplayConfig, &crsfVehicleConfig, &crsfLogicConfig, &crsfMixConfig)) return false;
     syncCRSFPortalBuffers();
     return true;
 }
@@ -1136,6 +1149,81 @@ static void crsfReadGimbalChannelParam(const char *name, char *destBuf)
     bool valid = value.length() >= 1 && value.length() <= 2 && strspn(text, "0123456789") == value.length() && channel <= 16;
     // Retain HTTP0..15 for CH1..16; the appended option16 means no channel.
     snprintf(destBuf, sizeof(settings.elrsRollCh), "%ld", valid ? (channel == 16 ? 0 : channel + 1) : -1L);
+}
+
+
+static bool crsfParseLogicNumber(const String &value, int minimum, int maximum, long &number)
+{
+    const size_t length = value.length();
+    if(!length || length > 4 || length != strlen(value.c_str())) return false;
+    const size_t start = value[0] == '-' && minimum < 0 ? 1 : 0;
+    if(start == length) return false;
+    for(size_t i = start; i < length; i++) if(value[i] < '0' || value[i] > '9') return false;
+    number = strtol(value.c_str(), nullptr, 10);
+    return number >= minimum && number <= maximum;
+}
+
+static bool crsfReadLogicMixForm(bool mixes)
+{
+    const char *marker = mixes ? "cmform" : "clform";
+    if(!wm.server->hasArg(marker)) return true;
+    const String value = wm.server->arg(marker);
+    if(value.length() != 1 || value[0] != '1') return false;
+    const char * const fields[2][6] = {{"clfn","cla","clb","clx","cland",nullptr},
+                                     {"cmch","cmsrc","cmsw","cmwt","cmoff","cmmux"}};
+    const uint8_t count = mixes ? sizeof(ELRSMixLine) : sizeof(ELRSLogicRule);
+    uint8_t *rows = mixes ? (uint8_t *)&crsfMixConfig : (uint8_t *)&crsfLogicConfig;
+    for(uint8_t i = 0; i < (mixes ? ELRS_MIX_COUNT : ELRS_LOGIC_COUNT); i++) for(uint8_t j = 0; j < count; j++) {
+        char name[10];
+        snprintf(name, sizeof(name), "%s%u", fields[mixes][j], i);
+        if(!wm.server->hasArg(name)) return false;
+        const bool signedField = j == 3 || (mixes && j == 4);
+        const int maximum = signedField ? 100 : j == 0 ? (mixes ? 16 : 5) : mixes && j == 5 ? 2 : 255;
+        long number;
+        if(!crsfParseLogicNumber(wm.server->arg(name), signedField ? -100 : 0, maximum, number)) return false;
+        rows[i * count + j] = (uint8_t)number;
+    }
+    return true;
+}
+
+static void crsfReadLogicParams()
+{
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &crsfLogicConfig);
+    crsfLogicParamsValid = crsfReadLogicMixForm(false) && elrsIsValidLogicConfig(crsfLogicConfig);
+}
+
+static void crsfReadMixParams()
+{
+    loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &crsfMixConfig);
+    crsfMixParamsValid = crsfReadLogicMixForm(true) && elrsIsValidMixConfig(crsfMixConfig);
+}
+
+static const char crsfLogicMixScript[] = R"JS(function init(){const g=id=>document.getElementById(id),ln=i=>'L'+String(i+1).padStart(2,'0'),names=['---','Aileron','Elevator','Rudder','Throttle','Stop','FakePower','O.O','RESET',...Array.from({length:8},(_,i)=>'ButtonPack '+(i+1)),...Array.from({length:16},(_,i)=>ln(i)),'MAX'],fn=['Choose Func','a>x','a<x','AND','OR','XOR'],mux=['Add','Multiply','Replace'],lf=['clfn','cla','clb','clx','cland'],mf=['cmch','cmsrc','cmsw','cmwt','cmoff','cmmux'];names.splice(25,0,names.pop());let t=0,k=-1,ch=1,v=[],c=[];const d=g('lme'),f=g('lmfields');function el(tag,text){let e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e}function btn(text,cb){let e=el('button',text);e.type='button';e.onclick=cb;return e}function label(id){return(id&128?'!':'')+names[id&127]}function bools(max){let a=[[0,'---']];for(let i=5;i<=max;i++)if(i!==25&&(i<17||L[i-17-(i>25)][0]))a.push([i,names[i]],[i|128,'!'+names[i]]);return a}function used(i){let id=17+i+(i>=8);return[[L,[1,2,4]],[M,[1,2]]].some(([a,b])=>a.some(r=>r[0]&&b.some(j=>(r[j]&127)===id)))}function field(j,text,opts,required){let l=el('label',text+' '),e=el(opts?'select':'input');if(opts)for(let [id,name]of opts){let o=el('option',name);o.value=id;e.appendChild(o)}else{e.type='number';e.min=-100;e.max=100;e.step=1;e.required=true}e.value=v[j];if(opts&&!opts.some(x=>x[0]===v[j])){let o=el('option','Missing '+label(v[j]));o.value=v[j];o.disabled=true;e.appendChild(o);e.value=v[j]}e.opts=opts;e.req=required;l.appendChild(e);f.appendChild(l);c[j]=e;return e}function draw(){f.replaceChildren();c=[];if(!t){let e=field(0,'Func',fn.map((x,i)=>[i,x]),true);e.onchange=()=>{v=[Number(e.value),0,0,0,0];draw()};if(v[0]){field(1,'V1',v[0]<=2?[[0,'Choose source'],...names.slice(1,5).map((x,i)=>[i+1,x])]:bools(16+k+(k>8)),true);field(v[0]<=2?3:2,'V2'+(v[0]<=2?' (%)':''),v[0]<=2?null:bools(16+k+(k>8)),v[0]>2);field(4,'AND switch',bools(16+k+(k>8)))}}else{field(0,'Channel',Array.from({length:16},(_,i)=>[i+1,'CH'+(i+1)]));field(1,'Source',[[0,'Choose source'],...names.slice(1,5).map((x,i)=>[i+1,x]),...bools(33).slice(1),[25,'MAX']],true);field(3,'Weight (%)');field(4,'Offset (%)');field(2,'Switch',bools(33));field(5,'Multiplex',mux.map((x,i)=>[i,x]))}}function edit(type,i,fresh){if(!fresh&&!(type?M:L)[i][0])return;t=type;k=i;v=fresh||((t?M:L)[i].slice());g('lmtitle').textContent=t?'Mix':ln(i);if(t)ch=v[0];draw();d.showModal();refresh()}function hidden(name,value){let e=el('input');e.type='hidden';e.name=name;e.value=value;g('lmvalues').appendChild(e)}function row(table,values,actions,selected){let r=el('tr');if(selected)r.className='lmselected';for(let value of values)r.appendChild(el('td',value));let a=el('td');for(let b of actions)a.appendChild(b);r.appendChild(a);table.appendChild(r)}function refresh(){g('lmvalues').replaceChildren();hidden('clform',1);hidden('cmform',1);for(let [a,keys]of[[L,lf],[M,mf]])a.forEach((r,i)=>r.forEach((x,j)=>hidden(keys[j]+i,x)));let l=g('lml'),m=g('lmm');l.replaceChildren();m.replaceChildren();L.forEach((r,i)=>{if(!r[0])return;let del=btn('Delete',()=>{if(used(i))return;L[i]=[0,0,0,0,0];refresh()});del.disabled=used(i);del.title=del.disabled?'Change references first':'';row(l,[ln(i),fn[r[0]],label(r[1]),r[0]>2?label(r[2]):r[3]+'%',label(r[4])],[btn('Edit',()=>edit(0,i)),del],!t&&k===i)});let base=[];for(let [id,src]of[['crlch',1],['cptch',2],['cywch',3],['cthch',4]]){let e=g(id);if(e&&Number(e.value)!==16)base.push([Number(e.value)+1,src,e])}for(let i=0;i<12;i++){let e=g('csw'+i);if(e&&Number(e.value))base.push([Number(e.value),i+5,e])}for(let n=1;n<=16;n++){for(let b of base.filter(x=>x[0]===n))row(m,['CH'+n,'Base '+names[b[1]],'100%','---','Replace'],[btn('Base',()=>{ch=b[0];b[2].scrollIntoView();b[2].focus()})]);M.forEach((r,i)=>{if(r[0]!==n)return;function move(dir){let j=i+dir;while(j>=0&&j<M.length&&M[j][0]!==n)j+=dir;if(j>=0&&j<M.length){[M[i],M[j]]=[M[j],M[i]];t=1;ch=n;k=j;refresh()}}row(m,['CH'+n,label(r[1]),r[3]+'%',label(r[2]),mux[r[5]]],[btn('Edit',()=>edit(1,i)),btn('Up',()=>move(-1)),btn('Down',()=>move(1)),btn('Delete',()=>{M[i]=[0,0,0,0,0,0];refresh()})],t&&k===i)})}for(let[a,id,text]of[[L,'ll','rows'],[M,'lm','additional lines']]){let n=a.filter(r=>r[0]).length;g(id+'count').textContent=n+'/'+a.length+' '+text;g(id+'add').disabled=n===a.length}}g('lmapply').onclick=()=>{for(let e of c.filter(Boolean)){let n=Number(e.value);e.setCustomValidity(e.req&&!n||e.opts&&!e.opts.some(x=>x[0]===n)?'Choose an available value':'');if(!e.reportValidity()||!Number.isInteger(n))return}for(let j=0;j<c.length;j++)if(c[j])v[j]=Number(c[j].value);if(!t&&!v[0])v=[0,0,0,0,0];if(t)ch=v[0];(t?M:L)[k]=v;d.oncancel();refresh()};d.oncancel=g('lmcancel').onclick=()=>{f.replaceChildren();d.close()};d.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){e.preventDefault();g('lmapply').click()}});for(let[a,id,type]of[[L,'ll',0],[M,'lm',1]])g(id+'add').onclick=()=>{let i=a.findIndex(r=>!r[0]);if(i>=0)edit(type,i,type?[ch,0,0,100,0,0]:[0,0,0,0,0])};for(let e of document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]'))e.addEventListener('change',refresh);refresh()}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();})();</script>)JS";
+
+static const char *wmBuildCRSFLogicMix(const char *dest, int op)
+{
+    if(op == WM_CP_DESTROY) { if(dest) free((void *)dest); return nullptr; }
+    String html;
+    html.reserve(sizeof(crsfLogicMixScript) + 1200);
+    html += "<style>.lms{overflow-x:auto}.lmt{width:100%;font-size:.8em;border-collapse:collapse}.lmt td,.lmt th{padding:3px;text-align:left;border-bottom:1px solid #ddd}.lmselected{background:#e8eef5}.lmt button{width:auto;padding:3px;margin:1px}#lme{width:85%;max-width:400px;max-height:80vh;overflow:auto}#lmfields label{display:block;margin:10px 0}#lmfields label>*{width:100%}</style><h3>Logical Switches</h3><small>! = Not.</small><button type='button' id='lladd'>Add logical switch</button> <small id='llcount'></small><div class='lms'><table class='lmt'><tr><th>Switch<th>Func<th>V1<th>V2<th>AND switch</tr><tbody id='lml'></tbody></table></div><h3>Mixes</h3><small>Source=value; Switch=gate.</small><button type='button' id='lmadd'>Add mix</button> <small id='lmcount'></small><div class='lms'><table class='lmt'><tr><th>Channel<th>Source<th>Weight<th>Switch<th>Multiplex</tr><tbody id='lmm'></tbody></table></div><div id='lmvalues'></div><dialog id='lme' aria-labelledby='lmtitle'><h4 id='lmtitle'></h4><div id='lmfields'></div><button type='button' id='lmapply'>Apply</button> <button type='button' id='lmcancel'>Cancel</button></dialog><noscript>Enable JavaScript.</noscript><script>(function(){const L=[";
+    char buf[56];
+    for(int i = 0; i < ELRS_LOGIC_COUNT; i++) {
+        const auto &r = crsfLogicConfig.rules[i];
+        snprintf(buf, sizeof(buf), "%s[%u,%u,%u,%d,%u]", i ? "," : "", r.function, r.sourceA, r.sourceB, r.threshold, r.andSwitch);
+        html += buf;
+    }
+    html += "],M=[";
+    for(int i = 0; i < ELRS_MIX_COUNT; i++) {
+        const auto &r = crsfMixConfig.lines[i];
+        snprintf(buf, sizeof(buf), "%s[%u,%u,%u,%d,%d,%u]", i ? "," : "", r.channel, r.source, r.switchSource, r.weight, r.offset, r.multiplex);
+        html += buf;
+    }
+    html += "];";
+    html += crsfLogicMixScript;
+    if(op == WM_CP_LEN) { wmLenBuf = html.length() + 1; return (const char *)&wmLenBuf; }
+    char *result = (char *)malloc(html.length() + 1);
+    if(result) strcpy(result, html.c_str());
+    return result;
 }
 
 #endif

@@ -62,4 +62,38 @@ ELRSSwitchRouting elrsSanitizeSwitchRouting(const ELRSSwitchRouting &routing);
 bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchRouting &switches);
 void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &switches);
 
+
+constexpr uint8_t ELRS_LOGIC_COUNT = 16;
+struct ELRSLogicRule {
+    uint8_t function, sourceA, sourceB;
+    int8_t threshold;
+    uint8_t andSwitch;
+};
+struct ELRSLogicConfig { ELRSLogicRule rules[ELRS_LOGIC_COUNT]; };
+struct ELRSLogicInputs {
+    int16_t axesUs[ELRS_GIMBAL_AXIS_COUNT];
+    uint16_t switchStates, validSwitches;
+    bool axesValid;
+};
+struct ELRSLogicResult { uint16_t states, valid; };
+static_assert(sizeof(ELRSLogicRule) == 5, "Preserve compact logic storage");
+ELRSLogicConfig elrsDefaultLogicConfig();
+bool elrsIsValidLogicConfig(const ELRSLogicConfig &config);
+ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogicInputs &inputs);
+
+
+constexpr uint8_t ELRS_MIX_COUNT = 16;
+struct ELRSMixLine {
+    uint8_t channel, source, switchSource;
+    int8_t weight, offset;
+    uint8_t multiplex;
+};
+struct ELRSMixConfig { ELRSMixLine lines[ELRS_MIX_COUNT]; };
+struct ELRSMixResult { int16_t valuesUs[16]; uint16_t invalidChannels; };
+static_assert(sizeof(ELRSMixLine) == 6, "Preserve compact mix storage");
+ELRSMixConfig elrsDefaultMixConfig();
+bool elrsIsValidMixConfig(const ELRSMixConfig &config);
+ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInputs &inputs,
+    const ELRSLogicResult &logic, const int16_t baseChannelsUs[16], uint16_t baseClaimedChannels);
+
 #endif
