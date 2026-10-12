@@ -99,8 +99,8 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
 >- wait until the display shows "RST",
 >- then release the _Calibration_ button.
 >
->This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
-<!--The device will continue booting, but - this once - use DHCP and ignore static IP data. This gives your an opportunity to correct or clear that data, otherwise it will be effective again after the next reboot.-->
+>This procedure causes static IP data to be deleted; the device will return to DHCP.
+
 </details>
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
@@ -777,7 +777,7 @@ If you forget this password and are thereby locked out of your Remote,
 - wait until the display shows "RST",
 - then release the _Calibration_ button.
 
-The Remote will boot and start the access point - this once - without a password, thereby giving you an opportunity to connect without a password and to either look up or change said password. When you reboot or power-cycle the Remote, the AP will be password protected again.
+The Remote will boot and start the access point - this once - without a password, thereby giving you an opportunity to connect without a password and to either look up or change said password. When you reboot or power-cycle the Remote, REM-AP will be password protected again.
 
 ##### &#9193; WiFi channel
 
