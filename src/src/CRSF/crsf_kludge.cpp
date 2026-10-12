@@ -82,6 +82,9 @@ struct [[gnu::packed]] ELRSCrsfSettingsBlob {
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
     ELRSDisplayConfig displayConfig;
     ELRSVehicleConfig vehicleConfig;
+    uint8_t logicVersion;
+    ELRSLogicConfig logic;
+    ELRSMixConfig mixes;
 };
 
 static_assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68, "Preserve the legacy CRSF settings prefix");
@@ -89,7 +92,9 @@ static_assert(offsetof(ELRSCrsfSettingsBlob, localActions) == 84, "Preserve trav
 static_assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96, "Preserve the existing CRSF settings prefix");
 static_assert(offsetof(ELRSCrsfSettingsBlob, vehicleConfig) == 106, "Preserve the complete display settings tail");
 static_assert(offsetof(ELRSVehicleConfig, rpmType) == 13, "Preserve existing vehicle settings");
-static_assert(sizeof(ELRSCrsfSettingsBlob) == 120, "CRSF settings append the RPM type");
+static_assert(offsetof(ELRSCrsfSettingsBlob, logicVersion) == 120, "Preserve the existing prefix");
+static_assert(offsetof(ELRSCrsfSettingsBlob, logic) == 121 && offsetof(ELRSCrsfSettingsBlob, mixes) == 161, "Compact logic/mix tail");
+static_assert(sizeof(ELRSCrsfSettingsBlob) == 209, "Complete versioned logic/mix storage");
 
 struct [[gnu::packed]] ELRSCrsfLegacySettingsBlob {
     ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT];
@@ -110,6 +115,7 @@ static ELRSCrsfSettingsBlob defaultCrsfSettings()
     settings.switchRouting = elrsDefaultSwitchRouting();
     settings.displayConfig = elrsDefaultDisplayConfig();
     settings.vehicleConfig = elrsDefaultVehicleConfig();
+    settings.logicVersion = 1;
 
     return settings;
 }
@@ -138,6 +144,11 @@ static ELRSInputAxisProfile calibrationToProfile(const ELRSAxisCalibrationData &
 
 static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
 {
+    if(settings.logicVersion != 1 || !elrsIsValidLogicConfig(settings.logic) || !elrsIsValidMixConfig(settings.mixes)) {
+        settings.logic = {};
+        settings.mixes = {};
+    }
+    settings.logicVersion = 1;
     if(!elrsIsValidDisplayConfig(settings.displayConfig)) settings.displayConfig = elrsDefaultDisplayConfig();
     if(!elrsIsValidVehicleConfig(settings.vehicleConfig)) settings.vehicleConfig = elrsDefaultVehicleConfig();
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
@@ -341,6 +352,9 @@ void crsf_load_settings()
             }
         } else {
             int bytes = min(crsfSetValidBytes, (int)sizeof(crsfSettings));
+            const int logicOffset = offsetof(ELRSCrsfSettingsBlob, logicVersion);
+            // An incomplete extension cannot enable any portion of logic or mixing.
+            if(bytes > logicOffset && bytes < (int)sizeof(crsfSettings)) bytes = logicOffset;
             const int toleranceOffset = offsetof(ELRSCrsfSettingsBlob, adcHysteresis);
             const int switchOffset = offsetof(ELRSCrsfSettingsBlob, switchRouting);
             const int limitsOffset = offsetof(ELRSCrsfSettingsBlob, outputLimits);
@@ -437,7 +451,8 @@ ELRSVehicleConfig loadELRSVehicleConfig()
 
 void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRouting *routing,
                          uint16_t *adcHysteresis, uint16_t *throttleIdleDeadband,
-                         ELRSSwitchRouting *switchRouting, ELRSOutputLimits *outputLimits, uint8_t *localActions)
+                         ELRSSwitchRouting *switchRouting, ELRSOutputLimits *outputLimits, uint8_t *localActions,
+                         ELRSLogicConfig *logicConfig, ELRSMixConfig *mixConfig)
 {
     if(profiles) {
         loadELRSInputProfiles(profiles, count);
@@ -451,6 +466,8 @@ void loadELRSInputConfig(ELRSInputAxisProfile *profiles, int count, ELRSGimbalRo
     if(switchRouting) *switchRouting = crsfSettings.switchRouting;
     if(outputLimits) memcpy(outputLimits, crsfSettings.outputLimits, sizeof(crsfSettings.outputLimits));
     if(localActions) memcpy(localActions, crsfSettings.localActions, sizeof(crsfSettings.localActions));
+    if(logicConfig) *logicConfig = crsfSettings.logic;
+    if(mixConfig) *mixConfig = crsfSettings.mixes;
 }
 
 void saveELRSGimbalRouting(const ELRSGimbalRouting &routing)
@@ -461,8 +478,11 @@ void saveELRSGimbalRouting(const ELRSGimbalRouting &routing)
 bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const ELRSGimbalRouting *routing,
                          const uint16_t *adcHysteresis, const uint16_t *throttleIdleDeadband,
                          const ELRSSwitchRouting *switchRouting, const ELRSOutputLimits *outputLimits, const uint8_t *localActions,
-                         const ELRSDisplayConfig *displayConfig, const ELRSVehicleConfig *vehicleConfig)
+                         const ELRSDisplayConfig *displayConfig, const ELRSVehicleConfig *vehicleConfig,
+                         const ELRSLogicConfig *logicConfig, const ELRSMixConfig *mixConfig)
 {
+    if(logicConfig && !elrsIsValidLogicConfig(*logicConfig)) return false;
+    if(mixConfig && !elrsIsValidMixConfig(*mixConfig)) return false;
     if(displayConfig && !elrsIsValidDisplayConfig(*displayConfig)) return false;
     if(vehicleConfig && !elrsIsValidVehicleConfig(*vehicleConfig)) return false;
     count = clampProfileCount(count);
@@ -503,6 +523,8 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
     if(localActions) memcpy(crsfSettings.localActions, localActions, sizeof(crsfSettings.localActions));
     if(displayConfig) crsfSettings.displayConfig = *displayConfig;
     if(vehicleConfig) crsfSettings.vehicleConfig = *vehicleConfig;
+    if(logicConfig) crsfSettings.logic = *logicConfig;
+    if(mixConfig) crsfSettings.mixes = *mixConfig;
 
     sanitizeCrsfSettings(crsfSettings);
     if(crsf_save_settings(true)) return true;
@@ -545,8 +567,10 @@ bool crsf_begin(
     ELRSOutputLimits outputLimits[ELRS_GIMBAL_AXIS_COUNT];
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
     uint16_t adcHysteresis, throttleIdleDeadband;
+    ELRSLogicConfig logic;
+    ELRSMixConfig mixes;
 
-    loadELRSInputConfig(axisProfiles, ELRS_GIMBAL_AXIS_COUNT, &inputRouting, &adcHysteresis, &throttleIdleDeadband, &switchRouting, outputLimits, localActions);
+    loadELRSInputConfig(axisProfiles, ELRS_GIMBAL_AXIS_COUNT, &inputRouting, &adcHysteresis, &throttleIdleDeadband, &switchRouting, outputLimits, localActions, &logic, &mixes);
     const ELRSDisplayConfig displayConfig = loadELRSDisplayConfig();
     const ELRSVehicleConfig vehicleConfig = loadELRSVehicleConfig();
 
@@ -576,7 +600,9 @@ bool crsf_begin(
             localActions,
             settings.opMode[0] == '2',
             &displayConfig,
-            &vehicleConfig
+            &vehicleConfig,
+            &logic,
+            &mixes
         );
 }
 

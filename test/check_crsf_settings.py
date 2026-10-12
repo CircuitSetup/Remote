@@ -183,7 +183,7 @@ std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
 bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
-    valid = min(120, (int)stored.size());
+    valid = min(209, (int)stored.size());
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
@@ -273,7 +273,7 @@ int main() {
     crsf_load_settings();
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
     auto fullDisplay = stored;
-    assert(fullDisplay.size() == 120 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
+    assert(fullDisplay.size() == 209 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
     for(int length = 96; length <= 120; length++) {
         stored = fullDisplay; stored.resize(length); crsf_load_settings();
         auto loaded = loadELRSDisplayConfig();
@@ -446,7 +446,7 @@ int main() {
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(previous.size() == 56 && mapped.size() == 120);
+    assert(previous.size() == 56 && mapped.size() == 209);
     for(int partial = 0; partial < 12; partial++) {
         stored = mapped;
         stored.resize(previous.size() + partial);
@@ -833,7 +833,7 @@ int main() {
     // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
     assert(sizeof(ELRSInputAxisProfile) == 12);
     assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
-    assert(sizeof(ELRSCrsfSettingsBlob) == 120 && sizeof(ELRSOutputLimits) == 4);
+    assert(sizeof(ELRSCrsfSettingsBlob) == 209 && sizeof(ELRSOutputLimits) == 4);
     const ELRSOutputLimits limits[4] = {{1100,1700},{1200,1800},{1300,1900},{1400,1600}};
     ELRSOutputLimits loaded[4];
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits));
@@ -1178,6 +1178,50 @@ int main() {
     reInstallFlashFS();
     assert(media[0] == beforeMove && stored == beforeMove);
     puts("CRSF settings preserve local actions, limits, calibration, tolerances and mappings across Flash/SD migration and reinstall");
+
+    ELRSLogicConfig logic={}; logic.rules[0]={2,4,0,-90,0};
+    ELRSMixConfig mixes={}; mixes.lines[0]={9,17,0,100,0,2};
+    assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
+    const auto extended=stored; assert(extended.size()==209);
+    assert(offsetof(ELRSCrsfSettingsBlob,logicVersion)==120);
+    assert(offsetof(ELRSCrsfSettingsBlob,logic)==121 && offsetof(ELRSCrsfSettingsBlob,mixes)==161);
+    for(int length=120;length<209;length++) {
+        stored=extended; stored.resize(length); crsf_load_settings();
+        assert(!memcmp(&crsfSettings,extended.data(),120));
+        const ELRSLogicConfig offLogic={}; const ELRSMixConfig offMix={};
+        assert(!memcmp(&crsfSettings.logic,&offLogic,sizeof(offLogic)));
+        assert(!memcmp(&crsfSettings.mixes,&offMix,sizeof(offMix)));
+    }
+    for(int bad=0;bad<3;bad++) {
+        stored=extended;
+        if(bad==0)stored[120]=2;
+        if(bad==1)stored[121]=6;
+        if(bad==2)stored[161]=17;
+        crsf_load_settings();
+        assert(!memcmp(&crsfSettings,extended.data(),120));
+        assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
+    }
+    stored=extended; crsf_load_settings();
+    ELRSLogicConfig loadedLogic={}; ELRSMixConfig loadedMix={};
+    loadELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&loadedLogic,&loadedMix);
+    assert(!memcmp(&logic,&loadedLogic,sizeof(logic)) && !memcmp(&mixes,&loadedMix,sizeof(mixes)));
+    assert(saveELRSInputConfig(nullptr,0)); assert(stored==extended);
+    const auto extendedHash=crsfSettingsHash;
+    mixes.lines[0].weight=50; storageWriteOk=false;
+    assert(!saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&mixes));
+    assert(stored==extended && crsfSettingsHash==extendedHash && crsfSettings.mixes.lines[0].weight==100);
+    storageWriteOk=true;
+    assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&mixes));
+    assert(crsfSettings.logic.rules[0].threshold==-90 && crsfSettings.mixes.lines[0].weight==50);
+    auto badMix=mixes; badMix.lines[0].channel=17;
+    const auto goodExtended=stored;
+    assert(!saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&badMix));
+    assert(stored==goodExtended);
+    media[0]=stored; settings.CfgOnSD[0]='1'; configOnSD=false; moveSettings();
+    assert(media[1]==goodExtended); reInstallFlashFS();
+    assert(crsfSettings.logic.rules[0].threshold==-90 && crsfSettings.mixes.lines[0].weight==50);
+    puts("CRSF logic/mix complete-tail migration, prefix preservation, omitted saves and rollback/retry passed");
+
 }
 '''
 compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
@@ -1408,7 +1452,7 @@ int main() {
         other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
-    assert(before.size() == 123);
+    assert(before.size() == 212);
         for(int count : {0, 3, 86, 98}) {
             storage.allowedWrite = count;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
