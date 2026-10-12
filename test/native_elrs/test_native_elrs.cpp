@@ -4301,6 +4301,76 @@ static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
     TEST_ASSERT_EQUAL_STRING("HI", host.displayText.c_str());
 }
 
+
+static void test_logic_thresholds_and_layout()
+{
+    static_assert(sizeof(ELRSLogicRule) == 5, "Compact logical rule");
+    static_assert(sizeof(ELRSLogicConfig) == 40, "Eight logical rules");
+    ELRSLogicConfig c = elrsDefaultLogicConfig();
+    ELRSLogicInputs in = {{1500,1500,1500,1050},0,0xfff,true};
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).valid);
+    c.rules[0] = {1,4,0,-90,0};
+    TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+    TEST_ASSERT_EQUAL_UINT8(1, elrsEvaluateLogic(c,in).valid);
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).states);
+    in.axesUs[3]=1051;
+    TEST_ASSERT_EQUAL_UINT8(1, elrsEvaluateLogic(c,in).states);
+    c.rules[0].function=2; in.axesUs[3]=1050;
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).states);
+    in.axesUs[3]=1049;
+    TEST_ASSERT_EQUAL_UINT8(1, elrsEvaluateLogic(c,in).states);
+    in.axesValid=false;
+    TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).valid);
+    for(int x : {-100,100}) {
+        c.rules[0].threshold=x; TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+    }
+}
+
+static void test_logic_truth_tables_gates_and_invalidity()
+{
+    const uint8_t truth[3][4]={{0,0,0,1},{0,1,1,1},{0,1,1,0}};
+    ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
+    for(int op=3;op<=5;op++) for(int mask=0;mask<4;mask++) {
+        ELRSLogicConfig c={}; c.rules[0]={(uint8_t)op,5,6,0,0};
+        in.switchStates=mask;
+        TEST_ASSERT_EQUAL_UINT8(truth[op-3][mask],elrsEvaluateLogic(c,in).states);
+        c.rules[0].sourceA=133;
+        TEST_ASSERT_EQUAL_UINT8(truth[op-3][mask^1],elrsEvaluateLogic(c,in).states);
+    }
+    ELRSLogicConfig c={}; c.rules[0]={1,1,0,0,6};
+    in.switchStates=0;
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).states);
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).valid);
+    in.switchStates=2;
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).states);
+    in.validSwitches &= ~2;
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).valid);
+    c.rules[0].andSwitch=134;
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).valid);
+    c.rules[0].andSwitch=0; c.rules[1]={3,9,17,0,0};
+    in.switchStates=16; in.validSwitches=0xfff;
+    TEST_ASSERT_EQUAL_UINT8(3,elrsEvaluateLogic(c,in).states);
+    in.validSwitches &= ~16; c.rules[1].sourceA=137;
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).valid);
+    c.rules[2]={4,146,5,0,0}; in.switchStates=1;
+    TEST_ASSERT_EQUAL_UINT8(1,elrsEvaluateLogic(c,in).valid);
+    c.rules[0]={};
+    TEST_ASSERT_EQUAL_UINT8(0,elrsEvaluateLogic(c,in).valid);
+}
+
+static void test_logic_rejects_bad_sources_and_cycles()
+{
+    const ELRSLogicRule bad[]={{6,0,0,0,0},{1,129,0,0,0},{1,25,0,0,0},
+        {3,1,5,0,0},{3,5,17,0,0},{3,5,18,0,0},{3,5,6,0,17},
+        {1,1,0,101,0},{1,1,5,0,0},{3,5,6,1,0},{0,5,0,0,0}};
+    for(const auto &rule:bad) {
+        ELRSLogicConfig c={}; c.rules[0]=rule;
+        TEST_ASSERT_FALSE(elrsIsValidLogicConfig(c));
+    }
+    ELRSLogicConfig c={}; c.rules[0]={1,1,0,0,0}; c.rules[1]={3,5,145,0,133};
+    TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -4308,6 +4378,9 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_logic_thresholds_and_layout);
+    RUN_TEST(test_logic_truth_tables_gates_and_invalidity);
+    RUN_TEST(test_logic_rejects_bad_sources_and_cycles);
     RUN_TEST(test_firma_rpm_uses_existing_display_for_actual_and_scaled_mph);
     RUN_TEST(test_rpm_accepts_elrs_serial_sources_and_hott_update_interval);
     RUN_TEST(test_rpm_accepts_elrs_mavlink_passthrough);

@@ -302,4 +302,77 @@ void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &swi
     }
 }
 
+
+namespace {
+bool validBooleanSource(uint8_t source, uint8_t maximum)
+{
+    const uint8_t id = source & 0x7f;
+    return id >= 5 && id <= maximum;
+}
+
+bool readBooleanSource(uint8_t source, const ELRSLogicInputs &inputs,
+                       const ELRSLogicResult &logic, bool &state)
+{
+    const uint8_t id = source & 0x7f;
+    if(id >= 5 && id <= 16) {
+        const uint16_t bit = (uint16_t)1 << (id - 5);
+        if(!(inputs.validSwitches & bit)) return false;
+        state = inputs.switchStates & bit;
+    } else if(id >= 17 && id <= 24) {
+        const uint8_t bit = (uint8_t)1 << (id - 17);
+        if(!(logic.valid & bit)) return false;
+        state = logic.states & bit;
+    } else return false;
+    if(source & 0x80) state = !state;
+    return true;
+}
+}
+
+ELRSLogicConfig elrsDefaultLogicConfig() { return {}; }
+
+bool elrsIsValidLogicConfig(const ELRSLogicConfig &config)
+{
+    for(uint8_t i = 0; i < ELRS_LOGIC_COUNT; i++) {
+        const ELRSLogicRule &r = config.rules[i];
+        if(!r.function) {
+            if(r.sourceA || r.sourceB || r.threshold || r.andSwitch) return false;
+            continue;
+        }
+        if(r.function > 5 || (r.andSwitch && !validBooleanSource(r.andSwitch, 16 + i))) return false;
+        if(r.function <= 2) {
+            if(r.sourceA < 1 || r.sourceA > 4 || r.sourceB || r.threshold < -100 || r.threshold > 100) return false;
+        } else if(!validBooleanSource(r.sourceA, 16 + i) ||
+                  !validBooleanSource(r.sourceB, 16 + i) || r.threshold) return false;
+    }
+    return true;
+}
+
+ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogicInputs &inputs)
+{
+    ELRSLogicResult result = {};
+    if(!elrsIsValidLogicConfig(config)) return result;
+    for(uint8_t i = 0; i < ELRS_LOGIC_COUNT; i++) {
+        const ELRSLogicRule &r = config.rules[i];
+        if(!r.function) continue;
+        bool state, a, b;
+        if(r.function <= 2) {
+            if(!inputs.axesValid) continue;
+            const int16_t threshold = 1500 + 5 * r.threshold;
+            state = r.function == 1 ? inputs.axesUs[r.sourceA - 1] > threshold
+                                    : inputs.axesUs[r.sourceA - 1] < threshold;
+        } else {
+            if(!readBooleanSource(r.sourceA, inputs, result, a) ||
+               !readBooleanSource(r.sourceB, inputs, result, b)) continue;
+            state = r.function == 3 ? a && b : r.function == 4 ? a || b : a != b;
+        }
+        if(r.andSwitch) {
+            if(!readBooleanSource(r.andSwitch, inputs, result, a)) continue;
+            state = state && a;
+        }
+        result.valid |= (uint8_t)1 << i;
+        if(state) result.states |= (uint8_t)1 << i;
+    }
+    return result;
+}
+
 #endif // HAVE_CRSF

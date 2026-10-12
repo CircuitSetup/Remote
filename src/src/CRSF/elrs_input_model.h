@@ -62,4 +62,23 @@ ELRSSwitchRouting elrsSanitizeSwitchRouting(const ELRSSwitchRouting &routing);
 bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchRouting &switches);
 void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &switches);
 
+
+constexpr uint8_t ELRS_LOGIC_COUNT = 8;
+struct ELRSLogicRule {
+    uint8_t function, sourceA, sourceB;
+    int8_t threshold;
+    uint8_t andSwitch;
+};
+struct ELRSLogicConfig { ELRSLogicRule rules[ELRS_LOGIC_COUNT]; };
+struct ELRSLogicInputs {
+    int16_t axesUs[ELRS_GIMBAL_AXIS_COUNT];
+    uint16_t switchStates, validSwitches;
+    bool axesValid;
+};
+struct ELRSLogicResult { uint8_t states, valid; };
+static_assert(sizeof(ELRSLogicRule) == 5, "Preserve compact logic storage");
+ELRSLogicConfig elrsDefaultLogicConfig();
+bool elrsIsValidLogicConfig(const ELRSLogicConfig &config);
+ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogicInputs &inputs);
+
 #endif
