@@ -65,10 +65,14 @@ bool ELRSCrsfMode::begin(
     const uint8_t *localActions,
     bool propControls,
     const ELRSDisplayConfig *displayConfig,
-    const ELRSVehicleConfig *vehicleConfig)
+    const ELRSVehicleConfig *vehicleConfig,
+    const ELRSLogicConfig *logicConfig,
+    const ELRSMixConfig *mixConfig)
 {
     ELRSCrsfCoreConfig config;
     config.propControls = propControls;
+    if(logicConfig) config.logic = *logicConfig;
+    if(mixConfig) config.mixes = *mixConfig;
     if(displayConfig) config.displayConfig = *displayConfig;
     if(vehicleConfig) config.vehicleConfig = *vehicleConfig;
     _speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);

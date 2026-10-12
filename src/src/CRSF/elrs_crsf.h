@@ -42,7 +42,9 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             const uint8_t *localActions = NULL,
             bool propControls = false,
             const ELRSDisplayConfig *displayConfig = NULL,
-            const ELRSVehicleConfig *vehicleConfig = NULL
+            const ELRSVehicleConfig *vehicleConfig = NULL,
+            const ELRSLogicConfig *logicConfig = NULL,
+            const ELRSMixConfig *mixConfig = NULL
         );
 
         void loop(int battWarn);

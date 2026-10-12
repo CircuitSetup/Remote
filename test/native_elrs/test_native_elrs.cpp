@@ -4441,6 +4441,63 @@ static void test_mix_rejects_malformed_lines()
     TEST_ASSERT_TRUE(elrsIsValidMixConfig(c));
 }
 
+
+static void test_logic_mix_core_chain_and_post_mix_limits()
+{
+    FakeHost host; ELRSCrsfCore core; auto c=defaultConfig();
+    host.axes[AXIS_AILERON]=2047; host.axes[AXIS_THROTTLE]=0; host.packStates=1;
+    c.logic.rules[0]={2,4,0,-90,0}; c.logic.rules[1]={3,9,17,0,0};
+    c.mixes.lines[0]={9,18,0,100,0,2}; c.mixes.lines[1]={10,18,0,100,0,2};
+    c.mixes.lines[2]={1,1,17,50,0,2};
+    c.outputLimits[AXIS_AILERON]={1200,1700};
+    TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(9));
+    TEST_ASSERT_EQUAL_UINT16(1155,core.channelAt(0)); // Half input, then destination limits once.
+    host.axes[AXIS_THROTTLE]=2047; loopAt(core,host,40,40000);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(9));
+    TEST_ASSERT_EQUAL_UINT16(1319,core.channelAt(0)); // Inactive gate restores full base travel.
+}
+
+static void test_mix_core_stale_inputs_selftest_and_corrupt_config()
+{
+    FakeHost host; ELRSCrsfCore core; auto c=defaultConfig(); host.packStates=1;
+    c.logic.rules[0]={3,9,9,0,0}; c.mixes.lines[0]={9,145,0,100,0,2};
+    c.mixes.lines[1]={1,25,0,100,0,2};
+    TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(0));
+    host.packAvailable=false; loopAt(core,host,40,40000);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8)); // Invalid !L01 cannot activate.
+    host.axesAvailable=false; loopAt(core,host,500,500000);
+    TEST_ASSERT_EQUAL_UINT16(992,core.channelAt(0)); // MAX cannot defeat ADC neutral.
+    core.startSelfTest(510); loopAt(core,host,520,520000);
+    TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(4));
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+    TEST_ASSERT_EQUAL_UINT16(992,core.channelAt(0));
+    c.logic.rules[0].function=6; host.packAvailable=true; host.axesAvailable=true;
+    ELRSCrsfCore fallback; TEST_ASSERT_TRUE(fallback.begin(host,c,0)); loopAt(fallback,host,20,20000);
+    TEST_ASSERT_EQUAL_UINT16(1811,fallback.channelAt(8)); // Original physical map survives invalid new block.
+}
+
+static void test_mix_core_none_sources_calibration_and_prop_mode()
+{
+    for(bool prop:{false,true}) {
+        FakeHost host; ELRSCrsfCore core; auto c=defaultConfig(); c.propControls=prop;
+        c.inputRouting.aileronChannel=0; host.axes[AXIS_AILERON]=2047;
+        c.mixes.lines[0]={9,1,0,50,0,2};
+        TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+        TEST_ASSERT_EQUAL_UINT16(1401,core.channelAt(8));
+        TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(0));
+        if(!prop) {
+            unsigned long now=30; calibrationPress(core,host,now,true);
+            TEST_ASSERT_TRUE(core.isCalibrating());
+            TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(8));
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -4448,6 +4505,9 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_logic_mix_core_chain_and_post_mix_limits);
+    RUN_TEST(test_mix_core_stale_inputs_selftest_and_corrupt_config);
+    RUN_TEST(test_mix_core_none_sources_calibration_and_prop_mode);
     RUN_TEST(test_mix_weight_offset_order_and_limits);
     RUN_TEST(test_mix_sources_gates_and_unavailability);
     RUN_TEST(test_mix_rejects_malformed_lines);
