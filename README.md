@@ -985,7 +985,7 @@ Prop throttle calibration and CRSF gimbal calibration serve different purposes. 
 
 ##### Logical Switches and Mixes
 
-The ELRS page provides eight logical switches (L01-L08) and eight additional mix lines, using an EdgeTX-style setup. Select **Edit** to configure a row. Changes apply after saving and restarting.
+The ELRS page provides 16 logical switches (L01-L16) and 16 additional mix lines, using an EdgeTX-style setup. Select **Edit** to configure a row. Changes apply after saving and restarting. Existing eight-row settings retain their sources and order; the new rows start disabled.
 
 Logical switches support `a>x`, `a<x`, AND, OR, XOR, and an optional **AND switch**. Comparisons use the calibrated, reversed, expo-shaped gimbal value: -100% is 1000, 0% is 1500, and +100% is 2000. Boolean sources include the physical switches and earlier logical switches. `!` means Not. **Clear** disables a logical switch. Timers and latches are not included in this version.
 
@@ -1127,7 +1127,7 @@ Prop throttle calibration and CRSF gimbal calibration serve different purposes. 
 
 ##### Logical Switches and Mixes
 
-The ELRS page provides eight logical switches (L01-L08) and eight additional mix lines, using an EdgeTX-style setup. Select **Edit** to configure a row. Changes apply after saving and restarting.
+The ELRS page provides 16 logical switches (L01-L16) and 16 additional mix lines, using an EdgeTX-style setup. Select **Edit** to configure a row. Changes apply after saving and restarting. Existing eight-row settings retain their sources and order; the new rows start disabled.
 
 Logical switches support `a>x`, `a<x`, AND, OR, XOR, and an optional **AND switch**. Comparisons use the calibrated, reversed, expo-shaped gimbal value: -100% is 1000, 0% is 1500, and +100% is 2000. Boolean sources include the physical switches and earlier logical switches. `!` means Not. **Clear** disables a logical switch. Timers and latches are not included in this version.
 

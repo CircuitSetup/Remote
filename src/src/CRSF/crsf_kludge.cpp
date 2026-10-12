@@ -93,8 +93,8 @@ static_assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96, "Preserve the
 static_assert(offsetof(ELRSCrsfSettingsBlob, vehicleConfig) == 106, "Preserve the complete display settings tail");
 static_assert(offsetof(ELRSVehicleConfig, rpmType) == 13, "Preserve existing vehicle settings");
 static_assert(offsetof(ELRSCrsfSettingsBlob, logicVersion) == 120, "Preserve the existing prefix");
-static_assert(offsetof(ELRSCrsfSettingsBlob, logic) == 121 && offsetof(ELRSCrsfSettingsBlob, mixes) == 161, "Compact logic/mix tail");
-static_assert(sizeof(ELRSCrsfSettingsBlob) == 209, "Complete versioned logic/mix storage");
+static_assert(offsetof(ELRSCrsfSettingsBlob, logic) == 121 && offsetof(ELRSCrsfSettingsBlob, mixes) == 201, "Compact logic/mix tail");
+static_assert(sizeof(ELRSCrsfSettingsBlob) == 297, "Complete versioned logic/mix storage");
 
 struct [[gnu::packed]] ELRSCrsfLegacySettingsBlob {
     ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT];
@@ -115,7 +115,7 @@ static ELRSCrsfSettingsBlob defaultCrsfSettings()
     settings.switchRouting = elrsDefaultSwitchRouting();
     settings.displayConfig = elrsDefaultDisplayConfig();
     settings.vehicleConfig = elrsDefaultVehicleConfig();
-    settings.logicVersion = 1;
+    settings.logicVersion = 2;
 
     return settings;
 }
@@ -144,11 +144,11 @@ static ELRSInputAxisProfile calibrationToProfile(const ELRSAxisCalibrationData &
 
 static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
 {
-    if(settings.logicVersion != 1 || !elrsIsValidLogicConfig(settings.logic) || !elrsIsValidMixConfig(settings.mixes)) {
+    if(settings.logicVersion != 2 || !elrsIsValidLogicConfig(settings.logic) || !elrsIsValidMixConfig(settings.mixes)) {
         settings.logic = {};
         settings.mixes = {};
     }
-    settings.logicVersion = 1;
+    settings.logicVersion = 2;
     if(!elrsIsValidDisplayConfig(settings.displayConfig)) settings.displayConfig = elrsDefaultDisplayConfig();
     if(!elrsIsValidVehicleConfig(settings.vehicleConfig)) settings.vehicleConfig = elrsDefaultVehicleConfig();
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
@@ -353,6 +353,7 @@ void crsf_load_settings()
         } else {
             int bytes = min(crsfSetValidBytes, (int)sizeof(crsfSettings));
             const int logicOffset = offsetof(ELRSCrsfSettingsBlob, logicVersion);
+            const bool oldLogicTail = bytes == 209 && rawSettings[logicOffset] == 1;
             // An incomplete extension cannot enable any portion of logic or mixing.
             if(bytes > logicOffset && bytes < (int)sizeof(crsfSettings)) bytes = logicOffset;
             const int toleranceOffset = offsetof(ELRSCrsfSettingsBlob, adcHysteresis);
@@ -370,6 +371,15 @@ void crsf_load_settings()
             // Optional tolerances use defaults until a complete uint16_t is present.
             if(bytes > toleranceOffset && bytes < switchOffset) bytes = toleranceOffset + ((bytes - toleranceOffset) / 2) * 2;
             memcpy(&crsfSettings, rawSettings, bytes);
+            if(oldLogicTail) {
+                // Version 1 stores eight rules at 121 and eight mixes at 161; IDs and order stay unchanged.
+                memcpy(crsfSettings.logic.rules, rawSettings + 121, 8 * sizeof(ELRSLogicRule));
+                memcpy(crsfSettings.mixes.lines, rawSettings + 161, 8 * sizeof(ELRSMixLine));
+                for(int i = 0; i < 8; i++) {
+                    const auto &line = crsfSettings.mixes.lines[i];
+                    if((line.source & 0x7f) > 25 || (line.switchSource & 0x7f) > 24) crsfSettings.logicVersion = 0;
+                }
+            }
         }
         sanitizeCrsfSettings(crsfSettings);
         crsfSettingsHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));

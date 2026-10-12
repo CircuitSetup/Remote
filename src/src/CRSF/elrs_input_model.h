@@ -63,7 +63,7 @@ bool elrsIsValidInputRouting(const ELRSGimbalRouting &gimbals, const ELRSSwitchR
 void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &switches);
 
 
-constexpr uint8_t ELRS_LOGIC_COUNT = 8;
+constexpr uint8_t ELRS_LOGIC_COUNT = 16;
 struct ELRSLogicRule {
     uint8_t function, sourceA, sourceB;
     int8_t threshold;
@@ -75,14 +75,14 @@ struct ELRSLogicInputs {
     uint16_t switchStates, validSwitches;
     bool axesValid;
 };
-struct ELRSLogicResult { uint8_t states, valid; };
+struct ELRSLogicResult { uint16_t states, valid; };
 static_assert(sizeof(ELRSLogicRule) == 5, "Preserve compact logic storage");
 ELRSLogicConfig elrsDefaultLogicConfig();
 bool elrsIsValidLogicConfig(const ELRSLogicConfig &config);
 ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogicInputs &inputs);
 
 
-constexpr uint8_t ELRS_MIX_COUNT = 8;
+constexpr uint8_t ELRS_MIX_COUNT = 16;
 struct ELRSMixLine {
     uint8_t channel, source, switchSource;
     int8_t weight, offset;

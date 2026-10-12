@@ -195,7 +195,7 @@ std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
 bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
-    valid = min(209, (int)stored.size());
+    valid = min(297, (int)stored.size());
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
@@ -287,7 +287,7 @@ int main() {
     crsf_load_settings();
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
     auto fullDisplay = stored;
-    assert(fullDisplay.size() == 209 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
+    assert(fullDisplay.size() == 297 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
     for(int length = 96; length <= 120; length++) {
         stored = fullDisplay; stored.resize(length); crsf_load_settings();
         auto loaded = loadELRSDisplayConfig();
@@ -460,7 +460,7 @@ int main() {
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(previous.size() == 56 && mapped.size() == 209);
+    assert(previous.size() == 56 && mapped.size() == 297);
     for(int partial = 0; partial < 12; partial++) {
         stored = mapped;
         stored.resize(previous.size() + partial);
@@ -848,7 +848,7 @@ int main() {
     // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
     assert(sizeof(ELRSInputAxisProfile) == 12);
     assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
-    assert(sizeof(ELRSCrsfSettingsBlob) == 209 && sizeof(ELRSOutputLimits) == 4);
+    assert(sizeof(ELRSCrsfSettingsBlob) == 297 && sizeof(ELRSOutputLimits) == 4);
     const ELRSOutputLimits limits[4] = {{1100,1700},{1200,1800},{1300,1900},{1400,1600}};
     ELRSOutputLimits loaded[4];
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits));
@@ -1197,10 +1197,12 @@ int main() {
     ELRSLogicConfig logic={}; logic.rules[0]={2,4,0,-90,0};
     ELRSMixConfig mixes={}; mixes.lines[0]={9,17,0,100,0,2};
     assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
-    const auto extended=stored; assert(extended.size()==209);
+    logic.rules[15]={3,17,133,0,0};mixes.lines[15]={16,33,154,-50,10,2};
+    assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
+    const auto extended=stored; assert(extended.size()==297 && extended[120]==2);
     assert(offsetof(ELRSCrsfSettingsBlob,logicVersion)==120);
-    assert(offsetof(ELRSCrsfSettingsBlob,logic)==121 && offsetof(ELRSCrsfSettingsBlob,mixes)==161);
-    for(int length=120;length<209;length++) {
+    assert(offsetof(ELRSCrsfSettingsBlob,logic)==121 && offsetof(ELRSCrsfSettingsBlob,mixes)==201);
+    for(int length=120;length<297;length++) {
         stored=extended; stored.resize(length); crsf_load_settings();
         assert(!memcmp(&crsfSettings,extended.data(),120));
         const ELRSLogicConfig offLogic={}; const ELRSMixConfig offMix={};
@@ -1209,11 +1211,41 @@ int main() {
     }
     for(int bad=0;bad<3;bad++) {
         stored=extended;
-        if(bad==0)stored[120]=2;
+        if(bad==0)stored[120]=3;
         if(bad==1)stored[121]=6;
-        if(bad==2)stored[161]=17;
+        if(bad==2)stored[201]=17;
         crsf_load_settings();
         assert(!memcmp(&crsfSettings,extended.data(),120));
+        assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
+    }
+    std::vector<uint8_t> oldV1(209,0);
+    memcpy(oldV1.data(),extended.data(),120);oldV1[120]=1;
+    ELRSLogicRule oldRules[8] = {}; ELRSMixLine oldMixes[8] = {};
+    oldRules[0]={2,4,0,-90,0};
+    for(uint8_t i=1;i<8;i++)oldRules[i]={3,(uint8_t)(16+i),133,0,0};
+    for(uint8_t i=0;i<8;i++)oldMixes[i]={9,(uint8_t)(i==7?25:17+i),(uint8_t)(i%2?145:0),(int8_t)(100-i*10),(int8_t)(i*3),(uint8_t)(i%3)};
+    memcpy(oldV1.data()+121,oldRules,sizeof(oldRules));memcpy(oldV1.data()+161,oldMixes,sizeof(oldMixes));
+    stored=oldV1;crsf_load_settings();
+    assert(crsfSettings.logicVersion==2 && stored==oldV1);
+    assert(!memcmp(&crsfSettings,oldV1.data(),120));
+    assert(!memcmp(crsfSettings.logic.rules,oldRules,sizeof(oldRules)));
+    assert(!memcmp(crsfSettings.mixes.lines,oldMixes,sizeof(oldMixes)));
+    const ELRSLogicRule disabledRule={};const ELRSMixLine disabledMix={};
+    for(int i=8;i<16;i++) {
+        assert(!memcmp(&crsfSettings.logic.rules[i],&disabledRule,sizeof(disabledRule)));
+        assert(!memcmp(&crsfSettings.mixes.lines[i],&disabledMix,sizeof(disabledMix)));
+    }
+    storageWriteOk=false;const auto migratedHash=crsfSettingsHash;
+    assert(!crsf_save_settings(false) && stored==oldV1 && crsfSettingsHash==migratedHash);
+    storageWriteOk=true;assert(crsf_save_settings(false));
+    assert(stored.size()==297 && stored[120]==2 && !memcmp(stored.data(),oldV1.data(),120));
+    crsf_load_settings();assert(!memcmp(crsfSettings.mixes.lines,oldMixes,sizeof(oldMixes)));
+    for(int length=121;length<209;length++) {
+        stored=oldV1;stored.resize(length);crsf_load_settings();
+        assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
+    }
+    for(uint8_t source : {26,33,34}) {
+        stored=oldV1;stored[162]=source;crsf_load_settings();
         assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
     }
     stored=extended; crsf_load_settings();
@@ -1243,7 +1275,7 @@ int main() {
         server.name.clear(); server.args.clear(); server.args["clform"]="1"; server.args["cmform"]="1";
         const char *logicalFields[]={"clfn","cla","clb","clx","cland"};
         const char *mixFields[]={"cmch","cmsrc","cmsw","cmwt","cmoff","cmmux"};
-        for(int i=0;i<8;i++) {
+        for(int i=0;i<16;i++) {
             const uint8_t *l=(const uint8_t*)&goodLogic.rules[i],*m=(const uint8_t*)&goodMix.lines[i];
             for(int j=0;j<5;j++)server.args[std::string(logicalFields[j])+std::to_string(i)]=std::to_string(j==3?(int8_t)l[j]:l[j]);
             for(int j=0;j<6;j++)server.args[std::string(mixFields[j])+std::to_string(i)]=std::to_string(j==3||j==4?(int8_t)m[j]:m[j]);
@@ -1251,7 +1283,7 @@ int main() {
     };
     fillForm(); crsfReadLogicParams(); crsfReadMixParams(); assert(saveCRSFPortalInputSettings());
     const auto beforeLogicForm=stored;
-    for(const char *key:{"clfn0","cla0","cland0","cmch0","cmsrc0","cmsw0","cmwt0","cmmux0"}) {
+    for(const char *key:{"clfn0","cla0","cland0","cmch0","cmsrc0","cmsw0","cmwt0","cmmux0","clfn15","cla15","cmsrc15","cmwt15"}) {
         for(const char *bad:{"", "+1", " 1", "1.5", "99999", "x"}) {
             fillForm();server.args[key]=bad;crsfReadLogicParams();crsfReadMixParams();
             assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
@@ -1264,13 +1296,13 @@ int main() {
     server.args.clear();crsfReadLogicParams();crsfReadMixParams();assert(saveCRSFPortalInputSettings() && stored==beforeLogicForm);
     syncCRSFPortalBuffers();
     const auto previewLogic=crsfLogicConfig; const auto previewMix=crsfMixConfig;
-    for(int i=0;i<8;i++) {
-        crsfLogicConfig.rules[i]={5,(uint8_t)(144+i),(uint8_t)(144+i),0,(uint8_t)(144+i)};
-        crsfMixConfig.lines[i]={16,152,152,-100,-100,2};
+    for(int i=0;i<16;i++) {
+        crsfLogicConfig.rules[i]={5,(uint8_t)(144+i+(i>8)),(uint8_t)(144+i+(i>8)),0,(uint8_t)(144+i+(i>8))};
+        crsfMixConfig.lines[i]={16,161,161,-100,-100,2};
     }
     const char *worstPage=wmBuildCRSFLogicMix(nullptr,2);
     fprintf(stderr,"Worst-case additional Logic/Mixes markup: %zu bytes\n",strlen(worstPage));
-    assert(strlen(worstPage)<=6144);
+    assert(strlen(worstPage)<=7168);
     // Existing gimbal markup still sets WiFiManager's shared item-buffer size and peak builder scratch.
     assert(strlen(worstPage) <= existingGimbalMarkupLength);
     assert(sizeof(crsfLogicMixScript) + 1200 <= existingGimbalMarkupLength);
@@ -1278,7 +1310,7 @@ int main() {
     wmBuildCRSFLogicMix(worstPage,WM_CP_DESTROY);
     crsfLogicConfig=previewLogic;crsfMixConfig=previewMix;
     const char *logicPage=wmBuildCRSFLogicMix(nullptr,2);
-    assert(logicPage && strlen(logicPage)<=6144);
+    assert(logicPage && strlen(logicPage)<=7168);
     assert(strstr(logicPage,"Logical Switches") && strstr(logicPage,"Multiplex") && strstr(logicPage,"AND switch"));
     wmBuildCRSFLogicMix(nullptr,WM_CP_LEN);assert(wmLenBuf==strlen(logicPage)+1);
     if(const char *path=getenv("CRSF_LOGIC_PREVIEW")){FILE *f=fopen(path,"wb");assert(f);fputs("<!doctype html><title>ELRS Logic and Mixes</title><meta name='viewport' content='width=device-width'>",f);fputs(HTTP_STYLE,f);fputs("</style><form>",f);fputs(logicPage,f);fputs("<button>Save</button></form>",f);fclose(f);}
@@ -1522,13 +1554,31 @@ int main() {
         other.files["/crsfcfg.tmp"] = {0, 0};
         other.failRemovePath = "/crsfcfg.tmp";
         crsfSettings = defaultCrsfSettings(); crsfSettingsHash = 0;
+        std::vector<uint8_t> versionOne(209,0);memcpy(versionOne.data(),&crsfSettings,120);versionOne[120]=1;
+        ELRSLogicRule v1Rules[8]={};ELRSMixLine v1Mixes[8]={};
+        for(uint8_t i=0;i<8;i++) {
+            v1Rules[i]={(uint8_t)(i?3:1),(uint8_t)(i?16+i:1),(uint8_t)(i?133:0),0,0};
+            v1Mixes[i]={9,(uint8_t)(i==7?25:17+i),145,(int8_t)(100-i*10),(int8_t)i,(uint8_t)(i%3)};
+        }
+        memcpy(versionOne.data()+121,v1Rules,sizeof(v1Rules));memcpy(versionOne.data()+161,v1Mixes,sizeof(v1Mixes));
+        assert(saveConfigFile(name,versionOne.data(),versionOne.size()));const auto oldFramed=storage.files[name];
+        assert(oldFramed.size()==212);crsf_load_settings();
+        assert(!memcmp(&crsfSettings,versionOne.data(),120));
+        assert(!memcmp(crsfSettings.logic.rules,v1Rules,sizeof(v1Rules)));
+        assert(!memcmp(crsfSettings.mixes.lines,v1Mixes,sizeof(v1Mixes)));
+        assert(crsfSettings.logicVersion==2 && crsfSettings.logic.rules[15].function==0 && crsfSettings.mixes.lines[15].channel==0);
+        storage.allowedWrite=212;
+        assert(!crsf_save_settings(false) && storage.files[name]==oldFramed);
+        storage.allowedWrite=999;crsf_load_settings();assert(crsf_save_settings(false));
+        assert(storage.files[name].size()==300);crsf_load_settings();
+        assert(!memcmp(crsfSettings.mixes.lines,v1Mixes,sizeof(v1Mixes)));
         assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
         assert(other.files["/crsfcfg.tmp"] == std::vector<uint8_t>({0, 0}));
         assert(storage.files.size() == 1); // Clean up only this attempt's stage.
         other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
-    assert(before.size() == 212);
+    assert(before.size() == 300);
         for(int count : {0, 3, 86, 98}) {
             storage.allowedWrite = count;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));

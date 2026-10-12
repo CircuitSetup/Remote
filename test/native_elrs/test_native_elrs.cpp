@@ -320,9 +320,9 @@ static ELRSCrsfCoreConfig defaultConfig()
 
 static void enableAllLogicAndMixes(ELRSCrsfCoreConfig &config)
 {
-    for(uint8_t i = 0; i < 8; i++) {
-        config.logic.rules[i] = {3, 133, (uint8_t)(i ? 16 + i : 134), 0, 0};
-        config.mixes.lines[i] = {(uint8_t)(9 + i), (uint8_t)(17 + i), 0, 100, 0, 2};
+    for(uint8_t i = 0; i < ELRS_LOGIC_COUNT; i++) {
+        config.logic.rules[i] = {3, 133, (uint8_t)(i ? 16 + i + (i > 8) : 134), 0, 0};
+        config.mixes.lines[i] = {(uint8_t)(i + 1), (uint8_t)(17 + i + (i >= 8)), 0, 100, 0, 2};
     }
 }
 
@@ -4362,10 +4362,63 @@ static void test_rpm_vehicle_parameters_preview_and_existing_formatting()
 }
 
 
+static void test_sixteen_logic_slots_and_stable_source_ids()
+{
+    TEST_ASSERT_EQUAL_UINT8(16, ELRS_LOGIC_COUNT);
+    TEST_ASSERT_EQUAL_UINT8(16, ELRS_MIX_COUNT);
+    ELRSLogicConfig c = {};
+    ELRSLogicInputs in = {{1500,1500,1500,1500},0,0xfff,true};
+    c.rules[0] = {3,133,134,0,0};
+    for(uint8_t i = 1; i < 16; i++) c.rules[i] = {3,(uint8_t)(16 + i + (i > 8)),133,0,0};
+    TEST_ASSERT_TRUE(elrsIsValidLogicConfig(c));
+    auto logical = elrsEvaluateLogic(c,in);
+    TEST_ASSERT_EQUAL_UINT16(0xffff, logical.states);
+    TEST_ASSERT_EQUAL_UINT16(0xffff, logical.valid);
+    int16_t base[16]; for(auto &us : base) us = 1500;
+    ELRSMixConfig mixes = {};
+    mixes.lines[15] = {16,33,0,100,0,2};
+    TEST_ASSERT_TRUE(elrsIsValidMixConfig(mixes));
+    TEST_ASSERT_EQUAL_INT16(2000, elrsEvaluateMixes(mixes,in,logical,base,0).valuesUs[15]);
+    mixes.lines[15].source = 161;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsEvaluateMixes(mixes,in,logical,base,0).valuesUs[15]);
+    mixes.lines[15].source = 25;
+    TEST_ASSERT_EQUAL_INT16(2000, elrsEvaluateMixes(mixes,in,logical,base,0).valuesUs[15]);
+    mixes.lines[15].switchSource = 25;
+    TEST_ASSERT_FALSE(elrsIsValidMixConfig(mixes));
+    mixes.lines[15].switchSource = 0; mixes.lines[15].source = 34;
+    TEST_ASSERT_FALSE(elrsIsValidMixConfig(mixes));
+    for(uint8_t source : {25,26,27}) {
+        auto bad = c; bad.rules[8].sourceA = source;
+        TEST_ASSERT_FALSE(elrsIsValidLogicConfig(bad));
+    }
+    auto bad = c; bad.rules[15].sourceA = 33;
+    TEST_ASSERT_FALSE(elrsIsValidLogicConfig(bad));
+    c.rules[14] = {}; c.rules[15].sourceA = 160;
+    logical = elrsEvaluateLogic(c,in);
+    TEST_ASSERT_EQUAL_UINT16(0x3fff, logical.valid);
+    TEST_ASSERT_EQUAL_UINT16(0x3fff, logical.states);
+}
+
+static void test_sixteen_multiply_lines_keep_wide_intermediates()
+{
+    TEST_ASSERT_EQUAL_UINT8(16, ELRS_MIX_COUNT);
+    ELRSLogicInputs in = {{1500,1500,1500,1500},0,0xfff,true};
+    ELRSLogicResult logical = {};
+    ELRSMixConfig c = {};
+    for(auto &line : c.lines) line = {1,25,0,100,100,1};
+    int16_t base[16]; for(auto &us : base) us = 1500;
+    base[0] = 2000;
+    TEST_ASSERT_EQUAL_INT16(2000, elrsEvaluateMixes(c,in,logical,base,1).valuesUs[0]);
+    base[0] = 1000;
+    TEST_ASSERT_EQUAL_INT16(1000, elrsEvaluateMixes(c,in,logical,base,1).valuesUs[0]);
+    c.lines[15] = {1,25,0,50,0,2};
+    TEST_ASSERT_EQUAL_INT16(1750, elrsEvaluateMixes(c,in,logical,base,1).valuesUs[0]);
+}
+
 static void test_logic_thresholds_and_layout()
 {
     static_assert(sizeof(ELRSLogicRule) == 5, "Compact logical rule");
-    static_assert(sizeof(ELRSLogicConfig) == 40, "Eight logical rules");
+    static_assert(sizeof(ELRSLogicConfig) == 5 * ELRS_LOGIC_COUNT, "Compact logical array");
     ELRSLogicConfig c = elrsDefaultLogicConfig();
     ELRSLogicInputs in = {{1500,1500,1500,1050},0,0xfff,true};
     TEST_ASSERT_EQUAL_UINT8(0, elrsEvaluateLogic(c,in).valid);
@@ -4435,7 +4488,7 @@ static void test_logic_rejects_bad_sources_and_cycles()
 static void test_mix_weight_offset_order_and_limits()
 {
     static_assert(sizeof(ELRSMixLine)==6,"Compact mixer line");
-    static_assert(sizeof(ELRSMixConfig)==48,"Eight mix lines");
+    static_assert(sizeof(ELRSMixConfig)==6 * ELRS_MIX_COUNT,"Compact mix array");
     ELRSMixConfig c=elrsDefaultMixConfig();
     ELRSLogicInputs in={{1700,1500,1500,1000},0,0xfff,true};
     ELRSLogicResult logic={1,1}; int16_t base[16];
@@ -4493,7 +4546,7 @@ static void test_mix_sources_gates_and_unavailability()
 
 static void test_mix_rejects_malformed_lines()
 {
-    const ELRSMixLine bad[]={{17,25,0,100,0,0},{1,0,0,100,0,0},{1,26,0,100,0,0},
+    const ELRSMixLine bad[]={{17,25,0,100,0,0},{1,0,0,100,0,0},{1,34,0,100,0,0},
         {1,153,0,100,0,0},{1,129,0,100,0,0},{1,25,1,100,0,0},
         {1,25,0,101,0,0},{1,25,0,100,-101,0},{1,25,0,100,0,3},{0,25,0,0,0,0}};
     for(const auto &line:bad){ELRSMixConfig c={};c.lines[0]=line;TEST_ASSERT_FALSE(elrsIsValidMixConfig(c));}
@@ -4571,6 +4624,8 @@ int main(int argc, char **argv)
     RUN_TEST(test_mix_weight_offset_order_and_limits);
     RUN_TEST(test_mix_sources_gates_and_unavailability);
     RUN_TEST(test_mix_rejects_malformed_lines);
+    RUN_TEST(test_sixteen_logic_slots_and_stable_source_ids);
+    RUN_TEST(test_sixteen_multiply_lines_keep_wide_intermediates);
     RUN_TEST(test_logic_thresholds_and_layout);
     RUN_TEST(test_logic_truth_tables_gates_and_invalidity);
     RUN_TEST(test_logic_rejects_bad_sources_and_cycles);

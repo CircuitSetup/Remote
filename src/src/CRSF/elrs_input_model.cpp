@@ -304,10 +304,11 @@ void elrsSanitizeInputRouting(ELRSGimbalRouting &gimbals, ELRSSwitchRouting &swi
 
 
 namespace {
+// Source 25 stays MAX; logical IDs above L08 skip it to preserve existing settings.
 bool validBooleanSource(uint8_t source, uint8_t maximum)
 {
     const uint8_t id = source & 0x7f;
-    return id >= 5 && id <= maximum;
+    return id >= 5 && id <= maximum && id != 25;
 }
 
 bool readBooleanSource(uint8_t source, const ELRSLogicInputs &inputs,
@@ -318,8 +319,8 @@ bool readBooleanSource(uint8_t source, const ELRSLogicInputs &inputs,
         const uint16_t bit = (uint16_t)1 << (id - 5);
         if(!(inputs.validSwitches & bit)) return false;
         state = inputs.switchStates & bit;
-    } else if(id >= 17 && id <= 24) {
-        const uint8_t bit = (uint8_t)1 << (id - 17);
+    } else if(id >= 17 && id <= 33 && id != 25) {
+        const uint16_t bit = (uint16_t)1 << (id - 17 - (id > 25));
         if(!(logic.valid & bit)) return false;
         state = logic.states & bit;
     } else return false;
@@ -338,11 +339,11 @@ bool elrsIsValidLogicConfig(const ELRSLogicConfig &config)
             if(r.sourceA || r.sourceB || r.threshold || r.andSwitch) return false;
             continue;
         }
-        if(r.function > 5 || (r.andSwitch && !validBooleanSource(r.andSwitch, 16 + i))) return false;
+        if(r.function > 5 || (r.andSwitch && !validBooleanSource(r.andSwitch, 16 + i + (i > 8)))) return false;
         if(r.function <= 2) {
             if(r.sourceA < 1 || r.sourceA > 4 || r.sourceB || r.threshold < -100 || r.threshold > 100) return false;
-        } else if(!validBooleanSource(r.sourceA, 16 + i) ||
-                  !validBooleanSource(r.sourceB, 16 + i) || r.threshold) return false;
+        } else if(!validBooleanSource(r.sourceA, 16 + i + (i > 8)) ||
+                  !validBooleanSource(r.sourceB, 16 + i + (i > 8)) || r.threshold) return false;
     }
     return true;
 }
@@ -369,8 +370,8 @@ ELRSLogicResult elrsEvaluateLogic(const ELRSLogicConfig &config, const ELRSLogic
             if(!readBooleanSource(r.andSwitch, inputs, result, a)) continue;
             state = state && a;
         }
-        result.valid |= (uint8_t)1 << i;
-        if(state) result.states |= (uint8_t)1 << i;
+        result.valid |= (uint16_t)1 << i;
+        if(state) result.states |= (uint16_t)1 << i;
     }
     return result;
 }
@@ -387,8 +388,8 @@ bool elrsIsValidMixConfig(const ELRSMixConfig &config)
         }
         if(r.channel > 16 || r.multiplex > 2 || r.weight < -100 || r.weight > 100 ||
            r.offset < -100 || r.offset > 100) return false;
-        if(!((r.source >= 1 && r.source <= 4) || r.source == 25 || validBooleanSource(r.source, 24))) return false;
-        if(r.switchSource && !validBooleanSource(r.switchSource, 24)) return false;
+        if(!((r.source >= 1 && r.source <= 4) || r.source == 25 || validBooleanSource(r.source, 33))) return false;
+        if(r.switchSource && !validBooleanSource(r.switchSource, 33)) return false;
     }
     return true;
 }
@@ -440,7 +441,8 @@ ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInpu
         const int32_t contribution = source * r.weight / 100 + r.offset * 5;
         int32_t &value = values[r.channel - 1];
         if(r.multiplex == 0) value += contribution;
-        else if(r.multiplex == 1) value = value * contribution / 500;
+        // Sixteen Multiply lines fit int32_t, but their products need a wider intermediate.
+        else if(r.multiplex == 1) value = (int64_t)value * contribution / 500;
         else value = contribution;
     }
     for(int i = 0; i < 16; i++) {
