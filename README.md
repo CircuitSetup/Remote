@@ -33,7 +33,6 @@ Firmware features:
 - Movie-accurate "Stop" light and stop switch behavior
 - Movie-accurate sound effects
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
-- [SD card](#sd-card) support for custom audio files for effects, and music for the Music Player
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the _O.O_/_RESET_ buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local)
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
@@ -41,17 +40,17 @@ Firmware features:
 - Built-in OTA installer for firmware updates and audio files
 - &#128007; &#129370;
 
->This [repository](https://remote.out-a-ti.me) is the upstream source for CircuitSetup's releases. The only difference is that both code and documentation [here](https://remote.out-a-ti.me) might be ahead in development.
-
-For a CRSF/ELRS-enabled version of this firmware, please see the [CRSF branch](https://github.com/realA10001986/Remote/tree/CRSF).
+>The firmware in [this repository](https://remote.out-a-ti.me), despite being the upstream source of all forks, is a pure movie-prop firmware and does not support CRSF/ELRS. For CRSF/ELRS support, please see CircuitSetup's repository.
 
 For information on updating the firmware of your Remote, see [here](#firmware-installation--firmware-update).
 
 ## Initial Configuration
 
->The following instructions only need to be followed once, on fresh Remotes. They do not need to be repeated after a firmware update.
+**Some key features of your Remote require an SD card.** The first step is therefore to put a **good-quality** ("endurance", "industrial", "long life", ...) **and empty microSD card into the card slot**. The SD card must be inserted before powering up the Remote. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the Remote is powered.
 
-The first step is to establish access to the Remote's configuration website ("Config Portal") in order to configure your device:
+>SD/SDHC/SDXC cards up to 32GB are supported. The card needs to be FAT32-formatted (not exFAT). Transcend, Sandisk Ultra and Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards usually work fine. Some SD cards might not be recognized due to off-specs initialization quirks. SDUC cards are not supported.
+
+The second step is to establish access to the Remote's configuration website ("Config Portal") in order to configure your device:
 
 - Power up your Remote and wait a few seconds.
 - Connect your computer or handheld device to the WiFi network "REM-AP".
@@ -93,14 +92,15 @@ Click on "WiFi Configuration" and either select a network from the top of the pa
   
 >Your Remote requests an IP address via DHCP, unless you entered valid data in the fields for static IP addresses (IP, gateway, netmask, DNS). If the device is inaccessible as a result of incorrect static IPs, 
 >- power-down the device,
->- hold the _Calibration_ button,
->- power-up the device (while still holding the _Calibration_ button)
->- wait until the displays shows a circle animation,
->- press Button _O.O_ twice within 10 seconds,
+>- press the _Calibration_ button and keep it pressed,
+>- power-up the device,
+>- wait until the displays shows an animation,
+>- press button _O.O_ twice within 10 seconds<!--the display will show "RST" after the second press-->,
 >- wait until the display shows "RST",
 >- then release the _Calibration_ button.
 >
->This procedure causes static IP data to be deleted; the device will return to DHCP after a reboot.
+>This procedure causes static IP data to be deleted; the device will return to DHCP.
+
 </details>
 
 If the Remote fails to connect, it falls back to AP-mode. You can trigger another [connection attempt](#-attempt-re-connection-on-fake-power) by fake-powering it down and up.
@@ -245,13 +245,7 @@ If a "button" is configured as a maintained switch in the Config Portal, keyX wi
 
 If the button/switch is pressed/flipped while audio from a previous press/flip of the same button/switch is still playing, play-back will be stopped.
  
-## SD Card
-
->Only SD/SDHC/SDXC cards up to 32GB are supported. Card needs to be FAT32-formatted (not exFAT). Transcend, Sandisk Ultra (as of firmware version 1.25) and Industrial, Verbatim Premium and Samsung Pro Endurance SDHC cards usually work fine. Some SD cards might not be recognized due to off-specs initialization quirks. SDUC cards are not supported.
-
-The SD card, apart from being required for [installing](#sound-pack-installation) the sound-pack, can be used for custom sound effects, substituting built-in sound effects and for music played back by the [Music player](#the-music-player). Also, it is _strongly recommended_ to store [secondary settings](#-save-secondary-settings-on-sd) on the SD card to minimize [Flash Wear](#flash-wear).
-
-The SD card must be inserted before powering up the device. It is not recognized if inserted while the Remote is running. Furthermore, do not remove the SD card while the device is powered.
+## Sound Customization
 
 ### Sound substitution
 
@@ -300,7 +294,7 @@ The names of the audio files must only consist of three-digit numbers, starting 
 
 Since manually renaming mp3 files is somewhat cumbersome, the firmware can do this for you: Just copy your files with their original filenames to a music folder of your choice; when selecting that folder, the files will be sorted alphabetically and renamed according to the 3-digit name scheme. (If you want your tracks in a specific order, you must rename them, for instance by inserting a letter or number at the start.) The renaming process can take a while (11 minutes for 1000 files in bad cases). Mac users are advised to delete the ._ files from the SD before putting it back into the Remote as this speeds up the process. While the renaming is in progress, the Remote's display shows how many files are still left to be processed.
 
-To add files to a music folder later, just copy them to the music folder, and delete the cache file "musicXc" (X being the folder number) located in the top-most folder. That way that the firmware knows that something has changed and will re-examine the folder.
+To add files to a music folder later, just copy them to the folder and delete the corresponding cache file "musicXc" (X being the folder number) located in the top-most folder. That way that the firmware knows that something has changed and will re-examine the folder. 
 
 To start and stop music playback, hold _O.O_ for 2 seconds. Briefly pressing _O.O_ jumps to the previous track, pressing _RESET_ to the next one. (The same can be achieved by entering codes on the TCD's keypad: ```7002``` = previous track, ```7005``` = play/stop, ```7008``` = next track).
 
@@ -497,10 +491,6 @@ Afterwards, the Remote and the TCD can communicate wirelessly and
      <td align="left">Toggle firmware update signals at power-up</td>
      <td align="left"><code>7053281</code></td>
     </tr>
-     <tr>
-     <td align="left">Delete static IP address<br>and WiFi-AP password<sup>2</sup></td>
-     <td align="left"><code>7123456</code></td>
-    </tr>
 </table>
 
 1: Board 1.6M or >= 1.7 required; if LiPo battery is properly connected to battery monitor.<br>
@@ -623,32 +613,39 @@ After WiFi has been switched off due to timer expiration, and the option **_Re-e
 
 >If the Remote ended up in AP-mode because the configured WiFi network wasn't reachable on (real-)power up, and the option **_Attempt re-connection on Fake Power_** is checked, the Remote will attempt to connect to the WiFi network on fake-power-on (and, as usual, fall back to AP-mode on failure; the timer is, of course, restarted in that case).
 
-## Flash Wear
-
-Flash memory has a somewhat limited lifetime. It can be written to only between 10.000 and 100.000 times before becoming unreliable. The firmware writes to the internal flash memory when saving settings and other data. Every time you change settings, data is written to flash memory.
-
-In order to reduce the number of write operations and thereby prolong the life of your Remote, it is recommended to use a good-quality SD card and to check **_[Save secondary settings on SD](#-save-secondary-settings-on-sd)_** in the Config Portal; secondary settings are then stored on the SD card (which also suffers from wear but is easy to replace). See [here](#-save-secondary-settings-on-sd) for more information.
-
 ## Firmware Installation / Firmware Update
 
-To update the firmware of your Remote, enter the [Config Portal](#the-config-portal), click on "Update & Upload", select the pre-compiled binary file ("**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**") provided in the [Release package](https://github.com/realA10001986/Remote/releases), and click on *Update*.
+The firmware consists of two parts: The main firmware, and a sound-pack.
 
+First, download main firmware and sound-pack. Both files are in every [Release package](https://github.com/realA10001986/Remote/releases/latest), and named
+- "**remote-A10001986-Vx.xx.bin**" for A10001986 releases, "**Remote_vX.YY.bin**" for CircuitSetup releases
+- "**sound-pack-rmXX.zip**" for A10001986 releases, "**REMA.bin**" for CircuitSetup releases.
+
+### Main firmware
+
+To update the main firmware of your Remote, 
+- enter the [Config Portal](#the-config-portal),
+- click on "Update & Upload",
+- select the downloaded main firmware file in the _top_ file selector, and
+- click on *Update*.
+  
 <details>
 <summary>Installing on a fresh ESP32...</summary>
 If you are using a fresh ESP32, please go <a href="https://install.out-a-ti.me">here</a> and follow the instructions, or - if you are a nerd and want to deal with source code, compilers'n'stuff - see <a href="https://github.com/realA10001986/Remote/blob/main/remote-A10001986/remote-A10001986.ino">remote-A10001986.ino</a> for detailed build and upload information.
 </details>
 
-*After a firmware update, the "wait" symbol might be shown a bit longer while booting. Do NOT switch off the device during this time.*
-
 ### Sound-pack installation
 
-The firmware comes with a sound-pack which needs to be installed separately. The sound-pack is not updated as often as the firmware itself. There will be a message in the Config Portal and the Remote will briefly display "INS"-"SND"-"PCK" during boot when/if the sound-pack needs to be updated.
+After updating the main firmware, there will be a notification on the Config Portal (and the Remote will briefly display "INS"-"SND"-"PCK" at startup) when/if the sound-pack also needs to be updated. 
 
-_Installing the sound-pack requires an [SD card](#sd-card)._
+_Installing the sound-pack requires an [SD card](#initial-configuration)._
 
-The first step is to extract "sound-pack-rmXX.zip" (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)). It contains one file, named "REMA.bin".
-
-Next, head to the [Config Portal](#the-config-portal), click on "Update & Upload", select the "REMA.bin" file in the _bottom_ file selector and click on *Upload*.
+To update the sound-pack of your Remote, 
+- (if the sound-pack is a zip file, extract it. It contains one file named REMA.bin)
+- enter the [Config Portal](#the-config-portal),
+- click on "Update & Upload",
+- select the REMA.bin file in the _bottom_ file selector, and
+- click on *Upload*. 
 
 <details>
 <summary>Alternative way</summary>
@@ -661,6 +658,25 @@ Alternatively, you can install the sound-pack the following way:
 <li>power up the Remote; the sound-pack will be installed automatically.</li>
 </ul>
 </details>
+
+<!--
+## Factory Reset
+
+To reset your Remote to factory default settings, 
+- power-down the device,
+- press the _Calibration_ button and keep it pressed,
+- power-up the device,
+- wait until the display shows an animation,
+- press the _RESET_ button five times within 10 seconds (the display will show "FAC" after the fifth press),
+- then release the _Calibration_ button.
+
+This clears all settings to their defaults except
+- battery settings,
+- Futaba switch type settings.
+
+Since any configured WiFi connection is deleted as well, the Remote will reboot in AP-Mode.
+
+-->
 
 
 ---
@@ -693,13 +709,11 @@ This leads to the [ELRS/CRSF Settings page](#elrscrsf-settings).
 
 This leads to the firmware update and audio upload page.
 
-To upload a new firmware, such as published in the [Release packages](https://github.com/realA10001986/Remote/releases), select the "**remote-A10001986-Vx.xx.bin**" or "**Remote_vX.YY.bin**" file as contained in the Release package in the _top_ file selector and click *Update*.
+See [here](#firmware-installation--firmware-update) for firmware update instructions.
 
-You can also install the Remote's sound-pack on this page; download the sound-pack (which is included in every [Release package](https://github.com/realA10001986/Remote/releases)), extract it and select the resulting REMA.bin file in the bottom file selector. Finally, click *Upload*. An SD card is required for this operation.
-
-See also [here](#firmware-installation--firmware-update).
-
-Finally, this page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card. Select an mp3 file in the bottom file selector and click *Upload*. (Maximum 16 files at a time.)
+This page is also for uploading [custom or replacement sound files](#installing-custom--replacement-audio-files) to the SD card:
+- Select one or more mp3 file(s) in the _bottom_ file selector (max 16 files at a time) and
+- click *Upload*.
 
 ---
 
@@ -760,14 +774,14 @@ By default, and if this field is empty, the Remote's own WiFi network ("REM-AP")
 
 If you forget this password and are thereby locked out of your Remote, 
 - power-down the device,
-- hold the _Calibration_ button,
-- power-up the device (while still holding the _Calibration_ button)
-- wait until the display shows a counter-clockwise circle animation,
-- press Button _O.O_ twice within 10 seconds,
+- press the _Calibration_ button and keep it pressed,
+- power-up the device,
+- wait until the display shows an animation,
+- press button _O.O_ twice within 10 seconds<!-- (the display will show "RST" after the second press) -->,
 - wait until the display shows "RST",
 - then release the _Calibration_ button.
 
-This procedure temporarily (until a reboot) clears the WiFi password, allowing unprotected access to the Config Portal. (Note that this procedure also deletes static IP address data; the device will return to using DHCP after a reboot.)
+The Remote will boot and start the access point - this once - without a password, thereby giving you an opportunity to connect without a password and to either look up or change said password. When you reboot or power-cycle the Remote, REM-AP will be password protected again.
 
 ##### &#9193; WiFi channel
 
@@ -860,18 +874,14 @@ Here you can select a user button/switch which, when activated, sends a ```REFIL
 
 ##### &#9193; Save secondary settings on SD
 
-If this is checked, some settings (volume, etc) are stored on the SD card (if one is present). This helps to minimize write operations to the internal flash memory and to prolong the lifetime of your Remote. See [Flash Wear](#flash-wear).
+_Please leave this option checked. It is safe to have this option checked even with no SD card present._
 
-Apart from flash Wear, there is another reason for using an SD card for settings: Writing data to internal flash memory can cause delays of up to 1.5 seconds, which interrupt sound playback and have other undesired effects. The Remote needs to save data from time to time, so for a smooth experience without unexpected and unwanted delays, please use an SD card and check this option.
-
-It is safe to have this option checked even with no SD card present.
+If this is checked, some settings are stored on the SD card. This helps to minimize write operations to the internal flash memory and to prolong the lifetime of your Remote. Apart from Flash Wear, there is another reason for using an SD card for settings: The Remote needs to save data from time to time. Writing data to internal flash memory can cause delays of up to 1.5 seconds, which interrupt sound playback and have other undesired effects.
 
 If you want copy settings from one SD card to another, do as follows:
 - With the old SD card still in the slot, enter the Config Portal, turn off _Save secondary settings on SD_, and click "SAVE".
 - After the Remote has rebooted, power down, and swap the SD card for your new one.
 - Power-up the Remote, enter the Config Portal, re-enable _Save secondary settings on SD_, and click "SAVE".
-
-This procedure ensures that all your settings are copied from the old to the new SD card.
 
 #### <ins>Button assignment settings</ins>
 
@@ -1174,4 +1184,5 @@ Values between the saved points are interpolated, and anything outside the saved
 
 ---
 _Text & images: (C) Thomas Winischhofer ("A10001986"). See LICENSE._ [Source](https://remote.out-a-ti.me)  
+_No generative AI or automated code-completion tools were used in the development of this project._   
 _Other props: [Time Circuits Display](https://tcd.out-a%2dti.me) ... [Flux Capacitor](https://fc.out-a%2dti.me) ... [SID](https://sid.out-a%2dti.me) ... [Dash Gauges](https://dg.out-a%2dti.me) ... [VSR](https://vsr.out-a%2dti.me) ... [TFC](https://tfc.out-a%2dti.me) ... [Jukebox](https://jb.out-a%2dti.me)_
