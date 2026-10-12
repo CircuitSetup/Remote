@@ -154,6 +154,9 @@ logic_helpers = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for sign
 ])
 logic_page = portal[portal.index('static const char crsfLogicMixScript[]'):portal.index('static const char *wmBuildCRSFLogicMix(const char *dest, int op)\n{')]
 logic_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFLogicMix(const char *dest, int op)')
+logic_page = ('static bool logicAllocFails = false;\n'
+              'static void *logicTestMalloc(size_t size) { return logicAllocFails ? nullptr : malloc(size); }\n'
+              '#define malloc logicTestMalloc\n' + logic_page + '\n#undef malloc\n')
 post_parser = '\n'.join(line for line in (ROOT / 'src/remote_settings.h').read_text().splitlines() if line.startswith('#define DEF_ELRS')) + '\n'
 post_parser += function('src/remote_wifi.cpp', 'static bool isNumString(char *s)')
 post_parser += function('src/remote_wifi.cpp', 'static void getServerParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal)')
@@ -648,6 +651,7 @@ int main() {
     for(int i = 0; i < 4; i++) assert(profiles[i].expo == 80);
     stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers(); server.args.clear();
     const char *curvePage = wmBuildCRSFCAL(nullptr, 2);
+    const size_t existingGimbalMarkupLength = strlen(curvePage);
     for(int i = 0; i < 4; i++) {
         char control[180];
         snprintf(control, sizeof(control), "id='%s' name='%s' type='range' min='0' max='100' step='1' value='%u' data-elrs-expo data-centered='%d'", expoIds[i], expoIds[i], strengths[i], i == 3 ? 0 : 1);
@@ -1266,14 +1270,26 @@ int main() {
     }
     const char *worstPage=wmBuildCRSFLogicMix(nullptr,2);
     fprintf(stderr,"Worst-case additional Logic/Mixes markup: %zu bytes\n",strlen(worstPage));
-    assert(strlen(worstPage)<=6144); wmBuildCRSFLogicMix(worstPage,WM_CP_DESTROY);
+    assert(strlen(worstPage)<=6144);
+    // Existing gimbal markup still sets WiFiManager's shared item-buffer size and peak builder scratch.
+    assert(strlen(worstPage) <= existingGimbalMarkupLength);
+    assert(sizeof(crsfLogicMixScript) + 1200 <= existingGimbalMarkupLength);
+    fprintf(stderr,"Existing gimbal markup: %zu bytes; Logic/Mixes does not enlarge shared item buffer\n",existingGimbalMarkupLength);
+    wmBuildCRSFLogicMix(worstPage,WM_CP_DESTROY);
     crsfLogicConfig=previewLogic;crsfMixConfig=previewMix;
     const char *logicPage=wmBuildCRSFLogicMix(nullptr,2);
     assert(logicPage && strlen(logicPage)<=6144);
     assert(strstr(logicPage,"Logical Switches") && strstr(logicPage,"Multiplex") && strstr(logicPage,"AND switch"));
     wmBuildCRSFLogicMix(nullptr,WM_CP_LEN);assert(wmLenBuf==strlen(logicPage)+1);
-    if(const char *path=getenv("CRSF_LOGIC_PREVIEW")){FILE *f=fopen(path,"wb");assert(f);fputs("<!doctype html><title>ELRS Logic and Mixes</title><meta name='viewport' content='width=device-width'>",f);fputs(HTTP_STYLE,f);fputs("<form>",f);fputs(logicPage,f);fputs("<button>Save</button></form>",f);fclose(f);}
+    if(const char *path=getenv("CRSF_LOGIC_PREVIEW")){FILE *f=fopen(path,"wb");assert(f);fputs("<!doctype html><title>ELRS Logic and Mixes</title><meta name='viewport' content='width=device-width'>",f);fputs(HTTP_STYLE,f);fputs("</style><form>",f);fputs(logicPage,f);fputs("<button>Save</button></form>",f);fclose(f);}
     wmBuildCRSFLogicMix(logicPage,WM_CP_DESTROY);
+    logicAllocFails = true;
+    assert(wmBuildCRSFLogicMix(nullptr,2) == nullptr);
+    assert(wmBuildCRSFLogicMix(nullptr,WM_CP_DESTROY) == nullptr);
+    wmBuildCRSFLogicMix(nullptr,WM_CP_LEN);assert(wmLenBuf > 0);
+    logicAllocFails = false;
+    const char *retryPage = wmBuildCRSFLogicMix(nullptr,2);assert(retryPage);
+    wmBuildCRSFLogicMix(retryPage,WM_CP_DESTROY);
     puts("CRSF logic/mix strict forms, omission preservation and compact builder passed");
 
 

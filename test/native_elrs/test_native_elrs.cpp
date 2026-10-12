@@ -318,6 +318,14 @@ static ELRSCrsfCoreConfig defaultConfig()
     return config;
 }
 
+static void enableAllLogicAndMixes(ELRSCrsfCoreConfig &config)
+{
+    for(uint8_t i = 0; i < 8; i++) {
+        config.logic.rules[i] = {3, 133, (uint8_t)(i ? 16 + i : 134), 0, 0};
+        config.mixes.lines[i] = {(uint8_t)(9 + i), (uint8_t)(17 + i), 0, 100, 0, 2};
+    }
+}
+
 static std::vector<uint8_t> makeFrame(uint8_t type, const std::vector<uint8_t> &payload)
 {
     std::vector<uint8_t> frame;
@@ -635,6 +643,51 @@ static void test_bounded_polling_jitter_keeps_healthy_tx_cadence()
     }
 }
 
+static void test_full_logic_mixes_keep_costed_500hz_io_cadence()
+{
+    std::vector<uint32_t> baselineTx, baselineSamples;
+    for(bool enabled : {false, true}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.transport.packetRateHz = 500;
+        config.transport.baudRate = 921600;
+        if(enabled) enableAllLogicAndMixes(config);
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+        host.costedIo = true;
+        host.sampleCostUs = 80;
+        const auto reply = makeFrame(0x28, {1, 2});
+        const int initialScanCount = host.localScanCount;
+        for(uint32_t slot = 0; slot < 50; slot++) {
+            const uint32_t deadline = slot * 2000;
+            const uint32_t jitter = (slot % 3) * 60; // ADC + polling delay stays within the existing 200us allowance.
+            if(slot == 4) host.queueFrame(reply);
+            host.stop = slot >= 25;
+            loopAt(core, host, (deadline + jitter) / 1000, deadline + jitter);
+            TEST_ASSERT_EQUAL_UINT32(slot + 1, host.txStarts.size());
+            TEST_ASSERT_GREATER_OR_EQUAL_UINT32(deadline + 40, host.txStarts.back());
+            TEST_ASSERT_LESS_OR_EQUAL_UINT32(deadline + 120 + 80 + 40, host.txStarts.back());
+            if(slot) {
+                TEST_ASSERT_GREATER_OR_EQUAL_UINT32(1800, host.txStarts[slot] - host.txStarts[slot - 1]);
+                TEST_ASSERT_LESS_OR_EQUAL_UINT32(2200, host.txStarts[slot] - host.txStarts[slot - 1]);
+                TEST_ASSERT_GREATER_OR_EQUAL_UINT32(1300, host.oeOnTimes.back() - host.oeOffTimes[host.oeOffTimes.size() - 2]);
+            }
+            for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(enabled && !host.stop ? 1811 : 172, core.channelAt(ch));
+            TEST_ASSERT_FALSE(host.driverEnabled);
+        }
+        TEST_ASSERT_EQUAL_UINT32(reply.size(), host.serialReadCount);
+        TEST_ASSERT_EQUAL_UINT32(initialScanCount + 50, host.localScanCount);
+        TEST_ASSERT_TRUE(statusOf(core).replyActive);
+        TEST_ASSERT_TRUE(statusOf(core).lastRawFrameCrcValid);
+        if(!enabled) { baselineTx = host.txStarts; baselineSamples = host.sampleCompletions; }
+        else {
+            TEST_ASSERT_EQUAL_UINT32(baselineSamples.size(), host.sampleCompletions.size());
+            TEST_ASSERT_EQUAL_UINT32_ARRAY(baselineTx.data(), host.txStarts.data(), baselineTx.size());
+            TEST_ASSERT_EQUAL_UINT32_ARRAY(baselineSamples.data(), host.sampleCompletions.data(), baselineSamples.size());
+        }
+    }
+}
+
 static void test_tx_pacing_retains_fractional_periods_and_rollover()
 {
     for(uint16_t rate : {50, 100, 150, 250, 500}) {
@@ -693,27 +746,31 @@ static void test_costed_service_slots_keep_rc_and_real_reply_deadlines()
 
 static void test_pending_axes_keep_filter_and_rc_slots()
 {
-    FakeHost host;
-    ELRSCrsfCore core;
-    ELRSCrsfCoreConfig config = defaultConfig();
-    config.propControls = true;
-    config.transport.packetRateHz = 500;
-    host.axes[0] = 1800;
-    TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
-    host.axesPending = true;
-    int16_t axes[4];
-    for(uint32_t ms = 2; ms <= 100; ms += 2) {
-        loopAt(core, host, ms, ms * 1000);
-        TEST_ASSERT_TRUE(core.readFilteredAxes(axes));
-        TEST_ASSERT_EQUAL_INT16(1800, axes[0]);
-        TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+    for(bool enabled : {false, true}) {
+        FakeHost host;
+        ELRSCrsfCore core;
+        ELRSCrsfCoreConfig config = defaultConfig();
+        config.propControls = true;
+        config.transport.packetRateHz = 500;
+        if(enabled) enableAllLogicAndMixes(config);
+        host.axes[0] = 1800;
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+        host.axesPending = true;
+        int16_t axes[4];
+        for(uint32_t ms = 2; ms <= 100; ms += 2) {
+            loopAt(core, host, ms, ms * 1000);
+            TEST_ASSERT_TRUE(core.readFilteredAxes(axes));
+            TEST_ASSERT_EQUAL_INT16(1800, axes[0]);
+            for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(enabled ? 1811 : 172, core.channelAt(ch));
+            TEST_ASSERT_FALSE(statusOf(core).faultFlags & (ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
+        }
+        TEST_ASSERT_EQUAL_UINT32(50, host.txStarts.size());
+        loopAt(core, host, 101, 101000);
+        TEST_ASSERT_FALSE(core.readFilteredAxes(axes));
+        TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
     }
-    TEST_ASSERT_EQUAL_UINT32(50, host.txStarts.size());
-    loopAt(core, host, 101, 101000);
-    TEST_ASSERT_FALSE(core.readFilteredAxes(axes));
-    TEST_ASSERT_TRUE(statusOf(core).faultFlags & ELRS_FAULT_ADC_STALE);
-    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(0));
-    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_new_identical_samples_and_separate_input_rollover()
@@ -1611,6 +1668,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     config150.transport.packetRateHz = 150;
     config250.transport.packetRateHz = 250;
     config500.transport.packetRateHz = 500;
+    enableAllLogicAndMixes(config500);
 
     TEST_ASSERT_TRUE(beginAt(core50, host50, config50, 0, 0));
     TEST_ASSERT_TRUE(beginAt(core100, host100, config100, 0, 0));
@@ -1629,6 +1687,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host500.writes.size());
+    for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(1811, core500.channelAt(ch));
 
     loopAt(core50, host50, 19, 19999);
     loopAt(core100, host100, 9, 9999);
@@ -1641,6 +1700,7 @@ static void test_packet_rate_scheduler_50_100_150_250hz()
     TEST_ASSERT_EQUAL_INT(1, (int)host150.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host250.writes.size());
     TEST_ASSERT_EQUAL_INT(1, (int)host500.writes.size());
+    for(uint8_t ch = 8; ch < 16; ch++) TEST_ASSERT_EQUAL_UINT16(1811, core500.channelAt(ch));
 
     loopAt(core50, host50, 20, 20000);
     loopAt(core100, host100, 10, 10000);
@@ -4566,6 +4626,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_tx_deadline_advances_past_real_io_completion);
     RUN_TEST(test_late_tx_preserves_receive_opportunity);
     RUN_TEST(test_bounded_polling_jitter_keeps_healthy_tx_cadence);
+    RUN_TEST(test_full_logic_mixes_keep_costed_500hz_io_cadence);
     RUN_TEST(test_tx_pacing_retains_fractional_periods_and_rollover);
     RUN_TEST(test_costed_service_slots_keep_rc_and_real_reply_deadlines);
     RUN_TEST(test_pending_axes_keep_filter_and_rc_slots);

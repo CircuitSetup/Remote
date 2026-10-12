@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync(process.argv[2],'utf8');
 class Element{
-  constructor(tag){this.tag=tag;this.children=[];this._text='';this._value='';this.validity='';}
+  constructor(tag){this.tag=tag;this.tagName=tag.toUpperCase();this.children=[];this._text='';this._value='';this.validity='';}
   get textContent(){return this._text+this.children.map(x=>x.textContent).join('');}
   set textContent(x){this._text=String(x);this.children=[];}
   get value(){return this._value;}
@@ -14,7 +14,7 @@ class Element{
   reportValidity(){return !this.validity&&(!this.required||this.value!=='')&&
     (this.type!=='number'||(Number.isInteger(Number(this.value))&&Number(this.value)>=this.min&&Number(this.value)<=this.max));}
   showModal(){this.open=true;}
-  close(){this.open=false;}
+  close(){this.open=false;this.onclose?.();}
   click(){if(!this.disabled)this.onclick?.();}
   scrollIntoView(){}
   focus(){}
@@ -42,6 +42,30 @@ field('Channel').value=9;field('Source').value=25;field('Weight (%)').value=-50;
 ids.lmapply.click();assert.equal(hidden('cmwt1'),'-50');assert.equal(hidden('cmsw1'),'145');
 assert.equal(hidden('cmch1'),'9');
 action(ids.lmm.children[1],'Up');assert.equal(hidden('cmsrc0'),'25');assert.equal(hidden('cmsrc1'),'17');
+
+ids.lmadd.click();field('Weight (%)').value='';ids.lmcancel.click();
+assert.equal(ids.lmfields.children.length,0,'Cancel removes invalid draft controls from the outer form');
+ids.lmadd.click();ids.lmapply.click();ids.lmcancel.click();
+assert.equal(ids.lmfields.children.length,0,'Cancel removes custom validity after failed Apply');
+ids.lmadd.click();
+assert.equal(field('Channel').value,'9','Add uses the selected destination group');
+field('Source').value=25;
+let prevented=false;
+ids.lme.keydown({key:'Enter',target:ids.lmcancel,preventDefault:()=>prevented=true});
+if(!prevented)ids.lmcancel.click();
+assert.ok(!prevented,'Enter on Cancel keeps native button activation');
+assert.equal(ids.lmcount.textContent,'2/8 additional lines','Keyboard Cancel does not commit a mix');
+ids.lmadd.click();field('Weight (%)').value='';ids.lme.close();
+assert.equal(ids.lmfields.children.length,0,'Escape/close also removes invalid draft controls');
+
+ids.csw0=new Element('select');ids.csw0.value=16;
+action(ids.lml.children[7],'Clear');
+action(ids.lmm.children.find(r=>r.textContent.includes('Base Stop')),'Base');
+ids.lmadd.click();assert.equal(field('Channel').value,'16','Add uses the selected base destination');ids.lmcancel.click();
+action(ids.lmm.children[0],'Down');
+assert.equal(hidden('cmsrc0'),'17','Reordering uses the row channel even after selecting another group');
+ids.lmadd.click();assert.equal(field('Channel').value,'9','Reordering selects its destination group');ids.lmcancel.click();
+action(ids.lmm.children[1],'Up');assert.equal(hidden('cmsrc0'),'25');
 action(ids.lmm.children[0],'Delete');assert.equal(hidden('cmch0'),'0');assert.equal(hidden('cmwt0'),'0');
 for(let i=0;i<7;i++){ids.lmadd.click();field('Source').value=25;ids.lmapply.click();}
 assert.equal(ids.lmcount.textContent,'8/8 additional lines');assert.ok(ids.lmadd.disabled);
