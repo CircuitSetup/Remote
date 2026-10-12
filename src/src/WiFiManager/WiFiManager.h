@@ -232,6 +232,7 @@ class WiFiManager
     #endif
 
     // Called when saving params; return false to reject the save.
+    void          setParamSaveError(uint16_t status) { _paramSaveError = status == 400 ? 400 : 500; }
     void          setSaveParamsCallback(bool(*func)(int))
                                   { _saveparamscallback = func; };
 
@@ -616,6 +617,7 @@ class WiFiManager
     #ifdef WM_PRESAVECB
     void (*_presaveparamscallback)(int)                                 = NULL;
     #endif
+    uint16_t _paramSaveError = 500;
     bool (*_saveparamscallback)(int)                                    = NULL;
     void (*_preotaupdatecallback)(void)                                 = NULL;
     void (*_postotaupdatecallback)(bool)                                = NULL;

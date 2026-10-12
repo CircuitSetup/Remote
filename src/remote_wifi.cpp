@@ -1774,7 +1774,10 @@ static bool saveParamsCallback(int paramspage)
         const auto previousSettings = settings;
         crsf_wifi_saveParamsCallback();
         if(!crsf_wifi_loop_settings()) {
+            const bool invalidLogicMix = !crsfLogicParamsValid || !crsfMixParamsValid;
             settings = previousSettings;
+            syncCRSFPortalBuffers();
+            if(invalidLogicMix) wm.setParamSaveError(400);
             return false;
         }
         #endif

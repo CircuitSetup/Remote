@@ -2967,10 +2967,13 @@ void WiFiManager::_handleParamSave(int aidx, const char *title)
     }
     #endif
 
+    _paramSaveError = 500;
     doParamSave(_params[aidx], _paramsCount[aidx]);
 
     if(_saveparamscallback && !_saveparamscallback(aidx)) {
-        server->send(500, "text/html", "<p>Settings could not be saved to storage. Please try again.</p><a href='/'>Return to portal</a>");
+        server->send(_paramSaveError, "text/html", _paramSaveError == 400 ?
+            "<p>Invalid Logic or Mixes settings. Correct the fields and save again.</p><a href='/'>Return to portal</a>" :
+            "<p>Settings could not be saved to storage. Please try again.</p><a href='/'>Return to portal</a>");
         return;
     }
 

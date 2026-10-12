@@ -146,6 +146,14 @@ mode_json = function('src/remote_settings.cpp', 'static bool CopyCheckValidNumPa
 mode_line = next(line.strip() for line in (ROOT / 'src/remote_settings.cpp').read_text().splitlines() if 'CopyCheckValidNumParm(json["opMode"]' in line)
 mode_json += 'static bool loadOperationMode(const char *value) { bool wd = false; std::map<std::string, const char *> json = {{"opMode", value}};\n' + mode_line.replace('DEF_OPMODE', '0') + '\nreturn wd; }\n'
 select_page += mode_json
+logic_helpers = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for signature in [
+    'static bool crsfParseLogicNumber(const String &value, int minimum, int maximum, long &number)',
+    'static bool crsfReadLogicMixForm(bool mixes)',
+    'static void crsfReadLogicParams()',
+    'static void crsfReadMixParams()',
+])
+logic_page = portal[portal.index('static const char crsfLogicMixScript[]'):portal.index('static const char *wmBuildCRSFLogicMix(const char *dest, int op)\n{')]
+logic_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFLogicMix(const char *dest, int op)')
 post_parser = '\n'.join(line for line in (ROOT / 'src/remote_settings.h').read_text().splitlines() if line.startswith('#define DEF_ELRS')) + '\n'
 post_parser += function('src/remote_wifi.cpp', 'static bool isNumString(char *s)')
 post_parser += function('src/remote_wifi.cpp', 'static void getServerParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int defaultVal)')
@@ -153,6 +161,7 @@ post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadInputPa
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadGimbalChannelParam(const char *name, char *destBuf)')
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadOutputLimitParams()')
 post_parser += display_post
+post_parser += logic_helpers
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsf_wifi_saveParamsCallback()')
 portal_http = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
 portal_http += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
@@ -240,6 +249,8 @@ const char HTTP_PARAMSAVED[] = "Settings saved.", HTTP_PARAMSAVED_END[] = " Rebo
 struct WiFiManager {
     TestServer *server = &::server;
     int _params[4] = {}, _paramsCount[4] = {};
+    int _paramSaveError = 500;
+    void setParamSaveError(int status) { _paramSaveError = status; }
     bool incGFXMSG = false;
     bool (*_saveparamscallback)(int) = nullptr;
     void (*_gpcallback)(int) = nullptr;
@@ -1222,9 +1233,53 @@ int main() {
     assert(crsfSettings.logic.rules[0].threshold==-90 && crsfSettings.mixes.lines[0].weight==50);
     puts("CRSF logic/mix complete-tail migration, prefix preservation, omitted saves and rollback/retry passed");
 
+    syncCRSFPortalBuffers();
+    auto goodLogic=crsfLogicConfig; auto goodMix=crsfMixConfig;
+    auto fillForm=[&]() {
+        server.name.clear(); server.args.clear(); server.args["clform"]="1"; server.args["cmform"]="1";
+        const char *logicalFields[]={"clfn","cla","clb","clx","cland"};
+        const char *mixFields[]={"cmch","cmsrc","cmsw","cmwt","cmoff","cmmux"};
+        for(int i=0;i<8;i++) {
+            const uint8_t *l=(const uint8_t*)&goodLogic.rules[i],*m=(const uint8_t*)&goodMix.lines[i];
+            for(int j=0;j<5;j++)server.args[std::string(logicalFields[j])+std::to_string(i)]=std::to_string(j==3?(int8_t)l[j]:l[j]);
+            for(int j=0;j<6;j++)server.args[std::string(mixFields[j])+std::to_string(i)]=std::to_string(j==3||j==4?(int8_t)m[j]:m[j]);
+        }
+    };
+    fillForm(); crsfReadLogicParams(); crsfReadMixParams(); assert(saveCRSFPortalInputSettings());
+    const auto beforeLogicForm=stored;
+    for(const char *key:{"clfn0","cla0","cland0","cmch0","cmsrc0","cmsw0","cmwt0","cmmux0"}) {
+        for(const char *bad:{"", "+1", " 1", "1.5", "99999", "x"}) {
+            fillForm();server.args[key]=bad;crsfReadLogicParams();crsfReadMixParams();
+            assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+        }
+        fillForm();server.args.erase(key);crsfReadLogicParams();crsfReadMixParams();
+        assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+    }
+    fillForm();server.args["clform"]=std::string("1\0x",3);crsfReadLogicParams();crsfReadMixParams();
+    assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+    server.args.clear();crsfReadLogicParams();crsfReadMixParams();assert(saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+    syncCRSFPortalBuffers();
+    const auto previewLogic=crsfLogicConfig; const auto previewMix=crsfMixConfig;
+    for(int i=0;i<8;i++) {
+        crsfLogicConfig.rules[i]={5,(uint8_t)(144+i),(uint8_t)(144+i),0,(uint8_t)(144+i)};
+        crsfMixConfig.lines[i]={16,152,152,-100,-100,2};
+    }
+    const char *worstPage=wmBuildCRSFLogicMix(nullptr,2);
+    fprintf(stderr,"Worst-case additional Logic/Mixes markup: %zu bytes\n",strlen(worstPage));
+    assert(strlen(worstPage)<=6144); wmBuildCRSFLogicMix(worstPage,WM_CP_DESTROY);
+    crsfLogicConfig=previewLogic;crsfMixConfig=previewMix;
+    const char *logicPage=wmBuildCRSFLogicMix(nullptr,2);
+    assert(logicPage && strlen(logicPage)<=6144);
+    assert(strstr(logicPage,"Logical Switches") && strstr(logicPage,"Multiplex") && strstr(logicPage,"AND switch"));
+    wmBuildCRSFLogicMix(nullptr,WM_CP_LEN);assert(wmLenBuf==strlen(logicPage)+1);
+    if(const char *path=getenv("CRSF_LOGIC_PREVIEW")){FILE *f=fopen(path,"wb");assert(f);fputs("<!doctype html><title>ELRS Logic and Mixes</title><meta name='viewport' content='width=device-width'>",f);fputs(HTTP_STYLE,f);fputs("<form>",f);fputs(logicPage,f);fputs("<button>Save</button></form>",f);fclose(f);}
+    wmBuildCRSFLogicMix(logicPage,WM_CP_DESTROY);
+    puts("CRSF logic/mix strict forms, omission preservation and compact builder passed");
+
+
 }
 '''
-compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
+compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + logic_page + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
 
 # Exercise the actual HTTP handler and the application's reboot scheduling callback.
 save_signature = 'static bool saveParamsCallback(int paramspage)'
@@ -1253,6 +1308,8 @@ class WiFiManager {
 public:
     TestServer *server = &httpServer;
     int _params[4] = {}, _paramsCount[4] = {};
+    int _paramSaveError = 500;
+    void setParamSaveError(int status) { _paramSaveError = status; }
     bool incGFXMSG = false;
     bool (*_saveparamscallback)(int) = nullptr;
     void (*_gpcallback)(int) = nullptr;
@@ -1262,6 +1319,7 @@ public:
     void HTTPSend(const String &page, bool) { server->send(200, "text/html", page.c_str()); }
     void _handleParamSave(int aidx, const char *title);
 };
+WiFiManager wm;
 struct {
     char playTUT[2], musicFolder[2], refBut[2], oorst[2], ooTT[2], resAT[2];
     char opMode[2] = "1", crsfap[2] = "0", elrsPktRate[2] = "3", elrsSpdUnit[2] = "0";
@@ -1277,6 +1335,8 @@ void crsf_wifi_saveParamsCallback() {
     strcpy(settings.elrsSpdUnit, "1"); strcpy(settings.elrsTlmRatio, "2");
     strcpy(settings.elrsMaxPower, "5"); strcpy(settings.elrsDynPower, "1");
 }
+bool crsfLogicParamsValid=true, crsfMixParamsValid=true;
+void syncCRSFPortalBuffers() {}
 bool crsf_wifi_loop_settings() { inputSaveAttempts++; return inputWriteOk; }
 '''
 http_callbacks = function('src/remote_wifi.cpp', save_signature)
@@ -1777,6 +1837,13 @@ int main() {
     }
     server.args.clear(); submitCurveRequest(manager);
     assert(server.status == 200 && stored == before);
+
+    wm._saveparamscallback=saveParamsCallback;
+    server.args={{"clform","1"},{"clfn0","x"}};wifiLoopSaveAction=0;
+    submitCurveRequest(wm);assert(server.status==400 && wifiLoopSaveAction==0 && stored==before);
+    server.args.clear();submitCurveRequest(wm);assert(server.status==200);
+    puts("CRSF malformed Logic form returns 400 without persistence/reboot and recovers on retry");
+
     puts("CRSF display form save, missing-source persistence, malformed HTTP rejection and write retry passed");
 }
 '''
