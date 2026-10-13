@@ -217,7 +217,7 @@ bool AudioGeneratorMP3::GetOneSample(int16_t& saL, int16_t& saR)
     }
 
     if (synth->pcm.samplerate != lastRate) {
-        output->SetRate(synth->pcm.samplerate);
+        if (!output->SetRate(synth->pcm.samplerate)) return false;
         lastRate = synth->pcm.samplerate;
     }
     if (synth->pcm.channels != lastChannels) {

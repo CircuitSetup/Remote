@@ -22,6 +22,7 @@
 #pragma GCC optimize ("O3")
 
 #include <stddef.h>
+#include <string.h>
 #include <pgmspace.h>
 #  include "config.h"
 
@@ -70,17 +71,8 @@ void mad_synth_init(struct mad_synth *synth)
 */
 void mad_synth_mute(struct mad_synth *synth)
 {
-  unsigned int ch, s, v;
   stack(__FUNCTION__, __FILE__, __LINE__);
-
-  for (ch = 0; ch < 2; ++ch) {
-    for (s = 0; s < 16; ++s) {
-      for (v = 0; v < 8; ++v) {
-        synth->filter[ch][0][0][s][v] = synth->filter[ch][0][1][s][v] =
-                                          synth->filter[ch][1][0][s][v] = synth->filter[ch][1][1][s][v] = 0;
-      }
-    }
-  }
+  memset(synth->filter, 0, sizeof(synth->filter));
 }
 
 /*

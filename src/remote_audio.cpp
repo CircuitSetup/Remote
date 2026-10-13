@@ -254,10 +254,11 @@ static int32_t skipID3(uint8_t *buf)
     return 0;
 }
 
-static void setupLoopAndBegin(AudioFileSourceLoop *src, uint32_t flags)
+static bool setupLoopAndBegin(AudioFileSourceLoop *src, uint32_t flags)
 {
     int32_t pos = 0;
     uint8_t buf[10];
+    bool started;
 
     buf[0] = 0;
 
@@ -266,8 +267,8 @@ static void setupLoopAndBegin(AudioFileSourceLoop *src, uint32_t flags)
     src->setPlayLoop(!!(flags & PA_LOOP));
 
     if(flags & PA_WAV) {
-        wav->begin(src, out);
-        src->setStartPos(wav->startPos);  // Yes, AFTER begin! Need wav->startPos!
+        started = wav->begin(src, out);
+        if(started) src->setStartPos(wav->startPos);  // Yes, AFTER begin! Need wav->startPos!
     } else {
         if(flags & PA_DOID3TS) {
             src->read((void *)buf, 10);
@@ -280,8 +281,13 @@ static void setupLoopAndBegin(AudioFileSourceLoop *src, uint32_t flags)
             src->seek(pos, SEEK_SET);
         }
         src->setStartPos(pos);
-        mp3->begin(src, out);
+        started = mp3->begin(src, out);
     }
+    if(!started) {
+        out->stop();
+        src->close();
+    }
+    return started;
 }
 
 void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
@@ -325,12 +331,12 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
     out->SetGain(getVolume());
 
     if(haveSD && ((flags & PA_ALLOWSD) || FlashROMode) && mySD0L->open(audio_file)) {
-        setupLoopAndBegin(mySD0L, flags|PA_DOID3TS);
+        if(!setupLoopAndBegin(mySD0L, flags|PA_DOID3TS)) playflags = 0;
         #ifdef REMOTE_DBG
         Serial.println("Playing from SD");
         #endif
     } else if(haveFS && myFS0L->open(audio_file)) {
-        setupLoopAndBegin(myFS0L, flags);
+        if(!setupLoopAndBegin(myFS0L, flags)) playflags = 0;
         #ifdef REMOTE_DBG
         Serial.println("Playing from flash FS");
         #endif
