@@ -93,6 +93,9 @@ class ELRSCrsfTransport {
         void loop(ELRSCrsfTransportHal &hal, unsigned long now);
         bool queueServiceFrame(const uint8_t *frame, size_t frameLen);
         bool hasPendingServiceFrame() const;
+        bool cancelServiceFrame();
+        uint32_t serviceTxCount() const { return _serviceTxCount; }
+        uint32_t lastServiceTxAt() const { return (uint32_t)_lastServiceTxAt; }
         uint32_t txTimeRemainingUs(uint32_t nowUs) const;
 
         const ELRSCrsfTransportConfig &config() const;
@@ -144,6 +147,7 @@ class ELRSCrsfTransport {
         unsigned long _replyDeadlineAt = 0;
         uint32_t _nextTxAtUs = 0;
         unsigned long _lastServiceTxAt = 0;
+        uint32_t _serviceTxCount = 0;
         unsigned long _echoSuppressUntil = 0;
         unsigned long _crcBurstAt = 0;
         unsigned long _frameBurstAt = 0;

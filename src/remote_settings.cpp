@@ -55,11 +55,11 @@
 #include "remote_global.h"
 
 #define ARDUINOJSON_USE_LONG_LONG 0
-#define ARDUINOJSON_USE_DOUBLE 0
+#define ARDUINOJSON_USE_DOUBLE 1
 #define ARDUINOJSON_ENABLE_ARDUINO_STRING 0
 #define ARDUINOJSON_ENABLE_ARDUINO_STREAM 0
 #define ARDUINOJSON_ENABLE_ARDUINO_PRINT 0
-#define ARDUINOJSON_DECODE_UNICODE 0
+#define ARDUINOJSON_DECODE_UNICODE 1
 #define ARDUINOJSON_ENABLE_STD_STREAM 0
 #define ARDUINOJSON_ENABLE_STD_STRING 0
 #define ARDUINOJSON_ENABLE_NAN 0
@@ -70,9 +70,12 @@
 #define MYNVS LittleFS
 #include <LittleFS.h>
 #include <Update.h>
+#include <esp_partition.h>
 
 #include "remote_main.h"
 #include "remote_settings.h"
+#include "remote_settings_transfer.h"
+#include "src/CRSF/crsf_settings.h"
 #include "remote_audio.h"
 #include "remote_wifi.h"
 #ifdef HAVE_CRSF
@@ -92,7 +95,7 @@
 
 // Size of main config JSON
 // Needs to be adapted when config grows
-#define JSON_SIZE 2500
+#define JSON_SIZE 4096
 #define JSON_SIZE_MQTT 3000
 #if ARDUINOJSON_VERSION_MAJOR >= 7
 #define DECLARE_S_JSON(x,n) JsonDocument n;
@@ -194,6 +197,11 @@ static bool configOnSD = false;
 
 // Paranoia: No writes Flash-FS
 bool FlashROMode = false;
+ELRSRadioPreferences remoteRadioPreferences;
+bool remoteRadioVersioned = false;
+bool remoteSettingsRecoveryBlocked = false;
+static uint32_t remoteSettingsGeneration = 1;
+void remoteSettingsChanged() { ++remoteSettingsGeneration; }
 
 // If SD contains default audio files
 static bool allowCPA = false;
@@ -224,6 +232,7 @@ static void firmware_update();
 
 static bool formatFlashFS(bool userSignal)
 {
+    if(remoteSettingsBusy() || remoteRadioReviewPending()) return false;
     bool ret = false;
 
     if(userSignal) {
@@ -425,6 +434,7 @@ bool loadConfigFile(const char *fn, uint8_t *buf, int len, int& validBytes, int 
 
 bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0)
 {
+    if(remoteSettingsBusy()) return false;
     uint8_t *bbuf;
     bool ret = false;
 
@@ -443,9 +453,9 @@ bool saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0)
     #endif
 
     if((!forcefs && configOnSD) || forcefs > 0 || (forcefs < 0 && FlashROMode)) {
-        ret = writeFileToSD(fn, bbuf, len + 3);
+        ret = remoteCheckedSettingsWrite(fn,bbuf,len+3,true);
     } else if(haveFS) {
-        ret = writeFileToFS(fn, bbuf, len + 3);
+        ret = remoteCheckedSettingsWrite(fn,bbuf,len+3,false);
     }
 
     free(bbuf);
@@ -466,10 +476,10 @@ static bool saveSecSettings(bool useCache)
 {
     uint32_t oldHash = secSettingsHash;
 
-    secSettingsHash = calcHash((uint8_t *)&secSettings, sizeof(secSettings));
+    const uint32_t nextHash = calcHash((uint8_t *)&secSettings, sizeof(secSettings));
     
     if(useCache) {
-        if(oldHash == secSettingsHash) {
+        if(oldHash == nextHash) {
             #ifdef REMOTE_DBG
             Serial.printf("saveSecSettings: Data up to date, not writing (%x)\n", secSettingsHash);
             #endif
@@ -477,7 +487,8 @@ static bool saveSecSettings(bool useCache)
         }
     }
     
-    return saveConfigFile(secCfgName, (uint8_t *)&secSettings, sizeof(secSettings), 0);
+    if(!saveConfigFile(secCfgName, (uint8_t *)&secSettings, sizeof(secSettings), 0)) return false;
+    secSettingsHash=nextHash;return true;
 }
 
 static bool saveTerSettings(bool useCache)
@@ -487,10 +498,10 @@ static bool saveTerSettings(bool useCache)
 
     uint32_t oldHash = terSettingsHash;
     
-    terSettingsHash = calcHash((uint8_t *)&terSettings, sizeof(terSettings));
+    const uint32_t nextHash = calcHash((uint8_t *)&terSettings, sizeof(terSettings));
     
     if(useCache) {
-        if(oldHash == terSettingsHash) {
+        if(oldHash == nextHash) {
             #ifdef REMOTE_DBG
             Serial.printf("saveTerSettings: Data up to date, not writing (%x)\n", terSettingsHash);
             #endif
@@ -498,7 +509,8 @@ static bool saveTerSettings(bool useCache)
         }
     }
     
-    return saveConfigFile(terCfgName, (uint8_t *)&terSettings, sizeof(terSettings), 1);
+    if(!saveConfigFile(terCfgName, (uint8_t *)&terSettings, sizeof(terSettings), 1)) return false;
+    terSettingsHash=nextHash;return true;
 }
 
 /*
@@ -542,6 +554,7 @@ static DeserializationError readJSONCfgFile(JsonDocument& json, File& configFile
 
 static bool writeJSONCfgFile(const JsonDocument& json, const char *fn, bool useSD, uint32_t oldHash = 0, uint32_t *newHash = NULL)
 {
+    if(remoteSettingsBusy() || json.overflowed()) return false;
     char *buf;
     size_t bufSize = measureJson(json);
     bool success = false;
@@ -564,7 +577,6 @@ static bool writeJSONCfgFile(const JsonDocument& json, const char *fn, bool useS
     if(oldHash || newHash) {
         uint32_t newH = calcHash((uint8_t *)buf, bufSize);
         
-        if(newHash) *newHash = newH;
     
         if(oldHash) {
             if(oldHash == newH) {
@@ -578,11 +590,12 @@ static bool writeJSONCfgFile(const JsonDocument& json, const char *fn, bool useS
     }
 
     if(useSD) {
-        success = writeFileToSD(fn, (uint8_t *)buf, (int)bufSize);
+        success = remoteCheckedSettingsWrite(fn, (uint8_t *)buf, bufSize, true);
     } else {
-        success = writeFileToFS(fn, (uint8_t *)buf, (int)bufSize);
+        success = remoteCheckedSettingsWrite(fn, (uint8_t *)buf, bufSize, false);
     }
 
+    if(success && newHash) *newHash=calcHash((uint8_t *)buf,bufSize);
     free(buf);
 
     #ifdef REMOTE_DBG
@@ -832,6 +845,17 @@ static bool read_settings(File configFile, int cfgReadCount)
         }
         #endif
   
+        #ifdef HAVE_CRSF
+        if(haveNewBoard) {
+            remoteRadioPreferences=elrsRadioPreferencesFromLegacy(atoi(settings.elrsTlmRatio),atoi(settings.elrsMaxPower),atoi(settings.elrsDynPower));
+            remoteRadioVersioned=false;
+            if(json.containsKey("eRadio")) {
+                // Use the same strict semantic decoder without reinterpreting option indices.
+                ELRSRadioPreferences decoded=remoteRadioPreferences;
+                if(remoteDecodeRadioPreferences(json["eRadio"],decoded)){remoteRadioPreferences=decoded;remoteRadioVersioned=true;}
+            }
+        }
+        #endif
         // HA/MQTT Settings in separate file
 
     } else {
@@ -843,14 +867,14 @@ static bool read_settings(File configFile, int cfgReadCount)
     return wd;
 }
 
-void write_settings()
+bool write_settings()
 {
     const char *funcName = "write_settings";
     DECLARE_D_JSON(JSON_SIZE,json);
 
     if(!haveFS && !FlashROMode) {
         Serial.printf("%s: %s\n", funcName, fsNoAvail);
-        return;
+        return false;
     }
 
     #ifdef REMOTE_DBG
@@ -939,7 +963,14 @@ void write_settings()
     }
     #endif
   
-    writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);
+#ifdef HAVE_CRSF
+    if(haveNewBoard) {
+        const auto &r=remoteRadioPreferences;
+        JsonObject radio=json.createNestedObject("eRadio");radio["version"]=1;radio["modelId"]=r.modelId;radio["telemetry"]=r.telemetry;radio["dynamic"]=r.dynamic;
+        JsonObject power=radio.createNestedObject("maxPower");power["label"]=r.maxPower.label;power["unit"]=r.maxPower.unit;
+    }
+#endif
+    return writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);
 }
 
 /*
@@ -1127,9 +1158,52 @@ void settings_setup()
         Serial.print("failed, formatting... ");
         #endif
 
+        const esp_partition_t *partition=esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,"spiffs");
+        bool blank=partition!=nullptr;uint8_t page[256];
+        for(size_t at=0;blank && at<partition->size;at+=sizeof(page)) {
+            if(esp_partition_read(partition,at,page,sizeof(page))!=ESP_OK) {blank=false;break;}
+            for(uint8_t byte:page) if(byte!=0xff) {blank=false;break;}
+        }
+        if(!blank) {remoteSettingsRecoveryBlocked=true;Serial.println("Flash mount failed; nonblank settings/recovery evidence retained.");return;}
         haveFS = formatFlashFS(true);
         freshFS = true;
   
+    }
+
+    // Set up SD card
+    pinMode(SD_CS_PIN, OUTPUT);
+    digitalWrite(SD_CS_PIN, HIGH);
+    SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+    delay(20);
+
+    #ifdef REMOTE_DBG
+    Serial.printf("%s: Mounting SD... ", funcName);
+    #endif
+
+    // Two attemps. Not really a necessity after
+    // the SD init changes (jul 2026), but why not.
+    if(!(haveSD = SD.begin(SD_CS_PIN, SPI, SD_SPI_FREQ))) {
+        delay(20);
+        haveSD = SD.begin(SD_CS_PIN, SPI, SD_SPI_FREQ);
+    }
+
+    if(haveSD) {
+        uint8_t cardType = SD.cardType();
+
+        #ifdef REMOTE_DBG
+        const char *sdTypes[5] = { "No card", "MMC", "SD", "SDHC", "unknown (SD not usable)" };
+        Serial.printf("SD card type: %s\n", sdTypes[cardType > 4 ? 4 : cardType]);
+        #endif
+
+        haveSD = ((cardType != CARD_NONE) && (cardType != CARD_UNKNOWN));
+    }
+
+    FlashROMode=haveSD && (SD.exists("/REM_FLASH_RO") || !haveFS);
+    RemoteTransferError recoveryError;
+    if(!recoverRemoteSettingsRestore(recoveryError)) {
+        remoteSettingsRecoveryBlocked=true;
+        Serial.printf("Settings recovery: %s (%s)\n",remoteTransferCodeName(recoveryError.code),recoveryError.path);
+        return;
     }
 
     if(haveFS) {
@@ -1164,37 +1238,9 @@ void settings_setup()
 
     }
 
-    // Set up SD card
-    pinMode(SD_CS_PIN, OUTPUT);
-    digitalWrite(SD_CS_PIN, HIGH);
-    SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
-    delay(20);
-  
-    #ifdef REMOTE_DBG
-    Serial.printf("%s: Mounting SD... ", funcName);
-    #endif
-
-    // Two attemps. Not really a necessity after
-    // the SD init changes (jul 2026), but why not.
-    if(!(haveSD = SD.begin(SD_CS_PIN, SPI, SD_SPI_FREQ))) {
-        delay(20);
-        haveSD = SD.begin(SD_CS_PIN, SPI, SD_SPI_FREQ);
-    }
-
-    if(haveSD) {
-        uint8_t cardType = SD.cardType();
-       
-        #ifdef REMOTE_DBG
-        const char *sdTypes[5] = { "No card", "MMC", "SD", "SDHC", "unknown (SD not usable)" };
-        Serial.printf("SD card type: %s\n", sdTypes[cardType > 4 ? 4 : cardType]);
-        #endif
-
-        haveSD = ((cardType != CARD_NONE) && (cardType != CARD_UNKNOWN));
-    }
-
     if(haveSD) {
 
-        firmware_update();
+        if(!remoteRadioReviewPending()) firmware_update();
         
         if(SD.exists("/REM_FLASH_RO") || !haveFS) {
             bool writedefault2 = true;
@@ -1228,7 +1274,7 @@ void settings_setup()
     // Re-format flash FS if either alien VER found, or
     // neither VER nor our config file exist.
     // (Note: LittleFS crashes when flash FS is full.)
-    if(!haveAudioFiles && haveFS && !FlashROMode) {
+    if(!haveAudioFiles && haveFS && !FlashROMode && !remoteRadioReviewPending()) {
         if((alienVER > 0) || 
            (alienVER < 0 && !freshFS && !cfgReadCount)) {
             #ifdef REMOTE_DBG
@@ -1302,6 +1348,12 @@ void settings_setup()
 
     loadUpdAvail();
     updateConfigPortalUpdValues();
+
+    if(!remoteSettingsRestoreLoaded(recoveryError)) {
+        remoteSettingsRecoveryBlocked=true;
+        Serial.printf("Settings recovery: %s (%s)\n",remoteTransferCodeName(recoveryError.code),recoveryError.path);
+        return;
+    }
 
     // Check if SD contains the default sound files
     if((r = m) && haveSD && (haveFS || FlashROMode)) {
@@ -1627,13 +1679,12 @@ void writeIpSettings()
         }
     }
 
-    ipHash = nh;
-    
-    saveConfigFile(ipCfgName, (uint8_t *)&ipsettings, sizeof(ipsettings), -1);
+    if(saveConfigFile(ipCfgName, (uint8_t *)&ipsettings, sizeof(ipsettings), -1)) ipHash=nh;
 }
 
 void deleteIpSettings()
 {
+    if(remoteSettingsBusy()) return;
     #ifdef REMOTE_DBG
     Serial.println("deleteIpSettings: Deleting ip config");
     #endif
@@ -1727,6 +1778,7 @@ static void reInstallFlashFS()
  */
 void moveSettings()
 {       
+    if(remoteSettingsBusy()) return;
     if(!haveSD || !haveFS) 
         return;
 
@@ -2231,3 +2283,47 @@ static void firmware_update()
     fw_error_blink(0);
     esp_restart();
 }    
+bool captureRemoteSettings(RemoteSettingsSnapshot &s, RemoteTransferError &e)
+{
+    if(remoteSettingsRecoveryBlocked) return remoteTransferFail(e,RemoteTransferCode::RollbackRequired,"storage","Settings recovery must finish first");
+    if((FlashROMode && !haveSD) || (!FlashROMode && !haveFS) || (configOnSD && !haveSD) || (haveTerSettings && !haveSD))
+        return remoteTransferFail(e,RemoteTransferCode::MediaUnavailable,"storage","Expected settings medium is unavailable");
+    if(haveSD) {
+        uint8_t sector[512];
+#ifdef HAVE_CRSF
+        if(opModeCRSF)serviceCRSF(false);
+#endif
+        const bool readable=SD.readRAW(sector,0);
+#ifdef HAVE_CRSF
+        if(opModeCRSF)serviceCRSF(false);
+#endif
+        if(!readable)return remoteTransferFail(e,RemoteTransferCode::MediaUnavailable,"storage.sd","Mounted SD card is no longer readable");
+    }
+    s={};s.settings=settings;captureRemoteWifiCredentials(s.settings);s.ip=ipsettings;s.identity=myRemID;
+    memcpy(&s.secondary,&secSettings,20);memcpy(&s.tertiary,&terSettings,4);
+    s.secondary.brightness=remdisplay.getBrightness();s.secondary.curVolume=aud_state.curVolume;
+    s.secondary.movieMode=movieMode;s.secondary.displayTCDSMode=displayTCDSMode;s.secondary.showUpdAvail=showUpdAvail;s.secondary.carMode=carMode;
+    if(useRotEnc) {s.secondary.up=rotEnc.getMaxStepsUp();s.secondary.dn=rotEnc.getMaxStepsDown();s.secondary.zero=rotEnc.dynZeroPos()?0:rotEnc.getZeroPos();}
+    s.tertiary.visMode=visMode;s.tertiary.musFolderNum=musFolderNum;s.tertiary.mpShuffle=aud_state.mpShuffle;
+    s.settings.autoThrottle[0]=autoThrottle?'1':'0';s.settings.coast[0]=doCoast?'1':'0';s.settings.pwrMst[0]=powerMaster?'1':'0';
+    s.newBoard=haveNewBoard;s.flashRO=FlashROMode;s.sdAvailable=haveSD;s.generation=remoteSettingsGeneration;
+#ifdef HAVE_CRSF
+    s.radio=remoteRadioVersioned?remoteRadioPreferences:elrsRadioPreferencesFromLegacy(atoi(settings.elrsTlmRatio),atoi(settings.elrsMaxPower),atoi(settings.elrsDynPower));
+    s.crsf=haveNewBoard?snapshotELRSSettings():remoteDefaultCrsfSettings();
+#endif
+    for(uint8_t i=0;i<7;i++) {
+        s.stores[i].state=RemoteStoreState::Present;
+        s.stores[i].medium=(i==5 || (i==0 || i==2 || i==3 ? FlashROMode:configOnSD))?RemoteStoreMedium::SD:RemoteStoreMedium::Flash;
+    }
+#ifndef HAVE_MQTT
+    s.stores[1].state=RemoteStoreState::Disabled;
+#endif
+#ifndef HAVE_CRSF
+    s.newBoard=false;
+#endif
+    if(!s.newBoard) s.stores[6].state=RemoteStoreState::Disabled;
+    if(!haveSD) s.stores[5].state=RemoteStoreState::Absent;
+    if(!(FlashROMode?SD.exists(ipCfgName):MYNVS.exists(ipCfgName))) s.stores[2].state=RemoteStoreState::Absent;
+    remoteCaptureRfChoices(s);
+    return true;
+}

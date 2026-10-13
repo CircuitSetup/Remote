@@ -7,6 +7,7 @@
 #include "elrs_input_model.h"
 #include "elrs_crsf_shared.h"
 #include "elrs_crsf_transport.h"
+#include "elrs_device_config.h"
 
 enum ELRSCrsfFaultFlags : uint8_t {
     ELRS_FAULT_NONE = 0,
@@ -141,7 +142,13 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool synced() const;
         SpeedSource activeSpeedSource() const;
         ELRSCrsfStatus getStatus() const;
+        ELRSDeviceConfig &deviceConfig() { return _deviceConfig; }
+        void setDeviceConfigAccess(bool maintenance, bool storageBusy, bool radioReviewPending = false) {
+            _configMaintenance = maintenance; _settingsBusy = storageBusy; _radioReviewPending = radioReviewPending;
+        }
         void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower, unsigned long now);
+        bool setRadioPreferences(const ELRSRadioPreferences &preferences, uint32_t now, bool radioReviewPending = false, bool scheduleApply = true);
+        void pauseModulePreferenceApply() { pauseModuleConfigSession(); }
 
         static uint8_t crc8D5(const uint8_t *data, size_t len);
         static size_t packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize);
@@ -187,6 +194,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void updateInputFaults(ELRSCrsfHost &host, unsigned long now);
         void updateBenchState(ELRSCrsfHost &host, unsigned long now);
         void updateModuleConfig(ELRSCrsfHost &host, unsigned long now);
+        ELRSConfigSafety configSafety(uint32_t now) const;
         void updateDisplay(ELRSCrsfHost &host, unsigned long now, int battWarn);
         bool hasRecentTelemetry(unsigned long now) const;
         bool adcFaultActive(unsigned long now) const;
@@ -201,7 +209,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void pauseModuleConfigSession();
         void noteModuleConfigResponse();
         void handleDeviceInfo(const uint8_t *payload, size_t payloadLen, unsigned long now);
-        void handleParameterSettingsEntry(const uint8_t *payload, size_t payloadLen, unsigned long now);
         void finishParameterChunk(uint8_t fieldId, const uint8_t *data, size_t len, unsigned long now);
         void applyDiscoveredParameter(uint8_t fieldId, const char *name, uint8_t type, const char *options, uint8_t currentValue);
         bool moduleSettingValueForTarget(uint8_t targetIndex, const char *options, uint8_t *value) const;
@@ -238,11 +245,17 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
             bool found = false;
             uint8_t fieldId = 0;
             uint8_t currentValue = 0;
-            char options[96];
+            uint32_t descriptorHash = 0;
+            uint8_t desiredValue = 0;
+            bool supported = false;
         };
 
         ELRSCrsfCoreConfig _config;
         ELRSCrsfTransport _transport;
+        ELRSDeviceConfig _deviceConfig;
+        bool _configMaintenance = false, _settingsBusy = false, _radioReviewPending = false;
+        bool _haveRadioPreferences = false;
+        ELRSRadioPreferences _radioPreferences;
 
         bool _haveAds = false;
         bool _haveStableAxes = false;
@@ -312,17 +325,11 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ModuleConfigState _moduleConfigState = MODULECFG_IDLE;
         bool _moduleConfigPending = false;
         uint8_t _moduleFieldCount = 0;
-        uint8_t _moduleFieldIndex = 0;
+        uint16_t _moduleFieldIndex = 0;
         uint8_t _moduleTargetIndex = 0;
         uint8_t _moduleWriteFieldId = 0;
         uint8_t _moduleProbeRetryCount = 0;
         uint8_t _moduleParameterRetryCount = 0;
-        bool _moduleChunkActive = false;
-        uint8_t _moduleChunkFieldId = 0;
-        uint8_t _moduleChunkNextIndex = 0;
-        uint8_t _moduleChunksRemain = 0;
-        size_t _moduleChunkLen = 0;
-        uint8_t _moduleChunkData[192];
         ModuleParameterInfo _moduleTelemetryRatio;
         ModuleParameterInfo _moduleMaxPower;
         ModuleParameterInfo _moduleDynamicPower;

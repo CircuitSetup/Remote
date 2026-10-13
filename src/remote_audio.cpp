@@ -70,6 +70,9 @@
 #include "remote_audio.h"
 #include "remote_wifi.h"
 #include "remote_click.h"
+#include "remote_click_compressed.h"
+#include <esp32/rom/miniz.h>
+#include <stdlib.h>
 #ifdef HAVE_CRSF
 #include "src/CRSF/crsf_kludge.h"
 #endif
@@ -82,6 +85,8 @@ static AudioFileSourceSDLoop *mySD0L;
 static AudioFileSourcePROGMEM *myPM;
 
 static AudioOutputI2S *out;
+static uint8_t clickWavDecoded[data_click_wav_len];
+static bool clickWavReady = false;
 
 bool audioInitDone = false;
 bool audioMute = false;
@@ -164,6 +169,23 @@ void audio_setup()
     }
 
     myPM = new AudioFileSourcePROGMEM();
+
+    tinfl_decompressor *clickInflater = (tinfl_decompressor *)malloc(sizeof(tinfl_decompressor));
+    if(clickInflater) {
+        tinfl_init(clickInflater);
+        size_t inputBytes = data_click_wav_deflate_len;
+        size_t outputBytes = sizeof(clickWavDecoded);
+        tinfl_status status = tinfl_decompress(clickInflater, data_click_wav_deflate,
+                                               &inputBytes, clickWavDecoded, clickWavDecoded,
+                                               &outputBytes, TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+        clickWavReady = status == TINFL_STATUS_DONE &&
+                        inputBytes == data_click_wav_deflate_len &&
+                        outputBytes == sizeof(clickWavDecoded);
+        free(clickInflater);
+    }
+    #ifdef REMOTE_DBG
+    if(!clickWavReady) Serial.println("Built-in click audio decompression failed");
+    #endif
 
     loadCurVolume();
 
@@ -352,7 +374,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
 void play_click()
 {
-    if(!playClicks || playflags || audioMute) {
+    if(!clickWavReady || !playClicks || playflags || audioMute) {
         return;
     }
 
@@ -370,7 +392,7 @@ void play_click()
 
     out->SetGain(getVolume());
 
-    myPM->open(data_click_wav, data_click_wav_len);
+    myPM->open(clickWavDecoded, sizeof(clickWavDecoded));
     wav->beginQuick(myPM, out, 1, 44);
 }
 

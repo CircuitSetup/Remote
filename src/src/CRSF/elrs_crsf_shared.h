@@ -52,6 +52,19 @@
 #define ELRS_DYNAMIC_POWER_DYNAMIC 1
 #define ELRS_DYNAMIC_POWER_DEFAULT ELRS_DYNAMIC_POWER_OFF
 
+struct ELRSSelectionPreference {
+    char label[64] = "250";
+    char unit[24] = "mW";
+};
+struct ELRSRadioPreferences {
+    uint8_t modelId = 0;
+    char telemetry[16] = "Std";
+    ELRSSelectionPreference maxPower;
+    char dynamic[16] = "Off";
+};
+ELRSRadioPreferences elrsRadioPreferencesFromLegacy(uint8_t telemetry, uint8_t power, uint8_t dynamic);
+bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &preferences);
+
 struct ELRSAxisCalibrationData {
     int16_t minimum;
     int16_t center;

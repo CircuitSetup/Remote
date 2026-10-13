@@ -51,12 +51,21 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
         bool isCalibrating() const;
         bool fakePowerOn() const;
+        uint16_t finalChannel5() const { return _core.channelAt(4); }
         ELRSCrsfStatus getStatus() const;
+        ELRSDeviceConfig &deviceConfig() { return _core.deviceConfig(); }
+        void setDeviceConfigAccess(bool maintenance, bool storageBusy, bool radioReviewPending = false) {
+            _core.setDeviceConfigAccess(maintenance, storageBusy, radioReviewPending);
+        }
         ELRSTelemetrySample telemetrySample(uint8_t source, uint32_t now, const ELRSVehicleConfig *vehicleConfig = NULL) const;
         bool telemetryDisplayAssigned() const;
         void renderAssignedDisplay(uint32_t now, int battWarn);
         uint8_t speedDisplayUnits() const;
         void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
+        bool setRadioPreferences(const ELRSRadioPreferences &preferences, bool radioReviewPending = false, bool scheduleApply = true) {
+            return _core.setRadioPreferences(preferences, millis(), radioReviewPending, scheduleApply);
+        }
+        void pauseModulePreferenceApply() { _core.pauseModulePreferenceApply(); }
         bool readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 
     private:

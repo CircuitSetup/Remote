@@ -41,6 +41,9 @@
 #endif
 
 #include "wm_strings_en.h"
+#define LEGACY_WM_ASSET_IMPLEMENTATION
+#include "legacy_wm_assets.h"
+#undef LEGACY_WM_ASSET_IMPLEMENTATION
 
 //#include <freertos/atomic.h>
 
@@ -70,6 +73,81 @@
 #define incUPLF    0x40
 
 #define STRLEN(x) (sizeof(x)-1)
+#ifdef ARDUINO_ARCH_ESP32
+#define WM_ASSET_SIZE(x) legacy_##x##_expanded_size
+#ifdef WM_50S_STYLE
+#define WM_C80_SIZE legacy_HTTP_STYLE_C80_50S_expanded_size
+#elif defined(WM_PARAM3)
+#define WM_C80_SIZE legacy_HTTP_STYLE_C80_expanded_size
+#else
+#define WM_C80_SIZE legacy_HTTP_STYLE_C80_NOPARAM3_expanded_size
+#endif
+#else
+#define WM_ASSET_SIZE(x) STRLEN(x)
+#define WM_C80_SIZE STRLEN(HTTP_STYLE_C80)
+#endif
+
+#ifdef ARDUINO_ARCH_ESP32
+static const char WM_REMOTE_MENU_SENTINEL[] = "__ELRS_REMOTE_MENU__|";
+static const char WM_REMOTE_MENU_VERSION[] = "@@REMOTE_VERSION@@";
+static const char WM_REMOTE_MENU_EXTRA[] = "@@REMOTE_VERSION_EXTRA@@";
+static const char WM_REMOTE_MENU_WEBHOME[] = "@@REMOTE_WEBHOME@@";
+
+static bool wmGetRemoteMenuParts(const char *value, const char *&version, size_t &versionLen,
+                                 const char *&extra, size_t &extraLen, const char *&webhome, size_t &webhomeLen)
+{
+    const size_t prefixLen = sizeof(WM_REMOTE_MENU_SENTINEL) - 1;
+    if(!value || strncmp(value, WM_REMOTE_MENU_SENTINEL, prefixLen)) return false;
+    version = value + prefixLen;
+    const char *separator = strchr(version, '|');
+    if(!separator) return false;
+    versionLen = separator - version;
+    extra = separator + 1;
+    separator = strchr(extra, '|');
+    if(!separator) return false;
+    extraLen = separator - extra;
+    webhome = separator + 1;
+    webhomeLen = strlen(webhome);
+    return true;
+}
+
+static size_t wmRemoteMenuSize(const char *value)
+{
+    const char *version, *extra, *webhome;
+    size_t versionLen, extraLen, webhomeLen;
+    if(!wmGetRemoteMenuParts(value, version, versionLen, extra, extraLen, webhome, webhomeLen)) return strlen(value);
+    return legacy_myCustMenu_expanded_size - strlen(WM_REMOTE_MENU_VERSION) - strlen(WM_REMOTE_MENU_EXTRA) - strlen(WM_REMOTE_MENU_WEBHOME) + versionLen + extraLen + webhomeLen;
+}
+
+static void wmAppendRemoteMenu(String &page, const char *value)
+{
+    const char *version, *extra, *webhome;
+    size_t versionLen, extraLen, webhomeLen;
+    if(!wmGetRemoteMenuParts(value, version, versionLen, extra, extraLen, webhome, webhomeLen)) {
+        page += value;
+        return;
+    }
+    page.reserve(page.length() + wmRemoteMenuSize(value));
+    if(!legacyPortalAppendString(page, legacy_myCustMenu_deflate, legacy_myCustMenu_compressed_size, legacy_myCustMenu_expanded_size)) return;
+    String replacement;
+    replacement.reserve(versionLen > extraLen ? (versionLen > webhomeLen ? versionLen : webhomeLen) : (extraLen > webhomeLen ? extraLen : webhomeLen));
+    replacement.concat(version, versionLen);
+    page.replace(WM_REMOTE_MENU_VERSION, replacement);
+    replacement = "";
+    replacement.concat(extra, extraLen);
+    page.replace(WM_REMOTE_MENU_EXTRA, replacement);
+    replacement = "";
+    replacement.concat(webhome, webhomeLen);
+    page.replace(WM_REMOTE_MENU_WEBHOME, replacement);
+}
+
+#ifdef HAVE_CRSF
+static bool wmIsCompressedCRSFModeHelp(const char *label)
+{
+    return label && !strcmp(label, "__ELRS_CRSF_MODE_HELP__");
+}
+#endif
+#endif
 
 #define WM_WIFI_SCAN_BUSY -133
 
@@ -1383,29 +1461,43 @@ unsigned int WiFiManager::getHTTPHeadLength(const char *title, uint32_t incFlags
     #else
     bufSize += strlen(_title);
     #endif
-    bufSize += STRLEN(HTTP_SCRIPT) + STRLEN(HTTP_STYLE) + STRLEN(HTTP_STYLE_END);
+    bufSize += WM_ASSET_SIZE(HTTP_SCRIPT) +
+#ifdef WM_50S_STYLE
+               WM_ASSET_SIZE(HTTP_STYLE_50S) +
+#else
+               WM_ASSET_SIZE(HTTP_STYLE) +
+#endif
+               STRLEN(HTTP_STYLE_END);
     if(incFlags & incSTA) {
-        bufSize += STRLEN(HTTP_STYLE_STA);
+        bufSize += WM_ASSET_SIZE(HTTP_STYLE_STA);
     }
     if(incFlags & incGFXMSG) {
-        bufSize += STRLEN(HTTP_STYLE_MSG);
+        bufSize += WM_ASSET_SIZE(HTTP_STYLE_MSG);
     }
     if(incFlags & incC80) {
-        bufSize += STRLEN(HTTP_STYLE_C80);
+        bufSize += WM_C80_SIZE;
         if(incFlags & incUPLF) {
+#ifdef ARDUINO_ARCH_ESP32
+#ifdef WM_50S_STYLE
+            bufSize += WM_ASSET_SIZE(HTTP_STYLE_UPLF_50S);
+#else
+            bufSize += WM_ASSET_SIZE(HTTP_STYLE_UPLF);
+#endif
+#else
             bufSize += STRLEN(HTTP_STYLE_UPLF);
+#endif
         } else {
-            bufSize += STRLEN(HTTP_STYLE_UPLN);
+            bufSize += WM_ASSET_SIZE(HTTP_STYLE_UPLN);
         }
     }
     if(incFlags & incQI) {
-        bufSize += STRLEN(HTTP_SCRIPT_QI) + STRLEN(HTTP_STYLE_QI);
+        bufSize += WM_ASSET_SIZE(HTTP_SCRIPT_QI) + WM_ASSET_SIZE(HTTP_STYLE_QI);
     }
     if(incFlags & incSET) {
-        bufSize += STRLEN(HTTP_STYLE_SET);
+        bufSize += WM_ASSET_SIZE(HTTP_STYLE_SET);
     }
     if(incFlags & incUPL) {
-        bufSize += STRLEN(HTTP_SCRIPT_UPL) + STRLEN(HTTP_STYLE_UPL);
+        bufSize += WM_ASSET_SIZE(HTTP_SCRIPT_UPL) + WM_ASSET_SIZE(HTTP_STYLE_UPL);
     }
 
     if(_customHeadElement) {
@@ -1436,36 +1528,98 @@ void WiFiManager::getHTTPHeadNew(String& page, const char *title, uint32_t incFl
     #endif
     page += temp;
 
+#ifdef ARDUINO_ARCH_ESP32
+    legacyPortalAppendString(page, legacy_HTTP_SCRIPT_deflate, legacy_HTTP_SCRIPT_compressed_size, legacy_HTTP_SCRIPT_expanded_size);
+#else
     page += FPSTR(HTTP_SCRIPT);
+#endif
     if(incFlags & incUPL) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_SCRIPT_UPL_deflate, legacy_HTTP_SCRIPT_UPL_compressed_size, legacy_HTTP_SCRIPT_UPL_expanded_size);
+#else
         page += HTTP_SCRIPT_UPL;
+#endif
     }
     if(incFlags & incQI) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_SCRIPT_QI_deflate, legacy_HTTP_SCRIPT_QI_compressed_size, legacy_HTTP_SCRIPT_QI_expanded_size);
+#else
         page += HTTP_SCRIPT_QI;
+#endif
     }
+#ifdef ARDUINO_ARCH_ESP32
+#ifdef WM_50S_STYLE
+    legacyPortalAppendString(page, legacy_HTTP_STYLE_50S_deflate, legacy_HTTP_STYLE_50S_compressed_size, legacy_HTTP_STYLE_50S_expanded_size);
+#else
+    legacyPortalAppendString(page, legacy_HTTP_STYLE_deflate, legacy_HTTP_STYLE_compressed_size, legacy_HTTP_STYLE_expanded_size);
+#endif
+#else
     page += FPSTR(HTTP_STYLE);    // closes <script>
+#endif
     if(incFlags & incGFXMSG) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_MSG_deflate, legacy_HTTP_STYLE_MSG_compressed_size, legacy_HTTP_STYLE_MSG_expanded_size);
+#else
         page += FPSTR(HTTP_STYLE_MSG);
+#endif
     }
     if(incFlags & incSTA) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_STA_deflate, legacy_HTTP_STYLE_STA_compressed_size, legacy_HTTP_STYLE_STA_expanded_size);
+#else
         page += FPSTR(HTTP_STYLE_STA);
+#endif
     }
     if(incFlags & incC80) {
+#ifdef ARDUINO_ARCH_ESP32
+#ifdef WM_50S_STYLE
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_C80_50S_deflate, legacy_HTTP_STYLE_C80_50S_compressed_size, legacy_HTTP_STYLE_C80_50S_expanded_size);
+#elif defined(WM_PARAM3)
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_C80_deflate, legacy_HTTP_STYLE_C80_compressed_size, legacy_HTTP_STYLE_C80_expanded_size);
+#else
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_C80_NOPARAM3_deflate, legacy_HTTP_STYLE_C80_NOPARAM3_compressed_size, legacy_HTTP_STYLE_C80_NOPARAM3_expanded_size);
+#endif
+#else
         page += FPSTR(HTTP_STYLE_C80);
+#endif
         if(incFlags & incUPLF) {
+#ifdef ARDUINO_ARCH_ESP32
+#ifdef WM_50S_STYLE
+            legacyPortalAppendString(page, legacy_HTTP_STYLE_UPLF_50S_deflate, legacy_HTTP_STYLE_UPLF_50S_compressed_size, legacy_HTTP_STYLE_UPLF_50S_expanded_size);
+#else
+            legacyPortalAppendString(page, legacy_HTTP_STYLE_UPLF_deflate, legacy_HTTP_STYLE_UPLF_compressed_size, legacy_HTTP_STYLE_UPLF_expanded_size);
+#endif
+#else
             page += FPSTR(HTTP_STYLE_UPLF);
+#endif
         } else {
+#ifdef ARDUINO_ARCH_ESP32
+            legacyPortalAppendString(page, legacy_HTTP_STYLE_UPLN_deflate, legacy_HTTP_STYLE_UPLN_compressed_size, legacy_HTTP_STYLE_UPLN_expanded_size);
+#else
             page += FPSTR(HTTP_STYLE_UPLN);
+#endif
         }
     }
     if(incFlags & incQI) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_QI_deflate, legacy_HTTP_STYLE_QI_compressed_size, legacy_HTTP_STYLE_QI_expanded_size);
+#else
         page += FPSTR(HTTP_STYLE_QI);
+#endif
     }
     if(incFlags & incSET) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_SET_deflate, legacy_HTTP_STYLE_SET_compressed_size, legacy_HTTP_STYLE_SET_expanded_size);
+#else
         page += FPSTR(HTTP_STYLE_SET);
+#endif
     }
     if(incFlags & incUPL) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_STYLE_UPL_deflate, legacy_HTTP_STYLE_UPL_compressed_size, legacy_HTTP_STYLE_UPL_expanded_size);
+#else
         page += FPSTR(HTTP_STYLE_UPL);
+#endif
     }
     page += FPSTR(HTTP_STYLE_END);
 
@@ -1677,6 +1831,11 @@ unsigned int WiFiManager::getParamOutSize(WiFiManagerParameter** params,
                 // <input id='{i}' name='{n}' {l} value='{v}' {c} {f}>
                 mysize += (5 * 3);    // "wmXX" - 2x{i}, 1x{n}
                 if(haveLabel && params[i]->getLabel()) {
+#if defined(ARDUINO_ARCH_ESP32) && defined(HAVE_CRSF)
+                    if(wmIsCompressedCRSFModeHelp(params[i]->getLabel())) {
+                        mysize += legacy_crsfModeHelp_expanded_size;
+                    } else
+#endif
                     mysize += strlen(params[i]->getLabel());
                 }
                 if(pflags & WFM_IS_CHKBOX) {
@@ -1794,6 +1953,15 @@ void WiFiManager::getParamOut(String &page, WiFiManagerParameter** params,
                 pitem.replace(FPSTR(T_n), pids);     // T_n id name alias
                 if(haveLabel) {
                     if(params[i]->getLabel()) {
+#if defined(ARDUINO_ARCH_ESP32) && defined(HAVE_CRSF)
+                        if(wmIsCompressedCRSFModeHelp(params[i]->getLabel())) {
+                            const int labelOffset = pitem.indexOf("{t}");
+                            if(labelOffset >= 0) {
+                                pitem.remove(labelOffset, 3);
+                                legacyPortalInsertString(pitem, labelOffset, legacy_crsfModeHelp_deflate, legacy_crsfModeHelp_compressed_size, legacy_crsfModeHelp_expanded_size);
+                            }
+                        } else
+#endif
                         pitem.replace(FPSTR(T_t), params[i]->getLabel());  // T_t title/label
                     } else {
                         pitem.replace(FPSTR(T_t), "");
@@ -1971,7 +2139,11 @@ int WiFiManager::getMenuOutLength(unsigned int& appExtraSize)
             #endif
             #endif
             if(t == WM_MENU_CUSTOM && _customMenuHTML) {
+#ifdef ARDUINO_ARCH_ESP32
+                bufSize += wmRemoteMenuSize(_customMenuHTML);
+#else
                 bufSize += strlen(_customMenuHTML);
+#endif
                 continue;
             }
             bufSize += strlen(HTTP_PORTAL_MENU[t]);
@@ -2004,7 +2176,11 @@ void WiFiManager::getMenuOut(String& page, unsigned int appExtraSize)
             #endif
             #endif
             if(t == WM_MENU_CUSTOM && _customMenuHTML) {
+#ifdef ARDUINO_ARCH_ESP32
+                wmAppendRemoteMenu(page, _customMenuHTML);
+#else
                 page += _customMenuHTML;
+#endif
                 continue;
             }
             page += HTTP_PORTAL_MENU[t];
@@ -2592,18 +2768,18 @@ void WiFiManager::buildWifiPage(String& page, bool scan)
             haveShowAll = true;
         }
     }
-    bufSize += (STRLEN(HTTP_FORM_START) - 3 + STRLEN(A_wifisave));
-    bufSize += (STRLEN(HTTP_FORM_WIFI) - (4*3) + SSID_len + (2*STRLEN(S_passph))) + BSSID_len;
+    bufSize += (WM_ASSET_SIZE(HTTP_FORM_START) - 3 + STRLEN(A_wifisave));
+    bufSize += (WM_ASSET_SIZE(HTTP_FORM_WIFI) - (4*3) + SSID_len + (2*STRLEN(S_passph))) + BSSID_len;
     if(SSID_len) {
         bufSize += STRLEN(HTTP_ERASE_BUTTON);
     }
     bufSize += getStaticLen();
     bufSize += STRLEN(HTTP_FORM_WIFI_END);
     bufSize += getParamOutSize(_params[0], _paramsCount[0], maxItemSize);
-    bufSize += STRLEN(HTTP_FORM_END);
-    bufSize += STRLEN(HTTP_SCAN_LINK);
+    bufSize += WM_ASSET_SIZE(HTTP_FORM_END);
+    bufSize += WM_ASSET_SIZE(HTTP_SCAN_LINK);
     if(haveShowAll) {
-        bufSize += STRLEN(HTTP_SHOWALL_FORM);
+        bufSize += WM_ASSET_SIZE(HTTP_SHOWALL_FORM);
     }
     repSize = reportStatusLen(true);
     bufSize += repSize;
@@ -2630,13 +2806,22 @@ void WiFiManager::buildWifiPage(String& page, bool scan)
 
     {
         String pitem;
-        pitem.reserve(STRLEN(HTTP_FORM_WIFI) - (4*3) + SSID_len + (2*STRLEN(S_passph)) + BSSID_len + 8); // +8 safety
+        pitem.reserve(WM_ASSET_SIZE(HTTP_FORM_WIFI) - (4*3) + SSID_len + (2*STRLEN(S_passph)) + BSSID_len + 8); // +8 safety
 
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(pitem, legacy_HTTP_FORM_START_deflate, legacy_HTTP_FORM_START_compressed_size, legacy_HTTP_FORM_START_expanded_size);
+#else
         pitem = FPSTR(HTTP_FORM_START);
+#endif
         pitem.replace(FPSTR(T_v), FPSTR(A_wifisave));
         page += pitem;
 
+        pitem = "";
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(pitem, legacy_HTTP_FORM_WIFI_deflate, legacy_HTTP_FORM_WIFI_compressed_size, legacy_HTTP_FORM_WIFI_expanded_size);
+#else
         pitem = FPSTR(HTTP_FORM_WIFI);
+#endif
         pitem.replace(FPSTR(T_V), SSID);
         if(*_pass) {
             pitem.replace(FPSTR(T_p), FPSTR(S_passph));  // twice!
@@ -2653,10 +2838,19 @@ void WiFiManager::buildWifiPage(String& page, bool scan)
     getStaticOut(page);
     page += FPSTR(HTTP_FORM_WIFI_END);
     getParamOut(page, _params[0], _paramsCount[0], maxItemSize);
+ #ifdef ARDUINO_ARCH_ESP32
+    legacyPortalAppendString(page, legacy_HTTP_FORM_END_deflate, legacy_HTTP_FORM_END_compressed_size, legacy_HTTP_FORM_END_expanded_size);
+    legacyPortalAppendString(page, legacy_HTTP_SCAN_LINK_deflate, legacy_HTTP_SCAN_LINK_compressed_size, legacy_HTTP_SCAN_LINK_expanded_size);
+#else
     page += FPSTR(HTTP_FORM_END);
     page += FPSTR(HTTP_SCAN_LINK);
+#endif
     if(haveShowAll) {
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(page, legacy_HTTP_SHOWALL_FORM_deflate, legacy_HTTP_SHOWALL_FORM_compressed_size, legacy_HTTP_SHOWALL_FORM_expanded_size);
+#else
         page += FPSTR(HTTP_SHOWALL_FORM);
+#endif
     }
     reportStatus(page, repSize, true);
     page += FPSTR(HTTP_END);
@@ -2877,11 +3071,11 @@ int WiFiManager::calcParmPageSize(int aidx, unsigned int& maxItemSize, const cha
     Serial.printf("calcParmSize: head %d\n", mySize);
     #endif
 
-    mySize += (STRLEN(HTTP_FORM_START) - 3 + strlen(action));
+    mySize += (WM_ASSET_SIZE(HTTP_FORM_START) - 3 + strlen(action));
 
     mySize += getParamOutSize(_params[aidx], _paramsCount[aidx], maxItemSize);
 
-    mySize += STRLEN(HTTP_FORM_END);
+    mySize += WM_ASSET_SIZE(HTTP_FORM_END);
     mySize += STRLEN(HTTP_END);
 
     #ifdef _A10001986_DBG
@@ -2909,15 +3103,23 @@ void WiFiManager::_handleParam(int aidx, const char *title, const char *action)
 
     {
         String pitem;
-        pitem.reserve(STRLEN(HTTP_FORM_START) - 3 + strlen(action) + 2);
+        pitem.reserve(WM_ASSET_SIZE(HTTP_FORM_START) - 3 + strlen(action) + 2);
+#ifdef ARDUINO_ARCH_ESP32
+        legacyPortalAppendString(pitem, legacy_HTTP_FORM_START_deflate, legacy_HTTP_FORM_START_compressed_size, legacy_HTTP_FORM_START_expanded_size);
+#else
         pitem = FPSTR(HTTP_FORM_START);
+#endif
         pitem.replace(FPSTR(T_v), action);
         page += pitem;
     }
 
     getParamOut(page, _params[aidx], _paramsCount[aidx], maxItemSize);
 
+#ifdef ARDUINO_ARCH_ESP32
+    legacyPortalAppendString(page, legacy_HTTP_FORM_END_deflate, legacy_HTTP_FORM_END_compressed_size, legacy_HTTP_FORM_END_expanded_size);
+#else
     page += FPSTR(HTTP_FORM_END);
+#endif
     page += FPSTR(HTTP_END);
 
     if(_gpcallback) {
@@ -2972,8 +3174,9 @@ void WiFiManager::_handleParamSave(int aidx, const char *title)
 
     if(_saveparamscallback && !_saveparamscallback(aidx)) {
         server->send(_paramSaveError, "text/html", _paramSaveError == 400 ?
-            "<p>Invalid Logic or Mixes settings. Correct the fields and save again.</p><a href='/'>Return to portal</a>" :
-            "<p>Settings could not be saved to storage. Please try again.</p><a href='/'>Return to portal</a>");
+            "<p>Invalid ELRS settings. Correct the fields and save again.</p><a href='/'>Return to portal</a>" :
+            _paramSaveError == 409 ? "<p>Settings changed or are busy. Reload this page and use live ELRS controls for radio changes.</p><a href='/'>Return to portal</a>" :
+            "<p>Settings could not be saved to storage. Check storage and finish any required recovery before retrying.</p><a href='/'>Return to portal</a>");
         return;
     }
 

@@ -1,0 +1,17 @@
+'use strict';
+const assert = require('node:assert/strict');
+const ui = require('../src/remote_config.js');
+const matched={rfKnown:true,connected:true,modelMatched:true,devices:[{address:236}]};
+assert.equal(ui.bindingVerified(matched),true);
+for(const changed of [{connected:false},{modelMatched:false},{rfKnown:false},{devices:[]}])assert.equal(ui.bindingVerified({...matched,...changed}),false);
+const options = ui.choiceOptions({type:9, options:'50;;25/1000;Gemini', minimum:0, maximum:3});
+assert.equal(options.length,4);
+assert.equal(options[1].disabled,true);
+assert.deepEqual(options[2],{value:2,label:'25/1000',disabled:false});
+assert.equal(ui.editableField({type:9,writable:true,hidden:false}),true);
+for(const type of [8,10,11,12,13,99]) assert.equal(ui.editableField({type,writable:true,hidden:false}),false);
+assert.equal(ui.editableField({type:9,writable:true,hidden:true}),false);
+assert.equal(ui.uniqueChoice({type:9,options:'Off;On',unit:''},'On',''),1);
+assert.throws(()=>ui.uniqueChoice({type:9,options:'On;On',unit:''},'On',''));
+assert.throws(()=>ui.uniqueChoice({type:9,options:'25/1000',unit:'mW'},'1000','mW'));
+console.log('advertised choices, empty indices, hidden/read-only fields and exact semantic matching pass');

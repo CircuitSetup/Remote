@@ -396,7 +396,9 @@ int main(int argc, char **argv) {
     test_missing_adc_retry_restart_and_diagnostics();
 }
 '''
-def compile_and_run(source, sources, flags=()):
+def compile_and_run(source, sources, flags=(), run_args=()):
+    if 'elrs_crsf_core.cpp' in sources and 'elrs_device_config.cpp' not in sources:
+        sources = [*sources, 'elrs_device_config.cpp']
     with tempfile.TemporaryDirectory(prefix='crsf-check-') as work:
         work = Path(work)
         for name, contents in HEADERS.items():
@@ -404,13 +406,14 @@ def compile_and_run(source, sources, flags=()):
         (work / 'check.cpp').write_text(source)
         binary = work / ('check.exe' if os.name == 'nt' else 'check')
         command = [COMPILER, '-std=gnu++11', '-DHAVE_CRSF', '-I' + str(work), '-I' + str(ROOT / 'src')]
-        command += list(flags)
+        command += [flag for flag in flags if not flag.startswith('-l')]
         command += [str(ROOT / 'src/src/CRSF' / name) for name in sources]
         command += [str(work / 'check.cpp'), '-o', str(binary)]
+        command += [flag for flag in flags if flag.startswith('-l')]
         subprocess.run(command, check=True)
         environment = os.environ.copy()
         environment['PATH'] = str(Path(COMPILER).parent) + os.pathsep + environment.get('PATH', '')
-        subprocess.run([str(binary)], check=True, env=environment)
+        subprocess.run([str(binary), *map(str, run_args)], check=True, env=environment, timeout=30)
 
 
 if __name__ == '__main__':

@@ -63,7 +63,7 @@ bool writeFileToSD(const char *fn, uint8_t *buf, int len);
 
 bool evalBool(char *s);
 
-void write_settings();
+bool write_settings();
 #ifdef HAVE_MQTT
 void write_mqtt_settings();
 #endif
@@ -271,9 +271,9 @@ struct Settings {
     #ifdef HAVE_MQTT_MP
     char pubMP[2]           = "0"; // 1:Publish music player status to bttf/remote/mpstatus, 0: Don't
     #endif
-    char mqttbt[8][128]     = { 0 };  // buttons topics (UTF8)
-    char mqttbo[8][64]      = { 0 };  // buttons on message (UTF8)
-    char mqttbf[8][64]      = { 0 };  // buttons off message (UTF8)
+    char mqttbt[8][128]     = {};  // buttons topics (UTF8)
+    char mqttbo[8][64]      = {};  // buttons on message (UTF8)
+    char mqttbf[8][64]      = {};  // buttons off message (UTF8)
 #endif
 
 #ifdef HAVE_CRSF

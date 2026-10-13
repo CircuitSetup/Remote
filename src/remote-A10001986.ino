@@ -596,6 +596,7 @@
 #include "display.h"
 #include "remote_audio.h"
 #include "remote_settings.h"
+#include "remote_settings_transfer.h"
 #include "remote_main.h"
 #include "remote_wifi.h"
 
@@ -611,6 +612,7 @@ void setup()
 
     main_boot();
     settings_setup();
+    if(remoteSettingsRecoveryBlocked) {Serial.println("Settings recovery blocked. Reinsert the required media and reboot; recovery files are retained.");return;}
     main_boot2();
     wifi_setup();
     audio_setup();
@@ -619,6 +621,7 @@ void setup()
 
 void loop()
 {
+    if(remoteSettingsRecoveryBlocked) {delay(50);return;}
     audio_loop();
     main_loop();
     audio_loop();

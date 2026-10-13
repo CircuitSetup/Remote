@@ -76,6 +76,8 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
                          const ELRSLogicConfig *logicConfig = NULL, const ELRSMixConfig *mixConfig = NULL);
 bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
+ELRSCrsfSettingsBlob snapshotELRSSettings();
+void installCommittedELRSSettings(const ELRSCrsfSettingsBlob &);
 
 #endif // HAVE_CRSF
 #endif // _CRSF_SETTINGS_H

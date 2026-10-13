@@ -162,6 +162,7 @@ void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsig
             _haveServiceFrame = false;
             _serviceFrameLen = 0;
             _lastServiceTxAt = _status.lastTxAt;
+            _serviceTxCount++;
             _haveServiceTx = true;
         } else {
             // Keep RC cadence while a settings reply is pending. Each scheduled
@@ -173,7 +174,7 @@ void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsig
 
 bool ELRSCrsfTransport::queueServiceFrame(const uint8_t *frame, size_t frameLen)
 {
-    if(!frame || frameLen < 4 || frameLen > sizeof(_serviceFrame)) {
+    if(_haveServiceFrame || !frame || frameLen < 4 || frameLen > sizeof(_serviceFrame)) {
         return false;
     }
 
@@ -186,6 +187,14 @@ bool ELRSCrsfTransport::queueServiceFrame(const uint8_t *frame, size_t frameLen)
 bool ELRSCrsfTransport::hasPendingServiceFrame() const
 {
     return _haveServiceFrame;
+}
+
+bool ELRSCrsfTransport::cancelServiceFrame()
+{
+    bool pending = _haveServiceFrame;
+    _haveServiceFrame = false;
+    _serviceFrameLen = 0;
+    return pending;
 }
 
 uint32_t ELRSCrsfTransport::txTimeRemainingUs(uint32_t nowUs) const

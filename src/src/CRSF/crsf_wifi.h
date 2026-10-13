@@ -3,14 +3,12 @@
 
 #include <ArduinoJson.h>
 #include "elrs_crsf.h"
+#include "../../legacy_portal_assets.h"
 
 static const char *wmBuildCRSFStatus(const char *dest, int op);
 static const char *wmBuildCRSFOM(const char *dest, int op);
 static const char *wmBuildCRSFPR(const char *dest, int op);
 static const char *wmBuildCRSFSU(const char *dest, int op);
-static const char *wmBuildCRSFTR(const char *dest, int op);
-static const char *wmBuildCRSFMP(const char *dest, int op);
-static const char *wmBuildCRSFDP(const char *dest, int op);
 static const char *wmBuildCRSFRC(const char *dest, int op);
 static const char *wmBuildCRSFPC(const char *dest, int op);
 static const char *wmBuildCRSFTC(const char *dest, int op);
@@ -27,7 +25,7 @@ static void crsfReadMixParams();
 static const char *wmBuildCRSFLogicMix(const char *dest, int op);
 
 static void syncCRSFPortalBuffers();
-static bool saveCRSFPortalInputSettings();
+static bool buildCRSFPortalInputSettings(ELRSCrsfSettingsBlob &candidate, RemoteTransferError &error);
 static void crsfReadInputParam(const char *name, char *destBuf, size_t length, int minval, int maxval, int offset);
 static void crsfReadGimbalChannelParam(const char *name, char *destBuf);
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis);
@@ -41,7 +39,7 @@ static const char * const cOpModeCustHTMLSrc[5] = {
     ">Prop controls + ELRS/CRSF%s"
 };
 static const char * const cPktRateCustHTMLSrc[7] = {
-    "'>ELRS Packet rate",
+    "'>CRSF channel cadence (restart required)",
     "cpktr",
     ">50 Hz%s1'",
     ">100 Hz%s2'",
@@ -54,33 +52,6 @@ static const char * const cSpdUnitCustHTMLSrc[4] = {
     "cspdu",
     ">km/h%s1'",
     ">mph%s"
-};
-static const char * const cTlmRatioCustHTMLSrc[9] = {
-    "'>Telemetry Ratio",
-    "ctlmr",
-    ">Std%s1'",
-    ">1:2%s2'",
-    ">1:4%s3'",
-    ">1:8%s4'",
-    ">1:16%s5'",
-    ">1:32%s6'",
-    ">Off%s"
-};
-static const char * const cMaxPowerCustHTMLSrc[8] = {
-    "'>Max Power",
-    "cmpwr",
-    ">10 mW%s1'",
-    ">25 mW%s2'",
-    ">100 mW%s3'",
-    ">250 mW%s4'",
-    ">500 mW%s5'",
-    ">1000 mW%s"
-};
-static const char * const cDynPowerCustHTMLSrc[4] = {
-    "'>Dynamic Power",
-    "cdynp",
-    ">Off%s1'",
-    ">Dyn%s"
 };
 static const char * const cChannelCustHTMLSrc[16] = {
     ">CH1%s1'",
@@ -105,9 +76,6 @@ enum CRSFSelectFieldId : uint8_t {
     CRSF_SELECT_OPMODE,
     CRSF_SELECT_PKTRATE,
     CRSF_SELECT_SPDUNIT,
-    CRSF_SELECT_TLMRATIO,
-    CRSF_SELECT_MAXPOWER,
-    CRSF_SELECT_DYNPOWER,
     CRSF_SELECT_COUNT
 };
 
@@ -121,9 +89,6 @@ static const CRSFSelectField crsfSelectFields[CRSF_SELECT_COUNT] = {
     { cOpModeCustHTMLSrc, 5, settings.opMode },
     { cPktRateCustHTMLSrc, 7, settings.elrsPktRate },
     { cSpdUnitCustHTMLSrc, 4, settings.elrsSpdUnit },
-    { cTlmRatioCustHTMLSrc, 9, settings.elrsTlmRatio },
-    { cMaxPowerCustHTMLSrc, 8, settings.elrsMaxPower },
-    { cDynPowerCustHTMLSrc, 4, settings.elrsDynPower }
 };
 
 struct CRSFAxisSettings {
@@ -173,20 +138,21 @@ static const char *fn(const char *dest, int op) \
 CRSF_SELECT_BUILDER(wmBuildCRSFOM, CRSF_SELECT_OPMODE)
 CRSF_SELECT_BUILDER(wmBuildCRSFPR, CRSF_SELECT_PKTRATE)
 CRSF_SELECT_BUILDER(wmBuildCRSFSU, CRSF_SELECT_SPDUNIT)
-CRSF_SELECT_BUILDER(wmBuildCRSFTR, CRSF_SELECT_TLMRATIO)
-CRSF_SELECT_BUILDER(wmBuildCRSFMP, CRSF_SELECT_MAXPOWER)
-CRSF_SELECT_BUILDER(wmBuildCRSFDP, CRSF_SELECT_DYNPOWER)
 
 WiFiManagerParameter custom_crsfom(wmBuildCRSFOM, WFM_SECTS_HEAD);
-WiFiManagerParameter custom_crsfmodehelp("<p><small>Legacy runs normal prop controls. ELRS/CRSF shows radio telemetry; switch checkboxes also enable their Settings actions. In telemetry mode, TCD power/speed control (including O.O/RESET power-master actions) requires the FakePower checkbox; TCD braking also requires Stop. Other enabled buttons use state-free BTTFN keepalives and independent Time Travel/refill requests. Prop controls + ELRS/CRSF runs all normal prop controls, display/speedometer, MQTT and BTTFN while transmitting all mapped gimbals and switches. The AIN3 Throttle gimbal also controls prop speed; calibrate prop speed with the normal Calibration button and radio output with Gimbal Calibration below. O.O uses its normal Settings behavior, and Time Travel retains its normal throttle condition. Save and restart to apply.</small></p>");
+static const char crsfModeHelpSource[] =
+#ifndef ARDUINO_ARCH_ESP32
+    "<p><small>Legacy runs normal prop controls. ELRS/CRSF shows radio telemetry; switch checkboxes also enable their Settings actions. In telemetry mode, TCD power/speed control (including O.O/RESET power-master actions) requires the FakePower checkbox; TCD braking also requires Stop. Other enabled buttons use state-free BTTFN keepalives and independent Time Travel/refill requests. Prop controls + ELRS/CRSF runs all normal prop controls, display/speedometer, MQTT and BTTFN while transmitting all mapped gimbals and switches. The AIN3 Throttle gimbal also controls prop speed; calibrate prop speed with the normal Calibration button and radio output with Gimbal Calibration below. O.O uses its normal Settings behavior, and Time Travel retains its normal throttle condition. Save and restart to apply.</small></p>"
+#else
+    "__ELRS_CRSF_MODE_HELP__"
+#endif
+;
+WiFiManagerParameter custom_crsfmodehelp(crsfModeHelpSource);
 WiFiManagerParameter custom_ss_crsf("<h3>ELRS/CRSF Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfstatus(wmBuildCRSFStatus);
 WiFiManagerParameter custom_crsfap("Connect to WiFi in ELRS/CRSF mode<br><span>If unchecked, device will remain in AP mode.</span>", settings.crsfap, "", WFM_LABEL_AFTER|WFM_IS_CHKBOX);
 WiFiManagerParameter custom_crsfpr(wmBuildCRSFPR);
 WiFiManagerParameter custom_crsfsu(wmBuildCRSFSU);
-WiFiManagerParameter custom_crsftr(wmBuildCRSFTR);
-WiFiManagerParameter custom_crsfmp(wmBuildCRSFMP);
-WiFiManagerParameter custom_crsfdp(wmBuildCRSFDP);
 WiFiManagerParameter custom_crsfdisplay(wmBuildCRSFDisplay);
 WiFiManagerParameter custom_crsflogicmix(wmBuildCRSFLogicMix);
 WiFiManagerParameter custom_ss_crsfmap("<h3>Mixes: Base assignments</h3><p style='margin:0 0 10px'><small>Changes apply after saving and restarting.</small></p>", WFM_SECTS|WFM_HL);
@@ -210,9 +176,6 @@ WiFiManagerParameter * const crsfParmArray[] = {
       &custom_crsfap,
       &custom_crsfpr,
       &custom_crsfsu,
-      &custom_crsftr,
-      &custom_crsfmp,
-      &custom_crsfdp,
       &custom_crsfdisplay,
       &custom_crsflogicmix,
       &custom_ss_crsfmap,
@@ -227,6 +190,7 @@ WiFiManagerParameter * const crsfParmArray[] = {
       &custom_crsfswmap,
       &custom_ss_crsfcal,
       &custom_crsfcal,
+      &custom_remote_controls,
       NULL
 };
 
@@ -235,37 +199,26 @@ WiFiManagerParameter * const crsfParmArray[] = {
  * Save input settings before the portal reports success.
  *
  */
-static bool crsf_wifi_loop_settings()
-{
-    evalCB(settings.crsfap, &custom_crsfap);
-    evalCB(settings.elrsRollRev, &custom_crsfrr);
-    evalCB(settings.elrsPitchRev, &custom_crsfprv);
-    evalCB(settings.elrsThrRev, &custom_crsftrv);
-    evalCB(settings.elrsYawRev, &custom_crsfyrv);
-    if(saveCRSFPortalInputSettings()) {
-        if(opModeCRSF) {
-            requestELRSModuleConfigUpdate((uint8_t)atoi(settings.elrsTlmRatio),
-                                          (uint8_t)atoi(settings.elrsMaxPower),
-                                          (uint8_t)atoi(settings.elrsDynPower));
-        }
-        return true;
-    }
-    Serial.println("Config Portal: Failed to save CRSF input settings");
-    return false;
-}
 
 /*
  * Callback from saveParamsCallback()
  *
  */
-static void crsf_wifi_saveParamsCallback()
+static bool crsf_wifi_saveParamsCallback()
 {
+    if(remoteRadioVersioned) {
+        const char *names[]={"ctlmr","cmpwr","cdynp"};
+        const char *values[]={settings.elrsTlmRatio,settings.elrsMaxPower,settings.elrsDynPower};
+        for(unsigned i=0;i<3;i++)if(wm.server->hasArg(names[i]) && wm.server->arg(names[i])!=values[i])return false;
+    }
     getServerParam("copm", settings.opMode, 1, 0, 2, 0);
     getServerParam("cpktr", settings.elrsPktRate, 1, 0, 4, DEF_ELRSPKTRATE);
     getServerParam("cspdu", settings.elrsSpdUnit, 1, 0, 1, DEF_ELRSSPDUNIT);
-    getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
-    getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
-    getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
+    if(!remoteRadioVersioned) {
+        if(wm.server->hasArg("ctlmr"))getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
+        if(wm.server->hasArg("cmpwr"))getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
+        if(wm.server->hasArg("cdynp"))getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
+    }
     crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
     crsfReadGimbalChannelParam("cptch", settings.elrsPitchCh);
     crsfReadGimbalChannelParam("cthch", settings.elrsThrCh);
@@ -292,6 +245,7 @@ static void crsf_wifi_saveParamsCallback()
         crsfReadInputParam("cywct", settings.elrsYawCtr, 5, 0, 2047, 0);
         crsfReadInputParam("cywhi", settings.elrsYawHigh, 5, 0, 2047, 0);
     }
+    return true;
 }
 
 static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis)
@@ -374,8 +328,11 @@ static void syncCRSFPortalBuffers()
     }
 }
 
-static bool saveCRSFPortalInputSettings()
+static bool buildCRSFPortalInputSettings(ELRSCrsfSettingsBlob &candidate, RemoteTransferError &error)
 {
+    evalCB(settings.crsfap, &custom_crsfap);
+    evalCB(settings.elrsRollRev, &custom_crsfrr);evalCB(settings.elrsPitchRev, &custom_crsfprv);
+    evalCB(settings.elrsThrRev, &custom_crsftrv);evalCB(settings.elrsYawRev, &custom_crsfyrv);
     if(!crsfLogicParamsValid || !crsfMixParamsValid) return false;
     if(!crsfDisplayParamsValid || !elrsIsValidDisplayConfig(crsfDisplayConfig) || !elrsIsValidVehicleConfig(crsfVehicleConfig)) return false;
     ELRSInputAxisProfile profiles[ELRS_GIMBAL_AXIS_COUNT];
@@ -449,8 +406,13 @@ static bool saveCRSFPortalInputSettings()
     uint16_t throttleIdleDeadband = (uint16_t)atoi(settings.elrsThrIdleDeadband);
     if(adcHysteresis > ELRS_INPUT_TOLERANCE_MAX) adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
     if(throttleIdleDeadband > ELRS_INPUT_TOLERANCE_MAX) throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
-    if(!saveELRSInputConfig(profiles, ELRS_GIMBAL_AXIS_COUNT, &routing, &adcHysteresis, &throttleIdleDeadband, &switches, limits, localActions, &crsfDisplayConfig, &crsfVehicleConfig, &crsfLogicConfig, &crsfMixConfig)) return false;
-    syncCRSFPortalBuffers();
+    candidate=snapshotELRSSettings();
+    memcpy(candidate.axisProfile,profiles,sizeof(profiles));candidate.gimbalRouting=routing;candidate.switchRouting=switches;
+    candidate.adcHysteresis=adcHysteresis;candidate.throttleIdleDeadband=throttleIdleDeadband;
+    memcpy(candidate.outputLimits,limits,sizeof(limits));memcpy(candidate.localActions,localActions,sizeof(localActions));
+    candidate.displayConfig=crsfDisplayConfig;candidate.vehicleConfig=crsfVehicleConfig;
+    candidate.logic=crsfLogicConfig;candidate.mixes=crsfMixConfig;
+    if(!elrsIsValidCrsfSettingsBlob(candidate))return remoteTransferFail(error,RemoteTransferCode::InvalidValue,"crsf","Invalid local input settings");
     return true;
 }
 
@@ -835,6 +797,8 @@ static void wmAppendCRSFCALAxis(String &html, const CRSFGimbalCalAxis &axis)
 }
 
 static const char crsfCalIntro[] =
+#ifndef ARDUINO_ARCH_ESP32
+
     "<div class='cmp0 elrscal-wrap'><p style='font-size:0.85em;line-height:1.35em;margin:0 0 10px 0'>"
     "Calibrate and tune each gimbal below. Changes apply after saving and restarting."
     "</p><p>Calibration: move the stick to each labeled position and click Capture to record its filtered ADC reading. "
@@ -844,9 +808,15 @@ static const char crsfCalIntro[] =
     "</p><p>Travel Limits set the final output range in microseconds. Lower limits allow 1000-1500; upper limits allow 1500-2000. "
     "Defaults of 1000 and 2000 use full travel. The fixed 1500 center is the reference for scaling the curved output."
     "</p>"
-    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>";
+    "<div id='elrscalstat' style='font-size:0.8em;color:#444;margin:0 0 10px 0'>Filtered ADC: waiting for samples...</div>"
+#else
+""
+#endif
+;
 
 static const char crsfCalStyle[] =
+#ifndef ARDUINO_ARCH_ESP32
+
     "<style>"
     ".elrscal-wrap{box-sizing:border-box;width:100%;max-width:100%;padding:0;margin:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden}"
     ".elrscal-wrap p,.elrscal-wrap #elrscalstat{white-space:normal;overflow-wrap:anywhere;max-width:100%}"
@@ -867,9 +837,15 @@ static const char crsfCalStyle[] =
     ".elrscal-points button{width:100%;padding:0 4px;font-size:.85em}"
     ".elrscenter{display:block;padding:5px;margin:5px 0}"
     ".elrscal-axis h4{margin:12px 0 5px}"
-    "</style>";
+    "</style>"
+#else
+""
+#endif
+;
 
 static const char crsfExpoScript[] =
+#ifndef ARDUINO_ARCH_ESP32
+
     "<script>(function(){var controls=document.querySelectorAll('[data-elrs-expo]');"
     "function draw(c){var strength=Number(c.value),centered=c.dataset.centered==='1',points=[];"
     "document.getElementById(c.id+'_value').textContent=strength+'%';"
@@ -878,9 +854,15 @@ static const char crsfExpoScript[] =
     "var y=centered?500+(d<0?-magnitude:magnitude):magnitude;points.push(x+','+(1000-y));}"
     "document.getElementById(c.id+'_curve').setAttribute('points',points.join(' '));}"
     "for(var i=0;i<controls.length;i++){draw(controls[i]);controls[i].addEventListener('input',function(){draw(this);});}"
-    "})();</script>";
+    "})();</script>"
+#else
+""
+#endif
+;
 
 static const char crsfCalScript[] =
+#ifndef ARDUINO_ARCH_ESP32
+
     "<script>(function(){if(window.__elrsCalInit)return;window.__elrsCalInit=true;"
     "function ge(id){return document.getElementById(id);}function setLive(id,val){var el=ge(id);if(el)el.textContent=val;}"
     "function setStatus(msg){var el=ge('elrscalstat');if(el)el.textContent=msg;}"
@@ -892,7 +874,11 @@ static const char crsfCalScript[] =
     "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
     "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
     "setStatus('Filtered ADC connected.');"
-    "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>";
+    "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>"
+#else
+""
+#endif
+;
 
 static const char *wmBuildCRSFCAL(const char *dest, int op)
 {
@@ -906,9 +892,11 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
 
     String html;
 
-    html.reserve(sizeof(crsfCalIntro) + sizeof(crsfCalStyle) + sizeof(crsfCalScript) + sizeof(crsfExpoScript) + 6500);
+    html.reserve(6500);
+#ifndef ARDUINO_ARCH_ESP32
     html += crsfCalIntro;
     html += crsfCalStyle;
+#endif
 
     html += "<fieldset class='elrscal-axis'><legend class='elrscal-name'>Input Filtering</legend>";
     CRSFGimbalCalField tolerances[] = {
@@ -959,20 +947,36 @@ static const char *wmBuildCRSFCAL(const char *dest, int op)
         wmAppendCRSFCALAxis(html, axes[i]);
     }
 
+#ifndef ARDUINO_ARCH_ESP32
     html += crsfExpoScript;
     html += crsfCalScript;
+#endif
 
     if(op == WM_CP_LEN) {
+#ifdef ARDUINO_ARCH_ESP32
+        wmLenBuf = html.length() + legacy_crsfCalIntro_expanded_size + legacy_crsfCalStyle_expanded_size + legacy_crsfExpoScript_expanded_size + legacy_crsfCalScript_expanded_size + 1;
+#else
         wmLenBuf = html.length() + 1;
+#endif
         return (const char *)&wmLenBuf;
     }
 
+#ifdef ARDUINO_ARCH_ESP32
+    const LegacyPortalFragment fragments[] = {
+        {0, legacy_crsfCalIntro_deflate, legacy_crsfCalIntro_compressed_size, legacy_crsfCalIntro_expanded_size},
+        {0, legacy_crsfCalStyle_deflate, legacy_crsfCalStyle_compressed_size, legacy_crsfCalStyle_expanded_size},
+        {html.length(), legacy_crsfExpoScript_deflate, legacy_crsfExpoScript_compressed_size, legacy_crsfExpoScript_expanded_size},
+        {html.length(), legacy_crsfCalScript_deflate, legacy_crsfCalScript_compressed_size, legacy_crsfCalScript_expanded_size}
+    };
+    return legacyPortalBuildOutput(html.c_str(), html.length(), fragments, sizeof(fragments) / sizeof(fragments[0]));
+#else
     char *str = (char *)malloc(html.length() + 1);
     if(!str) {
         return NULL;
     }
     strcpy(str, html.c_str());
     return str;
+#endif
 }
 
 static const char *wmBuildCRSFRC(const char *dest, int op)
@@ -992,7 +996,9 @@ static const char *wmBuildCRSFYC(const char *dest, int op)
     return wmBuildCRSFGimbalChannelSelect(dest, op, "'>Rudder target channel", "cywch", settings.elrsYawCh);
 }
 
-static const char crsfDisplayScript[] = R"JS(<script>(function(){
+static const char crsfDisplayScript[] =
+#ifndef ARDUINO_ARCH_ESP32
+ R"JS(<script>(function(){
 var byId=function(id){return document.getElementById(id);},source=byId('cdsrc'),hidden=byId('cdsrcvalue'),preview=byId('cdpreview'),status=byId('cdstatus'),busy=false;
 function query(){var unit=byId('cspdu');return 'cdsrc='+encodeURIComponent(hidden.value)+'&cdmul='+encodeURIComponent(byId('cdmul').value)+'&cdoff='+encodeURIComponent(byId('cdoff').value)+'&cddec='+encodeURIComponent(byId('cddec').value)+(unit?'&cspdu='+encodeURIComponent(unit.value):'')+['crpoles','crgear','crdiam','crscale','crrpmtype'].map(function(id){return '&'+id+'='+encodeURIComponent(byId(id).value);}).join('');}
 function scaling(){var disabled=hidden.value==='0'||hidden.value==='13'||hidden.value==='14';['cdmul','cdoff','cddec'].forEach(function(id){byId(id).disabled=disabled;});byId('rpmspeed').hidden=hidden.value!=='15'&&hidden.value!=='16';byId('rpmscale').hidden=hidden.value!=='16';byId('rpmpoles').hidden=byId('crrpmtype').value==='1';}
@@ -1005,7 +1011,11 @@ function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=
 source.addEventListener('change',function(){hidden.value=source.value;scaling();preview.textContent='…';poll();});
 ['cdmul','cdoff','cddec','cspdu','crpoles','crgear','crdiam','crscale','crrpmtype'].forEach(function(id){var input=byId(id);if(input)input.addEventListener('input',function(){scaling();preview.textContent='…';poll();});});
 scaling();poll();setInterval(poll,500);
-})();</script>)JS";
+})();</script>)JS"
+#else
+""
+#endif
+;
 
 static const char *wmBuildCRSFDisplay(const char *dest, int op)
 {
@@ -1013,8 +1023,8 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
     if(!haveNewBoard) return NULL;
     String html;
     char buf[220];
-    html.reserve(sizeof(crsfDisplayScript) + 1700);
-    html += "<fieldset><legend>3 digit display</legend><label for='cdsrc'>Display source</label>";
+    html.reserve(1700);
+    html += "<fieldset style='min-width:0;white-space:normal'><legend>3 digit display</legend><label for='cdsrc'>Display source</label>";
     snprintf(buf, sizeof(buf), "<select id='cdsrc' data-live='%u'>", opModeCRSF ? 1 : 0);
     html += buf;
     const uint8_t choices[] = {ELRS_DISPLAY_NONE, ELRS_DISPLAY_AUTO, ELRS_DISPLAY_OFF, crsfDisplayConfig.source};
@@ -1062,11 +1072,25 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
     }
     html += "<datalist id='rpmgears'><option value='6.55'>TT-02R 68T/27T</option><option value='6.16'>TT-02R 64T/27T</option></datalist><p><small>Electrical RPM is divided by motor pole pairs; select Shaft RPM if the sensor already reports mechanical RPM. Actual mph uses total motor-to-wheel reduction and tire diameter. Scaled mph also applies the scale factor (10 for a 1:10 model). Use Multiplier for calibration (default 1) and Offset 0. Both RPM sources use mph. TT-02R/Firma defaults: Electrical RPM, 4 poles, 6.55:1, 64 mm tires.</small></p></fieldset>";
     html += "<p><small>Output = value × multiplier + offset. Speed units apply before scaling. Only fresh received sources are offered. HI/LO means the scaled value exceeds three digits; --- means unavailable. Auto uses GPS speed, airspeed, then uplink LQ with default scaling. Off blanks the normal readout. None keeps the gimbal speed/speedometer in Prop controls + ELRS/CRSF; in telemetry mode it uses Auto. Temporary display messages retain priority. Save and restart to apply; preview does not change the display.</small></p></fieldset>";
+ #ifndef ARDUINO_ARCH_ESP32
     html += crsfDisplayScript;
-    if(op == WM_CP_LEN) { wmLenBuf = html.length() + 1; return (const char *)&wmLenBuf; }
+ #endif
+    if(op == WM_CP_LEN) {
+#ifdef ARDUINO_ARCH_ESP32
+        wmLenBuf = html.length() + legacy_crsfDisplayScript_expanded_size + 1;
+#else
+        wmLenBuf = html.length() + 1;
+#endif
+        return (const char *)&wmLenBuf;
+    }
+#ifdef ARDUINO_ARCH_ESP32
+    const LegacyPortalFragment fragments[] = {{html.length(), legacy_crsfDisplayScript_deflate, legacy_crsfDisplayScript_compressed_size, legacy_crsfDisplayScript_expanded_size}};
+    return legacyPortalBuildOutput(html.c_str(), html.length(), fragments, 1);
+#else
     char *result = (char *)malloc(html.length() + 1);
     if(result) strcpy(result, html.c_str());
     return result;
+#endif
 }
 
 static void handleELRSTelemetryRead()
@@ -1198,14 +1222,30 @@ static void crsfReadMixParams()
     crsfMixParamsValid = crsfReadLogicMixForm(true) && elrsIsValidMixConfig(crsfMixConfig);
 }
 
-static const char crsfLogicMixScript[] = R"JS(function init(){const g=id=>document.getElementById(id),ln=i=>'L'+String(i+1).padStart(2,'0'),names=['---','Aileron','Elevator','Rudder','Throttle','Stop','FakePower','O.O','RESET',...Array.from({length:8},(_,i)=>'ButtonPack '+(i+1)),...Array.from({length:16},(_,i)=>ln(i)),'MAX'],fn=['Choose Func','a>x','a<x','AND','OR','XOR'],mux=['Add','Multiply','Replace'],lf=['clfn','cla','clb','clx','cland'],mf=['cmch','cmsrc','cmsw','cmwt','cmoff','cmmux'];names.splice(25,0,names.pop());let t=0,k=-1,ch=1,v=[],c=[];const d=g('lme'),f=g('lmfields');function el(tag,text){let e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e}function btn(text,cb){let e=el('button',text);e.type='button';e.onclick=cb;return e}function label(id){return(id&128?'!':'')+names[id&127]}function bools(max){let a=[[0,'---']];for(let i=5;i<=max;i++)if(i!==25&&(i<17||L[i-17-(i>25)][0]))a.push([i,names[i]],[i|128,'!'+names[i]]);return a}function used(i){let id=17+i+(i>=8);return[[L,[1,2,4]],[M,[1,2]]].some(([a,b])=>a.some(r=>r[0]&&b.some(j=>(r[j]&127)===id)))}function field(j,text,opts,required){let l=el('label',text+' '),e=el(opts?'select':'input');if(opts)for(let [id,name]of opts){let o=el('option',name);o.value=id;e.appendChild(o)}else{e.type='number';e.min=-100;e.max=100;e.step=1;e.required=true}e.value=v[j];if(opts&&!opts.some(x=>x[0]===v[j])){let o=el('option','Missing '+label(v[j]));o.value=v[j];o.disabled=true;e.appendChild(o);e.value=v[j]}e.opts=opts;e.req=required;l.appendChild(e);f.appendChild(l);c[j]=e;return e}function draw(){f.replaceChildren();c=[];if(!t){let e=field(0,'Func',fn.map((x,i)=>[i,x]),true);e.onchange=()=>{v=[Number(e.value),0,0,0,0];draw()};if(v[0]){field(1,'V1',v[0]<=2?[[0,'Choose source'],...names.slice(1,5).map((x,i)=>[i+1,x])]:bools(16+k+(k>8)),true);field(v[0]<=2?3:2,'V2'+(v[0]<=2?' (%)':''),v[0]<=2?null:bools(16+k+(k>8)),v[0]>2);field(4,'AND switch',bools(16+k+(k>8)))}}else{field(0,'Channel',Array.from({length:16},(_,i)=>[i+1,'CH'+(i+1)]));field(1,'Source',[[0,'Choose source'],...names.slice(1,5).map((x,i)=>[i+1,x]),...bools(33).slice(1),[25,'MAX']],true);field(3,'Weight (%)');field(4,'Offset (%)');field(2,'Switch',bools(33));field(5,'Multiplex',mux.map((x,i)=>[i,x]))}}function edit(type,i,fresh){if(!fresh&&!(type?M:L)[i][0])return;t=type;k=i;v=fresh||((t?M:L)[i].slice());g('lmtitle').textContent=t?'Mix':ln(i);if(t)ch=v[0];draw();d.showModal();refresh()}function hidden(name,value){let e=el('input');e.type='hidden';e.name=name;e.value=value;g('lmvalues').appendChild(e)}function row(table,values,actions,selected){let r=el('tr');if(selected)r.className='lmselected';for(let value of values)r.appendChild(el('td',value));let a=el('td');for(let b of actions)a.appendChild(b);r.appendChild(a);table.appendChild(r)}function refresh(){g('lmvalues').replaceChildren();hidden('clform',1);hidden('cmform',1);for(let [a,keys]of[[L,lf],[M,mf]])a.forEach((r,i)=>r.forEach((x,j)=>hidden(keys[j]+i,x)));let l=g('lml'),m=g('lmm');l.replaceChildren();m.replaceChildren();L.forEach((r,i)=>{if(!r[0])return;let del=btn('Delete',()=>{if(used(i))return;L[i]=[0,0,0,0,0];refresh()});del.disabled=used(i);del.title=del.disabled?'Change references first':'';row(l,[ln(i),fn[r[0]],label(r[1]),r[0]>2?label(r[2]):r[3]+'%',label(r[4])],[btn('Edit',()=>edit(0,i)),del],!t&&k===i)});let base=[];for(let [id,src]of[['crlch',1],['cptch',2],['cywch',3],['cthch',4]]){let e=g(id);if(e&&Number(e.value)!==16)base.push([Number(e.value)+1,src,e])}for(let i=0;i<12;i++){let e=g('csw'+i);if(e&&Number(e.value))base.push([Number(e.value),i+5,e])}for(let n=1;n<=16;n++){for(let b of base.filter(x=>x[0]===n))row(m,['CH'+n,'Base '+names[b[1]],'100%','---','Replace'],[btn('Base',()=>{ch=b[0];b[2].scrollIntoView();b[2].focus()})]);M.forEach((r,i)=>{if(r[0]!==n)return;function move(dir){let j=i+dir;while(j>=0&&j<M.length&&M[j][0]!==n)j+=dir;if(j>=0&&j<M.length){[M[i],M[j]]=[M[j],M[i]];t=1;ch=n;k=j;refresh()}}row(m,['CH'+n,label(r[1]),r[3]+'%',label(r[2]),mux[r[5]]],[btn('Edit',()=>edit(1,i)),btn('Up',()=>move(-1)),btn('Down',()=>move(1)),btn('Delete',()=>{M[i]=[0,0,0,0,0,0];refresh()})],t&&k===i)})}for(let[a,id,text]of[[L,'ll','rows'],[M,'lm','additional lines']]){let n=a.filter(r=>r[0]).length;g(id+'count').textContent=n+'/'+a.length+' '+text;g(id+'add').disabled=n===a.length}}g('lmapply').onclick=()=>{for(let e of c.filter(Boolean)){let n=Number(e.value);e.setCustomValidity(e.req&&!n||e.opts&&!e.opts.some(x=>x[0]===n)?'Choose an available value':'');if(!e.reportValidity()||!Number.isInteger(n))return}for(let j=0;j<c.length;j++)if(c[j])v[j]=Number(c[j].value);if(!t&&!v[0])v=[0,0,0,0,0];if(t)ch=v[0];(t?M:L)[k]=v;d.oncancel();refresh()};d.oncancel=g('lmcancel').onclick=()=>{f.replaceChildren();d.close()};d.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){e.preventDefault();g('lmapply').click()}});for(let[a,id,type]of[[L,'ll',0],[M,'lm',1]])g(id+'add').onclick=()=>{let i=a.findIndex(r=>!r[0]);if(i>=0)edit(type,i,type?[ch,0,0,100,0,0]:[0,0,0,0,0])};for(let e of document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]'))e.addEventListener('change',refresh);refresh()}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();})();</script>)JS";
+static const char crsfLogicMixScript[] =
+#ifndef ARDUINO_ARCH_ESP32
+ R"JS(function init(){const g=id=>document.getElementById(id),ln=i=>'L'+String(i+1).padStart(2,'0'),names=['---','Aileron','Elevator','Rudder','Throttle','Stop','FakePower','O.O','RESET',...Array.from({length:8},(_,i)=>'ButtonPack '+(i+1)),...Array.from({length:16},(_,i)=>ln(i)),'MAX'],fn=['Choose Func','a>x','a<x','AND','OR','XOR'],mux=['Add','Multiply','Replace'],lf=['clfn','cla','clb','clx','cland'],mf=['cmch','cmsrc','cmsw','cmwt','cmoff','cmmux'];names.splice(25,0,names.pop());let t=0,k=-1,ch=1,v=[],c=[];const d=g('lme'),f=g('lmfields');function el(tag,text){let e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e}function btn(text,cb){let e=el('button',text);e.type='button';e.onclick=cb;return e}function label(id){return(id&128?'!':'')+names[id&127]}function bools(max){let a=[[0,'---']];for(let i=5;i<=max;i++)if(i!==25&&(i<17||L[i-17-(i>25)][0]))a.push([i,names[i]],[i|128,'!'+names[i]]);return a}function used(i){let id=17+i+(i>=8);return[[L,[1,2,4]],[M,[1,2]]].some(([a,b])=>a.some(r=>r[0]&&b.some(j=>(r[j]&127)===id)))}function field(j,text,opts,required){let l=el('label',text+' '),e=el(opts?'select':'input');if(opts)for(let [id,name]of opts){let o=el('option',name);o.value=id;e.appendChild(o)}else{e.type='number';e.min=-100;e.max=100;e.step=1;e.required=true}e.value=v[j];if(opts&&!opts.some(x=>x[0]===v[j])){let o=el('option','Missing '+label(v[j]));o.value=v[j];o.disabled=true;e.appendChild(o);e.value=v[j]}e.opts=opts;e.req=required;l.appendChild(e);f.appendChild(l);c[j]=e;return e}function draw(){f.replaceChildren();c=[];if(!t){let e=field(0,'Func',fn.map((x,i)=>[i,x]),true);e.onchange=()=>{v=[Number(e.value),0,0,0,0];draw()};if(v[0]){field(1,'V1',v[0]<=2?[[0,'Choose source'],...names.slice(1,5).map((x,i)=>[i+1,x])]:bools(16+k+(k>8)),true);field(v[0]<=2?3:2,'V2'+(v[0]<=2?' (%)':''),v[0]<=2?null:bools(16+k+(k>8)),v[0]>2);field(4,'AND switch',bools(16+k+(k>8)))}}else{field(0,'Channel',Array.from({length:16},(_,i)=>[i+1,'CH'+(i+1)]));field(1,'Source',[[0,'Choose source'],...names.slice(1,5).map((x,i)=>[i+1,x]),...bools(33).slice(1),[25,'MAX']],true);field(3,'Weight (%)');field(4,'Offset (%)');field(2,'Switch',bools(33));field(5,'Multiplex',mux.map((x,i)=>[i,x]))}}function edit(type,i,fresh){if(!fresh&&!(type?M:L)[i][0])return;t=type;k=i;v=fresh||((t?M:L)[i].slice());g('lmtitle').textContent=t?'Mix':ln(i);if(t)ch=v[0];draw();d.showModal();refresh()}function hidden(name,value){let e=el('input');e.type='hidden';e.name=name;e.value=value;g('lmvalues').appendChild(e)}function row(table,values,actions,selected){let r=el('tr');if(selected)r.className='lmselected';for(let value of values)r.appendChild(el('td',value));let a=el('td');for(let b of actions)a.appendChild(b);r.appendChild(a);table.appendChild(r)}function refresh(){g('lmvalues').replaceChildren();hidden('clform',1);hidden('cmform',1);for(let [a,keys]of[[L,lf],[M,mf]])a.forEach((r,i)=>r.forEach((x,j)=>hidden(keys[j]+i,x)));let l=g('lml'),m=g('lmm');l.replaceChildren();m.replaceChildren();L.forEach((r,i)=>{if(!r[0])return;let del=btn('Delete',()=>{if(used(i))return;L[i]=[0,0,0,0,0];refresh()});del.disabled=used(i);del.title=del.disabled?'Change references first':'';row(l,[ln(i),fn[r[0]],label(r[1]),r[0]>2?label(r[2]):r[3]+'%',label(r[4])],[btn('Edit',()=>edit(0,i)),del],!t&&k===i)});let base=[];for(let [id,src]of[['crlch',1],['cptch',2],['cywch',3],['cthch',4]]){let e=g(id);if(e&&Number(e.value)!==16)base.push([Number(e.value)+1,src,e])}for(let i=0;i<12;i++){let e=g('csw'+i);if(e&&Number(e.value))base.push([Number(e.value),i+5,e])}for(let n=1;n<=16;n++){for(let b of base.filter(x=>x[0]===n))row(m,['CH'+n,'Base '+names[b[1]],'100%','---','Replace'],[btn('Base',()=>{ch=b[0];b[2].scrollIntoView();b[2].focus()})]);M.forEach((r,i)=>{if(r[0]!==n)return;function move(dir){let j=i+dir;while(j>=0&&j<M.length&&M[j][0]!==n)j+=dir;if(j>=0&&j<M.length){[M[i],M[j]]=[M[j],M[i]];t=1;ch=n;k=j;refresh()}}row(m,['CH'+n,label(r[1]),r[3]+'%',label(r[2]),mux[r[5]]],[btn('Edit',()=>edit(1,i)),btn('Up',()=>move(-1)),btn('Down',()=>move(1)),btn('Delete',()=>{M[i]=[0,0,0,0,0,0];refresh()})],t&&k===i)})}for(let[a,id,text]of[[L,'ll','rows'],[M,'lm','additional lines']]){let n=a.filter(r=>r[0]).length;g(id+'count').textContent=n+'/'+a.length+' '+text;g(id+'add').disabled=n===a.length}}g('lmapply').onclick=()=>{for(let e of c.filter(Boolean)){let n=Number(e.value);e.setCustomValidity(e.req&&!n||e.opts&&!e.opts.some(x=>x[0]===n)?'Choose an available value':'');if(!e.reportValidity()||!Number.isInteger(n))return}for(let j=0;j<c.length;j++)if(c[j])v[j]=Number(c[j].value);if(!t&&!v[0])v=[0,0,0,0,0];if(t)ch=v[0];(t?M:L)[k]=v;d.oncancel();refresh()};d.oncancel=g('lmcancel').onclick=()=>{f.replaceChildren();d.close()};d.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){e.preventDefault();g('lmapply').click()}});for(let[a,id,type]of[[L,'ll',0],[M,'lm',1]])g(id+'add').onclick=()=>{let i=a.findIndex(r=>!r[0]);if(i>=0)edit(type,i,type?[ch,0,0,100,0,0]:[0,0,0,0,0])};for(let e of document.querySelectorAll('#crlch,#cptch,#cthch,#cywch,[data-elrs-switch]'))e.addEventListener('change',refresh);refresh()}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();})();</script>)JS"
+#else
+""
+#endif
+;
+
+static const char crsfLogicMixIntro[] =
+#ifndef ARDUINO_ARCH_ESP32
+ "<style>.lms{overflow-x:auto}.lmt{width:100%;font-size:.8em;border-collapse:collapse}.lmt td,.lmt th{padding:3px;text-align:left;border-bottom:1px solid #ddd}.lmselected{background:#e8eef5}.lmt button{width:auto;padding:3px;margin:1px}#lme{width:85%;max-width:400px;max-height:80vh;overflow:auto}#lmfields label{display:block;margin:10px 0}#lmfields label>*{width:100%}</style><h3>Logical Switches</h3><small>! = Not.</small><button type='button' id='lladd'>Add logical switch</button> <small id='llcount'></small><div class='lms'><table class='lmt'><tr><th>Switch<th>Func<th>V1<th>V2<th>AND switch</tr><tbody id='lml'></tbody></table></div><h3>Mixes</h3><small>Source=value; Switch=gate.</small><button type='button' id='lmadd'>Add mix</button> <small id='lmcount'></small><div class='lms'><table class='lmt'><tr><th>Channel<th>Source<th>Weight<th>Switch<th>Multiplex</tr><tbody id='lmm'></tbody></table></div><div id='lmvalues'></div><dialog id='lme' aria-labelledby='lmtitle'><h4 id='lmtitle'></h4><div id='lmfields'></div><button type='button' id='lmapply'>Apply</button> <button type='button' id='lmcancel'>Cancel</button></dialog><noscript>Enable JavaScript.</noscript><script>(function(){const L=["
+#else
+""
+#endif
+;
 
 static const char *wmBuildCRSFLogicMix(const char *dest, int op)
 {
     if(op == WM_CP_DESTROY) { if(dest) free((void *)dest); return nullptr; }
     String html;
-    html.reserve(sizeof(crsfLogicMixScript) + 1200);
-    html += "<style>.lms{overflow-x:auto}.lmt{width:100%;font-size:.8em;border-collapse:collapse}.lmt td,.lmt th{padding:3px;text-align:left;border-bottom:1px solid #ddd}.lmselected{background:#e8eef5}.lmt button{width:auto;padding:3px;margin:1px}#lme{width:85%;max-width:400px;max-height:80vh;overflow:auto}#lmfields label{display:block;margin:10px 0}#lmfields label>*{width:100%}</style><h3>Logical Switches</h3><small>! = Not.</small><button type='button' id='lladd'>Add logical switch</button> <small id='llcount'></small><div class='lms'><table class='lmt'><tr><th>Switch<th>Func<th>V1<th>V2<th>AND switch</tr><tbody id='lml'></tbody></table></div><h3>Mixes</h3><small>Source=value; Switch=gate.</small><button type='button' id='lmadd'>Add mix</button> <small id='lmcount'></small><div class='lms'><table class='lmt'><tr><th>Channel<th>Source<th>Weight<th>Switch<th>Multiplex</tr><tbody id='lmm'></tbody></table></div><div id='lmvalues'></div><dialog id='lme' aria-labelledby='lmtitle'><h4 id='lmtitle'></h4><div id='lmfields'></div><button type='button' id='lmapply'>Apply</button> <button type='button' id='lmcancel'>Cancel</button></dialog><noscript>Enable JavaScript.</noscript><script>(function(){const L=[";
+    html.reserve(1200);
+#ifndef ARDUINO_ARCH_ESP32
+    html += crsfLogicMixIntro;
+#endif
     char buf[56];
     for(int i = 0; i < ELRS_LOGIC_COUNT; i++) {
         const auto &r = crsfLogicConfig.rules[i];
@@ -1219,11 +1259,28 @@ static const char *wmBuildCRSFLogicMix(const char *dest, int op)
         html += buf;
     }
     html += "];";
+ #ifndef ARDUINO_ARCH_ESP32
     html += crsfLogicMixScript;
-    if(op == WM_CP_LEN) { wmLenBuf = html.length() + 1; return (const char *)&wmLenBuf; }
+ #endif
+    if(op == WM_CP_LEN) {
+#ifdef ARDUINO_ARCH_ESP32
+        wmLenBuf = html.length() + legacy_crsfLogicMixIntro_expanded_size + legacy_crsfLogicMixScript_expanded_size + 1;
+#else
+        wmLenBuf = html.length() + 1;
+#endif
+        return (const char *)&wmLenBuf;
+    }
+#ifdef ARDUINO_ARCH_ESP32
+    const LegacyPortalFragment fragments[] = {
+        {0, legacy_crsfLogicMixIntro_deflate, legacy_crsfLogicMixIntro_compressed_size, legacy_crsfLogicMixIntro_expanded_size},
+        {html.length(), legacy_crsfLogicMixScript_deflate, legacy_crsfLogicMixScript_compressed_size, legacy_crsfLogicMixScript_expanded_size}
+    };
+    return legacyPortalBuildOutput(html.c_str(), html.length(), fragments, 2);
+#else
     char *result = (char *)malloc(html.length() + 1);
     if(result) strcpy(result, html.c_str());
     return result;
+#endif
 }
 
 #endif

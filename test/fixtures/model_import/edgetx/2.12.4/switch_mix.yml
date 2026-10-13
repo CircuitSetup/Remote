@@ -1,0 +1,4 @@
+semver: 2.12.4
+header: {name: Constant on switch output}
+mixData:
+  - {destCh: 4, srcRaw: MAX, weight: 50, mltpx: ADD}

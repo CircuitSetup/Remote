@@ -1,0 +1,50 @@
+<style>
+#wrap{width:100%}
+#wrap .ss{white-space:normal}
+#remote-controls{padding:0;margin:20px 0 0}
+#remote-controls label{display:block;margin:10px 0 0;padding:0}
+#remote-controls p{margin:0 0 10px}
+#remote-controls small{display:block}
+#remote-controls .msg,#remote-controls pre{white-space:pre-wrap;overflow-wrap:anywhere}
+#remote-controls pre{font-size:80%}
+</style>
+<div class="ss">
+ <div class="hl"><h3>Live ELRS controls</h3></div>
+ <p id="access"><small>Loading connection status…</small></p>
+ <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connect through the protected Remote AP to use controls.</div>
+ <p><small>FakePower off does not disarm the receiver. Set final CH5 low, disarm and disconnect RF before changing TX RF settings or activating a model.</small></p>
+ <button type="button" id="maintenance">Enter maintenance (5 minutes)</button>
+ <button type="button" id="status">Refresh RF status</button>
+ <small id="safety"></small>
+</div>
+<div class="ss">
+ <div class="hl"><h3>Radio devices</h3></div>
+ <p><small>RF packet rate comes from the module menu. Remote’s CRSF channel cadence is separate and requires a restart.</small></p>
+ <button type="button" id="discover">Discover devices</button>
+ <label>Device <select id="devices" aria-label="Radio device"></select></label>
+ <label>Field <select id="fields" aria-label="Device field"></select></label>
+ <div id="field">Discover a device to read its menu.</div>
+ <label>TX profile ID (0–63) <input id="modelId" type="number" min="0" max="63" value="0"></label>
+ <button type="button" id="selectModel">Select and verify TX profile</button>
+ <button type="button" id="assign">Assign connected receiver to this profile</button>
+ <button type="button" id="confirm" hidden>Confirm device prompt</button>
+ <button type="button" id="cancel" hidden>Cancel command</button>
+</div>
+<div class="ss">
+ <div class="hl"><h3>Remote settings files</h3></div>
+ <p><small>Full backups contain passwords, identity and calibration. Portable models retain this Remote’s calibration, credentials and identity.</small></p>
+ <button type="button" id="backup">Download full backup (contains secrets)</button>
+ <button type="button" id="model">Download portable model</button>
+ <label>Native file <input id="file" type="file" accept=".json"></label>
+ <label>File type <select id="kind"><option value="model">Portable model</option><option value="backup">Full device backup</option></select></label>
+ <label><input id="clone" type="checkbox"> Clone source identity when restoring a different Remote</label>
+ <button type="button" id="preview">Validate and preview file</button>
+ <pre id="previewText">No preview.</pre>
+ <button type="button" id="apply" disabled>Activate this preview and restart</button>
+</div>
+<div class="ss">
+ <div class="hl"><h3>External radio settings</h3></div>
+ <p><small>TX/RX settings use a separate file. Live changes need their own preview and readback; rollback is best effort. Commands are never restored.</small></p>
+ <p><small>The desktop radio helper captures and previews <code>.remote-radio.json</code> files. Use the project’s radio snapshot guide on your computer; device controls above can make individual changes.</small></p>
+ <button type="button" id="review">Finish imported radio review after readback</button>
+</div>

@@ -1,0 +1,5 @@
+semver: 2.12.4
+header: {name: Direct gimbal limits}
+limitData:
+  0: {min: 500, max: -500}
+mixData: []

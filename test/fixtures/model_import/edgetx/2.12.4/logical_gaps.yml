@@ -1,0 +1,6 @@
+semver: 2.12.4
+header: {name: Stable logical slots}
+mixData: []
+logicalSw:
+  "8": {func: FUNC_AND, def: "SF1,SF1", delay: 0, duration: 0, andsw: NONE, lsPersist: 0, lsState: 0}
+  "15": {func: FUNC_OR, def: "L9,SF0", delay: 0, duration: 0, andsw: NONE, lsPersist: 0, lsState: 0}

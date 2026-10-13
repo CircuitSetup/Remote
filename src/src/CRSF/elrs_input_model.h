@@ -93,6 +93,21 @@ struct ELRSMixResult { int16_t valuesUs[16]; uint16_t invalidChannels; };
 static_assert(sizeof(ELRSMixLine) == 6, "Preserve compact mix storage");
 ELRSMixConfig elrsDefaultMixConfig();
 bool elrsIsValidMixConfig(const ELRSMixConfig &config);
+bool elrsIsValidModelReferences(const ELRSLogicConfig &logic, const ELRSMixConfig &mixes);
+
+struct [[gnu::packed]] ELRSCrsfSettingsBlob {
+    ELRSInputAxisProfile axisProfile[ELRS_GIMBAL_AXIS_COUNT];
+    ELRSGimbalRouting gimbalRouting;
+    uint16_t adcHysteresis, throttleIdleDeadband;
+    ELRSSwitchRouting switchRouting;
+    ELRSOutputLimits outputLimits[ELRS_GIMBAL_AXIS_COUNT];
+    uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
+    ELRSDisplayConfig displayConfig;
+    ELRSVehicleConfig vehicleConfig;
+    uint8_t logicVersion;
+    ELRSLogicConfig logic;
+    ELRSMixConfig mixes;
+};
 ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInputs &inputs,
     const ELRSLogicResult &logic, const int16_t baseChannelsUs[16], uint16_t baseClaimedChannels);
 

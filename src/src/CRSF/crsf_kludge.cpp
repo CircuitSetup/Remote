@@ -62,6 +62,7 @@
 #include "elrs_crsf.h"
 #include "crsf_kludge.h"
 #include "crsf_settings.h"
+#include "../../remote_settings_transfer.h"
 
 // External
 extern bool     saveConfigFile(const char *fn, uint8_t *buf, int len, int forcefs = 0);
@@ -72,20 +73,6 @@ extern void     wifiOnFakePowerOn(bool showWait);
 // CRSF settings
 // Stored as a raw blob in /crsfcfg. Keep compatibility in mind when changing
 // this layout because older builds may have written legacy calibration-only data.
-struct [[gnu::packed]] ELRSCrsfSettingsBlob {
-    ELRSInputAxisProfile axisProfile[ELRS_GIMBAL_AXIS_COUNT];
-    ELRSGimbalRouting gimbalRouting;
-    uint16_t adcHysteresis;
-    uint16_t throttleIdleDeadband;
-    ELRSSwitchRouting switchRouting;
-    ELRSOutputLimits outputLimits[ELRS_GIMBAL_AXIS_COUNT];
-    uint8_t localActions[ELRS_SWITCH_INPUT_COUNT];
-    ELRSDisplayConfig displayConfig;
-    ELRSVehicleConfig vehicleConfig;
-    uint8_t logicVersion;
-    ELRSLogicConfig logic;
-    ELRSMixConfig mixes;
-};
 
 static_assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68, "Preserve the legacy CRSF settings prefix");
 static_assert(offsetof(ELRSCrsfSettingsBlob, localActions) == 84, "Preserve travel limits before local actions");
@@ -387,6 +374,12 @@ void crsf_load_settings()
     }
 }
 
+ELRSCrsfSettingsBlob snapshotELRSSettings() { return crsfSettings; }
+void installCommittedELRSSettings(const ELRSCrsfSettingsBlob &candidate) {
+    crsfSettings=candidate;
+    crsfSettingsHash=calcHash((uint8_t *)&crsfSettings,sizeof(crsfSettings));
+}
+
 bool crsf_save_settings(bool useCache)
 {
     uint32_t newHash = calcHash((uint8_t *)&crsfSettings, sizeof(crsfSettings));
@@ -550,7 +543,11 @@ bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 
 void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
 {
-    elrsMode.requestModuleConfigUpdate(telemetryRatio, maxPower, dynamicPower);
+    if(remoteRadioVersioned)return;
+    auto next=elrsRadioPreferencesFromLegacy(telemetryRatio,maxPower,dynamicPower);
+    next.modelId=remoteRadioPreferences.modelId;
+    remoteRadioPreferences=next;
+    elrsMode.setRadioPreferences(next,remoteRadioReviewPending());
 }
 
 bool crsf_begin(
@@ -584,7 +581,7 @@ bool crsf_begin(
     const ELRSDisplayConfig displayConfig = loadELRSDisplayConfig();
     const ELRSVehicleConfig vehicleConfig = loadELRSVehicleConfig();
 
-    return elrsMode.begin(
+    bool started=elrsMode.begin(
             packetRateHz,
             speedDisplayUnits,
             telemetryRatio,
@@ -614,10 +611,14 @@ bool crsf_begin(
             &logic,
             &mixes
         );
+    if(started && remoteRadioVersioned) elrsMode.setRadioPreferences(remoteRadioPreferences,remoteRadioReviewPending());
+    if(started) elrsMode.setDeviceConfigAccess(false,remoteSettingsBusy(),remoteRadioReviewPending());
+    return started;
 }
 
 void crsf_loop(int battWarn)
 {
+    elrsMode.setDeviceConfigAccess(remoteMaintenanceActive(),remoteSettingsBusy(),remoteRadioReviewPending());
     elrsMode.loop(battWarn);
 }
 

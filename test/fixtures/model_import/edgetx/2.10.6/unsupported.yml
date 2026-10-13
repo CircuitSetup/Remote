@@ -1,0 +1,5 @@
+semver: 2.10.6
+header: {name: Unsupported timer}
+timers:
+  "0": {start: 0, mode: THR}
+mixData: []

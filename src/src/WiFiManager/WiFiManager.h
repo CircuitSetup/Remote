@@ -232,7 +232,7 @@ class WiFiManager
     #endif
 
     // Called when saving params; return false to reject the save.
-    void          setParamSaveError(uint16_t status) { _paramSaveError = status == 400 ? 400 : 500; }
+    void          setParamSaveError(uint16_t status) { _paramSaveError = status == 400 || status == 409 ? status : 500; }
     void          setSaveParamsCallback(bool(*func)(int))
                                   { _saveparamscallback = func; };
 
