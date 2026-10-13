@@ -9,5 +9,3 @@ embed(env.subst("$PROJECT_DIR"))
 from embed_click_audio import generate
 root=Path(env.subst("$PROJECT_DIR"))
 generate(root/"src/remote_click.h",root/"src/remote_click_compressed.h")
-import runpy
-runpy.run_path(str(root/"tools/embed_legacy_portal.py"),run_name="__main__")
