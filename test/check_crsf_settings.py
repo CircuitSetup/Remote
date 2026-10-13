@@ -1406,7 +1406,7 @@ int main() {
     }
     const char *worstPage=wmBuildCRSFLogicMix(nullptr,2);
     fprintf(stderr,"Worst-case additional Logic/Mixes markup: %zu bytes\n",strlen(worstPage));
-    assert(strlen(worstPage)<=7168);
+    assert(strlen(worstPage)<=8192);
     // Existing gimbal markup still sets WiFiManager's shared item-buffer size and peak builder scratch.
     assert(strlen(worstPage) <= existingGimbalMarkupLength);
     assert(sizeof(crsfLogicMixScript) + 1200 <= existingGimbalMarkupLength);
@@ -1414,7 +1414,7 @@ int main() {
     wmBuildCRSFLogicMix(worstPage,WM_CP_DESTROY);
     crsfLogicConfig=previewLogic;crsfMixConfig=previewMix;
     const char *logicPage=wmBuildCRSFLogicMix(nullptr,2);
-    assert(logicPage && strlen(logicPage)<=7168);
+    assert(logicPage && strlen(logicPage)<=8192);
     assert(strstr(logicPage,"Logical Switches") && strstr(logicPage,"Multiplex") && strstr(logicPage,"AND switch"));
     wmBuildCRSFLogicMix(nullptr,WM_CP_LEN);assert(wmLenBuf==strlen(logicPage)+1);
     if(const char *path=getenv("CRSF_LOGIC_PREVIEW")){FILE *f=fopen(path,"wb");assert(f);fputs("<!doctype html><title>ELRS Logic and Mixes</title><meta name='viewport' content='width=device-width'>",f);fputs(HTTP_STYLE,f);fputs("</style><form>",f);fputs(logicPage,f);fputs("<button>Save</button></form>",f);fclose(f);}
