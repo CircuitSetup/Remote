@@ -64,7 +64,6 @@
 
 #include "remote_main.h"
 #include "remote_settings.h"
-#include "remote_settings_transfer.h"
 #include "remote_audio.h"
 #include "remote_wifi.h"
 #ifdef HAVE_CRSF
@@ -2226,7 +2225,6 @@ void main_loop()
 
 void flushDelayedSave()
 {
-    if(remoteSettingsBusy()) return;
     if(brichgnow) {
         brichgnow = 0;
         saveBrightness();

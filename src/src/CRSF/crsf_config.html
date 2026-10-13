@@ -31,13 +31,12 @@
  <button type="button" id="cancel" hidden>Cancel command</button>
 </div>
 <div class="ss">
- <div class="hl"><h3>Remote settings files</h3></div>
- <p><small>Full backups contain passwords, identity and calibration. Portable models retain this Remote’s calibration, credentials and identity.</small></p>
- <button type="button" id="backup">Download full backup (contains secrets)</button>
+ <div class="hl"><h3>CRSF settings files</h3></div>
+ <p><small>CRSF backups include model settings and input calibration. Portable models keep this Remote’s input calibration.</small></p>
+ <button type="button" id="backup">Download CRSF settings backup</button>
  <button type="button" id="model">Download portable model</button>
  <label>Native file <input id="file" type="file" accept=".json"></label>
- <label>File type <select id="kind"><option value="model">Portable model</option><option value="backup">Full device backup</option></select></label>
- <label><input id="clone" type="checkbox"> Clone source identity when restoring a different Remote</label>
+ <label>File type <select id="kind"><option value="model">Portable model</option><option value="backup">CRSF settings backup</option></select></label>
  <button type="button" id="preview">Validate and preview file</button>
  <pre id="previewText">No preview.</pre>
  <button type="button" id="apply" disabled>Activate this preview and restart</button>

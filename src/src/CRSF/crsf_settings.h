@@ -56,6 +56,15 @@
 #include "elrs_crsf_shared.h"
 #include "elrs_input_model.h"
 
+struct ELRSPortalPreferences {
+    uint8_t version=0,opMode=0,connectWiFi=1,cadence=3,speedUnits=0,radioReview=0;
+    ELRSRadioPreferences radio;
+};
+extern ELRSRadioPreferences remoteRadioPreferences;
+extern bool remoteRadioVersioned,crsfSettingsSaving,crsfSettingsRecoveryBlocked;
+ELRSPortalPreferences snapshotELRSPortalPreferences();
+bool saveELRSSettings(const ELRSCrsfSettingsBlob &,const ELRSPortalPreferences &,bool requireSafe=false);
+
 void loadELRSCalibration(ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 bool saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count = ELRS_GIMBAL_AXIS_COUNT);
 void loadELRSInputProfiles(ELRSInputAxisProfile *profiles, int count = ELRS_GIMBAL_AXIS_COUNT);
@@ -77,7 +86,6 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
 bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
 void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
 ELRSCrsfSettingsBlob snapshotELRSSettings();
-void installCommittedELRSSettings(const ELRSCrsfSettingsBlob &);
 
 #endif // HAVE_CRSF
 #endif // _CRSF_SETTINGS_H

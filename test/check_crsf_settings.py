@@ -1,7 +1,16 @@
 # Compile the actual portal/migration callbacks; stub only UI and storage dependencies.
 import re
+import tempfile
 
 from check_crsf_adc import ROOT, compile_and_run
+
+tempfile.tempdir = r"C:\Users\John\.codex\scratch\Remote-elrs-page"
+assert_error_mode = r'''
+#ifdef _WIN32
+#include <stdlib.h>
+struct TestAssertErrorMode { TestAssertErrorMode() { _set_error_mode(_OUT_TO_STDERR); } } testAssertErrorMode;
+#endif
+'''
 
 
 def function(path, signature):
@@ -103,16 +112,16 @@ int main() {
     }
 }
 '''
-compile_and_run(fixture + callbacks + cases, [])
+compile_and_run(assert_error_mode + fixture + callbacks + cases, [])
 
 # Keep binary migration and the rendered portal on the actual production code paths.
 source = (ROOT / 'src/src/CRSF/crsf_kludge.cpp').read_text()
 stored_settings = source[source.index('// CRSF settings\n'):source.index('bool readELRSCurrentRawAxes(')]
 stored_settings_with_files = stored_settings
 for signature in [
-    'static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes)',
+    'static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes, size_t capacity=sizeof(ELRSCrsfSettingsBlob))',
     'static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)',
-    'static bool crsfSaveStoredSettings(uint8_t *buf, int len)',
+    'static bool crsfSaveStoredSettings(uint8_t *buf, int len, bool requireSafe=false)',
 ]:
     stored_settings = stored_settings.replace(function('src/src/CRSF/crsf_kludge.cpp', signature), '')
 portal = (ROOT / 'src/src/CRSF/crsf_wifi.h').read_text()
@@ -130,7 +139,7 @@ portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for s
     'static bool buildCRSFPortalInputSettings(ELRSCrsfSettingsBlob &candidate, RemoteTransferError &error)',
 ])
 portal_callbacks = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)') + portal_callbacks
-crsf_blob_validator = function('src/remote_settings_transfer.cpp', 'bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &s)')
+crsf_blob_validator = function('src/src/CRSF/crsf_model_files.cpp', 'bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &s)')
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
 limits_page = function('src/src/CRSF/crsf_wifi.h', 'static void wmAppendCRSFOutputLimits(String &html, uint8_t axis)')
 expo_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadExpoParams()')
@@ -215,8 +224,6 @@ portal_style = '#define HTTP_BLUE "#4f529d"\n#define HTTP_RED "#be5c9c"\n#define
 portal_style += style_source[style_source.index('static const char HTTP_STYLE[]'):style_source.index('\n#ifndef WM_50S_STYLE', style_source.index('static const char HTTP_STYLE[]'))].replace('PROGMEM', '')
 storage_fixture = r'''
 #include "src/CRSF/elrs_crsf_shared.h"
-bool remoteRadioVersioned = false;
-ELRSRadioPreferences remoteRadioPreferences;
 #include <ArduinoJson.h>
 #include <cassert>
 #include <cstring>
@@ -229,6 +236,14 @@ ELRSRadioPreferences remoteRadioPreferences;
 #include "src/CRSF/crsf_settings.h"
 using std::min;
 using String = std::string;
+bool remoteSettingsBusy();
+bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &);
+ELRSRadioPreferences elrsRadioPreferencesFromLegacy(uint8_t, uint8_t, uint8_t) { return {}; }
+bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &p) {
+    return p.modelId <= 63 && memchr(p.telemetry, 0, sizeof(p.telemetry)) &&
+        memchr(p.dynamic, 0, sizeof(p.dynamic)) && memchr(p.maxPower.label, 0, sizeof(p.maxPower.label)) &&
+        memchr(p.maxPower.unit, 0, sizeof(p.maxPower.unit));
+}
 enum class RemoteTransferCode { None, InvalidValue, Busy, WriteFailed };
 struct RemoteTransferError { RemoteTransferCode code = RemoteTransferCode::None; char path[96] = {}, message[128] = {}; };
 bool remoteTransferFail(RemoteTransferError &error, RemoteTransferCode code, const char *path, const char *message) {
@@ -241,14 +256,16 @@ std::vector<uint8_t> stored;
 std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
+int storageWriteAttempts = 0, settingsChangedCalls = 0;
 bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
-    valid = min(297, (int)stored.size());
+    valid = (int)stored.size();
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
 }
-bool crsfSaveStoredSettings(uint8_t *data, int size) {
-    if(!storageWriteOk) return false;
+bool crsfSaveStoredSettings(uint8_t *data, int size, bool = false) {
+    storageWriteAttempts++;
+    if(!storageWriteOk || crsfSettingsRecoveryBlocked) return false;
     stored.assign(data, data + size);
     media[configOnSD] = stored;
     return true;
@@ -316,6 +333,17 @@ WiFiManagerParameter custom_crsfap = {settings.crsfap}, custom_crsfrr = {setting
 unsigned int wifiLoopSaveAction = 0;
 struct { void println(const char *) {} } Serial;
 void requestELRSModuleConfigUpdate(uint8_t, uint8_t, uint8_t) {}
+static bool testBuildCRSFPortalCandidate(ELRSCrsfSettingsBlob &, RemoteTransferError &);
+static bool testWriteCRSFPortalCandidate(const ELRSCrsfSettingsBlob &);
+static bool testBuildAndSaveCRSFPortalInputSettings();
+static void syncCRSFPortalBuffers();
+bool crsf_wifi_loop_settings() {
+    ELRSCrsfSettingsBlob candidate = snapshotELRSSettings();
+    RemoteTransferError error;
+    if(!testBuildCRSFPortalCandidate(candidate, error)) { wm.setParamSaveError(400); return false; }
+    if(!testWriteCRSFPortalCandidate(candidate)) { wm.setParamSaveError(500); syncCRSFPortalBuffers(); return false; }
+    return true;
+}
 int mainConfigHash = 0, ipHash = 0;
 const char *secCfgName = "/secondary";
 struct { void remove(const char *) {} } MYNVS;
@@ -325,6 +353,7 @@ void deleteFileFromSD(const char *) {}
 void saveId() {}
 bool write_settings() {return true;}
 void writeIpSettings() {}
+void remoteSettingsChanged() { settingsChangedCalls++; }
 void formatFlashFS(bool) { media[0].clear(); }
 '''
 test_writer_adapter = r'''
@@ -355,7 +384,8 @@ int main() {
     crsf_load_settings();
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
     auto fullDisplay = stored;
-    assert(fullDisplay.size() == 297 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
+    assert(fullDisplay.size() == sizeof(ELRSStoredSettings) && sizeof(ELRSCrsfSettingsBlob) == 297);
+    assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
     for(int length = 96; length <= 120; length++) {
         stored = fullDisplay; stored.resize(length); crsf_load_settings();
         auto loaded = loadELRSDisplayConfig();
@@ -528,7 +558,7 @@ int main() {
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(previous.size() == 56 && mapped.size() == 297);
+    assert(previous.size() == 56 && mapped.size() == sizeof(ELRSStoredSettings));
     for(int partial = 0; partial < 12; partial++) {
         stored = mapped;
         stored.resize(previous.size() + partial);
@@ -1270,7 +1300,7 @@ int main() {
     assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
     logic.rules[15]={3,17,133,0,0};mixes.lines[15]={16,33,154,-50,10,2};
     assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
-    const auto extended=stored; assert(extended.size()==297 && extended[120]==2);
+    const auto extended=stored; assert(extended.size()==sizeof(ELRSStoredSettings) && extended[120]==2);
     assert(offsetof(ELRSCrsfSettingsBlob,logicVersion)==120);
     assert(offsetof(ELRSCrsfSettingsBlob,logic)==121 && offsetof(ELRSCrsfSettingsBlob,mixes)==201);
     for(int length=120;length<297;length++) {
@@ -1309,7 +1339,7 @@ int main() {
     storageWriteOk=false;const auto migratedHash=crsfSettingsHash;
     assert(!crsf_save_settings(false) && stored==oldV1 && crsfSettingsHash==migratedHash);
     storageWriteOk=true;assert(crsf_save_settings(false));
-    assert(stored.size()==297 && stored[120]==2 && !memcmp(stored.data(),oldV1.data(),120));
+    assert(stored.size()==sizeof(ELRSStoredSettings) && stored[120]==2 && !memcmp(stored.data(),oldV1.data(),120));
     crsf_load_settings();assert(!memcmp(crsfSettings.mixes.lines,oldMixes,sizeof(oldMixes)));
     for(int length=121;length<209;length++) {
         stored=oldV1;stored.resize(length);crsf_load_settings();
@@ -1398,10 +1428,53 @@ int main() {
     wmBuildCRSFLogicMix(retryPage,WM_CP_DESTROY);
     puts("CRSF logic/mix strict forms, omission preservation and compact builder passed");
 
+    ELRSCrsfSettingsBlob preferenceModel = snapshotELRSSettings();
+    ELRSPortalPreferences preference = snapshotELRSPortalPreferences();
+    preference.version = 1; preference.radioReview = 1;
+    preference.radio = elrsRadioPreferencesFromLegacy(3, 4, 1);
+    preference.opMode = 2; preference.connectWiFi = 0; preference.cadence = 4; preference.speedUnits = 1;
+    for(uint8_t modelId : {uint8_t(12), uint8_t(63)}) {
+        preference.radio.modelId = modelId;
+        preferenceModel.axisProfile[0].minimum = 300 + modelId;
+        assert(saveELRSSettings(preferenceModel, preference));
+        crsf_load_settings();
+        const auto loadedPreference = snapshotELRSPortalPreferences();
+        assert(loadedPreference.radio.modelId == modelId && loadedPreference.radioReview == 1);
+        assert(loadedPreference.opMode == 2 && loadedPreference.connectWiFi == 0);
+        assert(loadedPreference.cadence == 4 && loadedPreference.speedUnits == 1);
+        assert(snapshotELRSSettings().axisProfile[0].minimum == 300 + modelId);
+    }
+    const auto committedPreferenceModel = snapshotELRSSettings();
+    const auto committedPreference = snapshotELRSPortalPreferences();
+    const auto committedPreferenceBytes = stored;
+    const auto committedPreferenceHash = crsfSettingsHash;
+    auto rejectedPreferenceModel = committedPreferenceModel;
+    rejectedPreferenceModel.axisProfile[0].minimum++;
+    auto rejectedPreference = committedPreference; rejectedPreference.radio.modelId = 12;
+    const int changedBeforeFailure = settingsChangedCalls;
+    storageWriteOk = false;
+    assert(!saveELRSSettings(rejectedPreferenceModel, rejectedPreference));
+    assert(stored == committedPreferenceBytes && crsfSettingsHash == committedPreferenceHash);
+    assert(!memcmp(&crsfSettings, &committedPreferenceModel, sizeof(committedPreferenceModel)));
+    const auto afterFailedPreference = snapshotELRSPortalPreferences();
+    assert(!memcmp(&afterFailedPreference, &committedPreference, sizeof(committedPreference)));
+    assert(settingsChangedCalls == changedBeforeFailure);
+    const int attemptsAfterFailure = storageWriteAttempts;
+    storageWriteOk = true;
+    assert(crsf_save_settings(true));
+    assert(storageWriteAttempts == attemptsAfterFailure && stored == committedPreferenceBytes);
+    for(size_t length = sizeof(ELRSCrsfSettingsBlob) + 1; length < sizeof(ELRSStoredSettings); length++) {
+        stored = committedPreferenceBytes; stored.resize(length); crsf_load_settings();
+        assert(crsfSettingsRecoveryBlocked);
+        assert(!saveELRSSettings(committedPreferenceModel, committedPreference));
+    }
+    stored = committedPreferenceBytes; crsf_load_settings();
+    assert(!crsfSettingsRecoveryBlocked);
+    puts("CRSF appended portal preferences round-trip IDs 12/63; failed candidate does not publish or poison cache");
 
 }
 '''
-compile_and_run(storage_fixture + stored_settings + axis_buffers + crsf_blob_validator + portal_callbacks + test_writer_adapter + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + logic_page + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
+compile_and_run(assert_error_mode + storage_fixture + stored_settings + axis_buffers + crsf_blob_validator + portal_callbacks + test_writer_adapter + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + logic_page + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
 
 # Exercise the actual HTTP handler and the application's reboot scheduling callback.
 save_signature = 'static bool saveParamsCallback(int paramspage)'
@@ -1463,6 +1536,10 @@ bool saveCRSFPortalSettings(RemoteTransferError &error) {
     if(!inputWriteOk) { settings = before; error.code = RemoteTransferCode::WriteFailed; return false; }
     return true;
 }
+bool crsfLogicParamsValid = true, crsfMixParamsValid = true;
+void syncCRSFPortalBuffers() {}
+bool crsf_wifi_saveParamsCallback() { RemoteTransferError error; return saveCRSFPortalSettings(error); }
+bool crsf_wifi_loop_settings() { return true; }
 '''
 http_callbacks = function('src/remote_wifi.cpp', save_signature)
 http_callbacks += function('src/src/WiFiManager/WiFiManager.cpp', 'void WiFiManager::_handleParamSave(int aidx, const char *title)')
@@ -1505,7 +1582,7 @@ int main() {
     puts("CRSF HTTP save response and reboot scheduling check passed");
 }
 '''
-compile_and_run(http_fixture + http_callbacks + http_cases, [])
+compile_and_run(assert_error_mode + http_fixture + http_callbacks + http_cases, [])
 
 # Exercise the real framed-file writer too: FILE_WRITE truncates its target.
 file_fixture = r'''
@@ -1522,7 +1599,22 @@ file_fixture = r'''
 using std::min;
 using String = std::string;
 bool haveSD = true, haveFS = true, configOnSD = false, FlashROMode = false;
-struct { char CfgOnSD[2] = "0"; } settings;
+struct {
+    char CfgOnSD[2] = "0", opMode[2] = "1", crsfap[2] = "0";
+    char elrsPktRate[2] = "3", elrsSpdUnit[2] = "0";
+    char elrsTlmRatio[2] = "0", elrsMaxPower[2] = "3", elrsDynPower[2] = "0";
+} settings;
+enum class RemoteTransferCode { None, WriteFailed };
+struct RemoteTransferError { RemoteTransferCode code = RemoteTransferCode::None; };
+bool remoteFileActivationSafe(RemoteTransferError &) { return true; }
+bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &) { return true; }
+ELRSRadioPreferences elrsRadioPreferencesFromLegacy(uint8_t, uint8_t, uint8_t) { return {}; }
+bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &p) {
+    return p.modelId <= 63 && memchr(p.telemetry, 0, sizeof(p.telemetry)) &&
+        memchr(p.dynamic, 0, sizeof(p.dynamic)) && memchr(p.maxPower.label, 0, sizeof(p.maxPower.label)) &&
+        memchr(p.maxPower.unit, 0, sizeof(p.maxPower.unit));
+}
+void remoteSettingsChanged() {}
 struct File {
     std::vector<uint8_t> *bytes = nullptr;
     size_t allowedWrite = 999;
@@ -1653,7 +1745,7 @@ int main() {
         storage.allowedWrite=212;
         assert(!crsf_save_settings(false) && storage.files[name]==oldFramed);
         storage.allowedWrite=999;crsf_load_settings();assert(crsf_save_settings(false));
-        assert(storage.files[name].size()==300);crsf_load_settings();
+    assert(storage.files[name].size()==sizeof(ELRSStoredSettings)+3);crsf_load_settings();
         assert(!memcmp(crsfSettings.mixes.lines,v1Mixes,sizeof(v1Mixes)));
         assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
         assert(other.files["/crsfcfg.tmp"] == std::vector<uint8_t>({0, 0}));
@@ -1661,7 +1753,7 @@ int main() {
         other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
-    assert(before.size() == 300);
+    assert(before.size() == sizeof(ELRSStoredSettings)+3);
         for(int count : {0, 3, 86, 98}) {
             storage.allowedWrite = count;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
@@ -1769,10 +1861,10 @@ int main() {
     puts("CRSF file recovery retains selected-medium priority and survives a failed repair");
 }
 '''
-compile_and_run(file_fixture + file_functions + stored_settings_with_files + file_cases, ['elrs_input_model.cpp'])
+compile_and_run(assert_error_mode + file_fixture + file_functions + stored_settings_with_files + file_cases, ['elrs_input_model.cpp'])
 
 # Couple the actual raw request reader, transactional save, HTTP handler, and reboot callback.
-integration_fixture = storage_fixture + '#define STRLEN(s) (sizeof(s)-1)\n'
+integration_fixture = storage_fixture + 'bool remoteSettingsBusy() { return false; }\n#define STRLEN(s) (sizeof(s)-1)\n'
 integration_callbacks = post_parser
 integration_cases = r'''
 // Submit required input fields while allowing curve fields to be omitted.
@@ -1994,4 +2086,4 @@ int main() {
     puts("CRSF display form save, missing-source persistence, malformed HTTP rejection and write retry passed");
 }
 '''
-compile_and_run(integration_fixture + stored_settings + axis_buffers + crsf_blob_validator + portal_callbacks + test_writer_adapter + expo_post + switch_post + integration_callbacks + portal_http + integration_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
+compile_and_run(assert_error_mode + integration_fixture + stored_settings + axis_buffers + crsf_blob_validator + portal_callbacks + test_writer_adapter + expo_post + switch_post + integration_callbacks + portal_http + integration_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])

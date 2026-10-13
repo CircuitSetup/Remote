@@ -64,7 +64,6 @@
 #include "display.h"
 #include "remote_audio.h"
 #include "remote_settings.h"
-#include "remote_settings_transfer.h"
 #include "remote_wifi.h"
 #include "remote_main.h"
 #ifdef HAVE_CRSF
@@ -85,15 +84,8 @@ Settings settings;
 IPSettings ipsettings;
 
 WiFiManager wm;
-WiFiManagerParameter custom_remote_controls("<div id='remote-controls'></div><script defer src='/remote/ui.js'></script>");
 
-void captureRemoteWifiCredentials(Settings &snapshot)
-{
-    if(!snapshot.ssid[0] && snapshot.ssid[1]=='X') {
-        memset(snapshot.ssid,0,sizeof(snapshot.ssid));
-        wm.getStoredCredentials(snapshot.ssid,sizeof(snapshot.ssid),snapshot.pass,sizeof(snapshot.pass));
-    }
-}
+
 bool wifiSetupDone = false;
 
 #ifdef HAVE_MQTT
@@ -585,7 +577,6 @@ static void mqttSubscribe();
 #ifdef HAVE_CRSF
 #include "src/CRSF/crsf_wifi.h"
 #endif
-#include "remote_config_portal.h"
 
 
 /*
@@ -785,7 +776,7 @@ void wifi_setup()
     #ifdef HAVE_PM
     if(havePwrMon) temp += 3;
     #endif
-    wm.allocParms(WM_PARM_SETTINGS, temp+1);
+    wm.allocParms(WM_PARM_SETTINGS, temp);
     temp = 0;
     while(parmArray[temp]) {
         wm.addParameter(WM_PARM_SETTINGS, parmArray[temp]);
@@ -798,10 +789,6 @@ void wifi_setup()
         wm.addParameter(WM_PARM_SETTINGS, &custom_bca);
     }
     #endif
-    #ifdef HAVE_CRSF
-    if(!haveNewBoard)
-    #endif
-    wm.addParameter(WM_PARM_SETTINGS, &custom_remote_controls);
 
     // HA/MQTT
     #ifdef HAVE_MQTT
@@ -1025,7 +1012,9 @@ static void setBool(char c, bool& b)
 void wifi_loop()
 {
     char oldCfgOnSD = 0;
+    #ifdef HAVE_CRSF
     remotePortalApplyPreferences();
+    #endif
 
 #ifdef HAVE_MQTT
     if(useMQTT) {
@@ -1264,7 +1253,7 @@ void wifi_loop()
             // through getServerParam() must be handled in saveParamsCallback()
             
             #ifdef HAVE_CRSF
-            // Both ELRS stores were committed before the HTTP response.
+            // CRSF settings were saved before the HTTP response.
             #endif
             
         }
@@ -1772,33 +1761,6 @@ static void saveWiFiCallback(const char *ssid, const char *pass, const char *bss
     wifiLoopSaveAction |= WLA_WIFI;
 }
 
-#ifdef HAVE_CRSF
-static bool saveCRSFPortalSettings(RemoteTransferError &error)
-{
-    remotePortalApplyPreferences();
-    if(remoteSettingsBusy() || remotePortalUploading || remotePortalRadioBusy() || remoteRadioReviewPending())
-        return remoteTransferFail(error,RemoteTransferCode::Busy,"crsf","Finish the active operation or radio review first");
-    std::unique_ptr<RemoteSettingsSnapshot> before(new(std::nothrow) RemoteSettingsSnapshot),candidate(new(std::nothrow) RemoteSettingsSnapshot);
-    if(!before || !candidate)return remoteTransferFail(error,RemoteTransferCode::TooLarge,"crsf","No save memory");
-    if(!captureRemoteSettings(*before,error))return false;
-    before->settings=settings;before->radio=remoteRadioPreferences;*candidate=*before;
-    bool valid=crsf_wifi_saveParamsCallback();
-    if(!valid)remoteTransferFail(error,RemoteTransferCode::Busy,"radio","Saved radio choices changed; use live ELRS controls");
-    if(valid)valid=buildCRSFPortalInputSettings(candidate->crsf,error);
-    if(!valid && error.code==RemoteTransferCode::None)remoteTransferFail(error,RemoteTransferCode::InvalidValue,"crsf","Invalid Logic, Mixes or input settings");
-    candidate->settings=settings;
-    if(!remoteRadioVersioned){candidate->radio=elrsRadioPreferencesFromLegacy(atoi(settings.elrsTlmRatio),atoi(settings.elrsMaxPower),atoi(settings.elrsDynPower));candidate->radio.modelId=before->radio.modelId;}
-    settings=before->settings;
-    if(!valid){syncCRSFPortalBuffers();return false;}
-    flushDelayedSave();
-    if(!captureRemoteSettings(*before,error)){syncCRSFPortalBuffers();return false;}
-    before->settings=settings;before->radio=remoteRadioPreferences;candidate->generation=before->generation;
-    if(!remoteCommitELRSSettings(*before,*candidate,error)){syncCRSFPortalBuffers();return false;}
-    settings=candidate->settings;remoteRadioPreferences=candidate->radio;remoteRadioVersioned=true;
-    installCommittedELRSSettings(candidate->crsf);remotePortalPreferenceFailed=0;
-    syncCRSFPortalBuffers();return true;
-}
-#endif
 
 // This is the callback from the actual Params page. We read out
 // the WM "Settings" parameters and save them.
@@ -1827,9 +1789,12 @@ static bool saveParamsCallback(int paramspage)
         break;
     case 3: {
         #ifdef HAVE_CRSF
-        RemoteTransferError error;
-        if(!saveCRSFPortalSettings(error)) {
-            wm.setParamSaveError(error.code==RemoteTransferCode::Busy?409:error.code==RemoteTransferCode::InvalidValue?400:500);
+        const auto previousSettings = settings;
+        if(!crsf_wifi_saveParamsCallback() || !crsf_wifi_loop_settings()) {
+            const bool invalidLogicMix = !crsfLogicParamsValid || !crsfMixParamsValid;
+            settings = previousSettings;
+            syncCRSFPortalBuffers();
+            if(invalidLogicMix) wm.setParamSaveError(400);
             return false;
         }
         #endif
@@ -2464,9 +2429,9 @@ static void allocUplArrays()
 
 static void setupWebServerCallback()
 {
-    remoteSetupPortal();
     wm.server->on(R_updateacdone, HTTP_POST, &handleUploadDone, &handleUploading);
     #ifdef HAVE_CRSF
+    if(haveNewBoard)remoteSetupPortal();
     if(haveNewBoard && opModeCRSF) {
         wm.server->on("/elrsraw", HTTP_GET, &handleELRSRawRead);
         wm.server->on("/elrstelemetry", HTTP_GET, &handleELRSTelemetryRead);

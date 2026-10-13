@@ -5,8 +5,8 @@ import json
 
 def embed(root):
     root=Path(root)
-    html=(root/'src/remote_config.html').read_text(encoding='utf-8')
-    script=(root/'src/remote_config.js').read_text(encoding='utf-8')
+    html=(root/'src/src/CRSF/crsf_config.html').read_text(encoding='utf-8')
+    script=(root/'src/src/CRSF/crsf_config.js').read_text(encoding='utf-8')
     source=('const remoteControls=document.getElementById("remote-controls");\n'
             'const settingsForm=remoteControls.closest("form");\n'
             'if(settingsForm){settingsForm.after(remoteControls);if(settingsForm.getAttribute("action")==="/param3save"){'
@@ -17,7 +17,7 @@ def embed(root):
     lines=['#pragma once','#include <stdint.h>','static const uint8_t remoteConfigUiGzip[] PROGMEM = {']
     lines+=['    '+','.join(f'0x{x:02x}'for x in data[i:i+16])+','for i in range(0,len(data),16)]
     lines+=['};','static constexpr size_t remoteConfigUiGzipLength=sizeof(remoteConfigUiGzip);','']
-    header=root/'src/remote_config_ui.h';text='\n'.join(lines)
+    header=root/'src/src/CRSF/crsf_config_ui.h';text='\n'.join(lines)
     if not header.exists() or header.read_text()!=text:header.write_text(text,encoding='utf-8')
     return len(source),len(data)
 

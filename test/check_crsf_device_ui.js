@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const ui = require('../src/remote_config.js');
+const ui = require('../src/src/CRSF/crsf_config.js');
 const matched={rfKnown:true,connected:true,modelMatched:true,devices:[{address:236}]};
 assert.equal(ui.bindingVerified(matched),true);
 for(const changed of [{connected:false},{modelMatched:false},{rfKnown:false},{devices:[]}])assert.equal(ui.bindingVerified({...matched,...changed}),false);

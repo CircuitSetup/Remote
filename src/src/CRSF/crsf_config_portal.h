@@ -1,6 +1,6 @@
 #pragma once
-#include "remote_settings_transfer.h"
-#include "remote_config_ui.h"
+#include "crsf_model_files.h"
+#include "crsf_config_ui.h"
 #include <memory>
 #include <cstring>
 #include <cstdio>
@@ -84,7 +84,7 @@ static void remotePortalSession() {
     StaticJsonDocument<128> doc;doc["nonce"]=remotePortalNonce;remotePortalJson(doc);
 }
 static void remotePortalDevices() {
-    StaticJsonDocument<1536> doc;auto devices=doc.createNestedArray("devices");doc["protectedAP"]=remotePortalProtectedAP();doc["maintenance"]=remoteMaintenanceActive();doc["radioReviewPending"]=remoteRadioReviewPending();doc["importAvailable"]=haveFS&&!FlashROMode&&!remoteSettingsRecoveryBlocked;
+    StaticJsonDocument<1536> doc;auto devices=doc.createNestedArray("devices");doc["protectedAP"]=remotePortalProtectedAP();doc["maintenance"]=remoteMaintenanceActive();doc["radioReviewPending"]=remoteRadioReviewPending();doc["importAvailable"]=remoteUploadAvailable()&&!crsfSettingsRecoveryBlocked;
 #ifdef HAVE_CRSF
     doc["crsfActive"]=opModeCRSF;
     if(opModeCRSF) {
@@ -111,8 +111,8 @@ static void remotePortalApplyPreferences() {
     if(!changed)return;
     // Update runtime before file I/O so servicing CRSF cannot reapply the old preference.
     if(!elrsMode.setRadioPreferences(next,remoteRadioReviewPending(),false)){remotePortalPreferenceFailed=s.id;return;}
-    remoteRadioPreferences=next;remoteRadioVersioned=true;
-    if(!write_settings())remotePortalPreferenceFailed=s.id;
+    auto preferences=snapshotELRSPortalPreferences();preferences.radio=next;
+    if(!saveELRSSettings(snapshotELRSSettings(),preferences))remotePortalPreferenceFailed=s.id;
 #endif
 }
 static void remotePortalOperation() {
@@ -171,10 +171,10 @@ static void remotePortalUpload() {
     if(upload.status==UPLOAD_FILE_START){remotePortalUploadOk=false;remotePortalUploadBytes=0;remotePortalUploadError={};
         if(!remotePortalGate())return;
         if(++remotePortalUploadFiles!=1){remoteTransferFail(remotePortalUploadError,RemoteTransferCode::InvalidValue,"file","Upload exactly one native file");return;}
-        if(remoteSettingsBusy()||remotePortalRadioBusy()||remotePortalUploading || FlashROMode || !haveFS){remoteTransferFail(remotePortalUploadError,RemoteTransferCode::Busy,"upload","Storage/radio busy or writable flash unavailable");return;}
+        if(remoteSettingsBusy()||remotePortalRadioBusy()||remotePortalUploading || !remoteUploadAvailable()){remoteTransferFail(remotePortalUploadError,RemoteTransferCode::Busy,"upload","Storage/radio busy or writable storage unavailable");return;}
         const String kind=wm.server->arg("kind");if(kind!="model"&&kind!="backup"){remoteTransferFail(remotePortalUploadError,RemoteTransferCode::InvalidValue,"kind","Choose a native file kind");return;}
         remotePortalUploadKind=kind=="backup"?RemoteTransferKind::DeviceBackup:RemoteTransferKind::ModelProfile;
-        remotePortalPreview.valid=false;remotePortalUploading=true;remotePortalUploadFile=LittleFS.open("/remote-transfer.upload","w");remotePortalUploadOk=(bool)remotePortalUploadFile;
+        remotePortalPreview.valid=false;remotePortalUploading=true;remotePortalUploadFile=remoteUploadStorage().open(remoteUploadPath(),"w");remotePortalUploadOk=(bool)remotePortalUploadFile;
     }else if(upload.status==UPLOAD_FILE_WRITE && remotePortalUploading){
         const size_t cap=remotePortalUploadKind==RemoteTransferKind::DeviceBackup?REMOTE_BACKUP_MAX_BYTES:REMOTE_MODEL_MAX_BYTES;
         if(!remotePortalToken() || upload.currentSize>cap-std::min(cap,remotePortalUploadBytes)){remotePortalUploadOk=false;remoteTransferFail(remotePortalUploadError,RemoteTransferCode::TooLarge,"file","Upload exceeds its bound or session expired");}
@@ -190,20 +190,21 @@ static void remotePortalUploadDone() {
     if(!remotePortalGate())return;
     if(!remotePortalUploadOk){if(remotePortalUploadError.code==RemoteTransferCode::None)remoteTransferFail(remotePortalUploadError,RemoteTransferCode::WriteFailed,"file","Upload incomplete or failed");remotePortalError(remotePortalUploadError);return;}
     std::unique_ptr<RemoteSettingsSnapshot> current(new(std::nothrow) RemoteSettingsSnapshot);RemoteTransferError e;
-    uint32_t clone=0;if(wm.server->hasArg("clone")&&!remotePortalUnsigned("clone",1,clone)){remotePortalError(400,"INVALID_VALUE","clone","Expected 0 or 1");return;}
-    remotePortalPreview.cloneIdentity=clone;File file=LittleFS.open("/remote-transfer.upload","r");
+    File file=remoteUploadStorage().open(remoteUploadPath(),"r");
     bool ok=current && captureRemoteSettings(*current,e) && validateRemoteTransfer(file,remotePortalUploadKind,*current,remotePortalPreview,e);file.close();remotePortalUploadOk=false;
     if(!ok){remotePortalError(e);return;}
-    DynamicJsonDocument doc(REMOTE_TRANSFER_JSON_CAPACITY);doc["fileHash"]=remotePortalPreview.fileHash;doc["expiresInSeconds"]=300;doc["hostname"]=remotePortalPreview.hostname;doc["ip"]=remotePortalPreview.ip;doc["identity"]=remotePortalPreview.proposedIdentity;
-    doc["credentials"]=remotePortalUploadKind==RemoteTransferKind::DeviceBackup?"Credentials/calibration replaced; secrets masked here":"Target credentials, identity and calibration retained";
-    doc["restart"]=true;doc["radio"]= "Imported radio preferences remain pending separate review";doc["recovery"]="Reconnect by resulting hostname/IP or the password-protected Remote AP";
-    auto stores=doc.createNestedArray("stores");for(uint8_t i=0;i<7;i++){auto x=stores.createNestedObject();x["id"]=remoteStoreName(i);x["changed"]=(bool)(remotePortalPreview.changedStores&(1<<i));x["medium"]=remotePortalPreview.stores[i].medium==RemoteStoreMedium::SD?"SD":"flash";x["bytes"]=remotePortalPreview.stores[i].byteLength;}
+    DynamicJsonDocument doc(REMOTE_TRANSFER_JSON_CAPACITY);doc["fileHash"]=remotePortalPreview.fileHash;doc["expiresInSeconds"]=300;
+    doc["calibration"]=remotePortalUploadKind==RemoteTransferKind::DeviceBackup?"Restore the file's CRSF calibration":"Keep this Remote's calibration";
+    doc["restart"]=true;doc["radio"]="Imported radio preferences require separate readback and review";
     if(current->newBoard) {
         const ELRSCrsfSettingsBlob *models[]={&remotePortalPreview.currentCrsf,&remotePortalPreview.proposedCrsf};
         const ELRSRadioPreferences *radios[]={&remotePortalPreview.currentRadio,&remotePortalPreview.proposedRadio};
         for(unsigned side=0;side<2;side++){auto x=doc.createNestedObject(side?"proposed":"current");const auto &m=*models[side];auto inputs=x.createNestedArray("inputs");for(unsigned i=0;i<4;i++){auto a=inputs.createNestedArray();a.add((bool)m.axisProfile[i].reverse);a.add(m.axisProfile[i].deadband);a.add(m.axisProfile[i].expo);a.add(m.outputLimits[i].minimumUs);a.add(m.outputLimits[i].maximumUs);}
             auto logic=x.createNestedArray("logical");for(const auto &r:m.logic.rules){auto a=logic.createNestedArray();a.add(r.function);a.add(r.sourceA);a.add(r.sourceB);a.add(r.threshold);a.add(r.andSwitch);}
             auto mixes=x.createNestedArray("mixes");for(const auto &r:m.mixes.lines){auto a=mixes.createNestedArray();a.add(r.channel);a.add(r.source);a.add(r.switchSource);a.add(r.weight);a.add(r.offset);a.add(r.multiplex);}
+            const auto &prefs=side?remotePortalPreview.proposedSettings:remotePortalPreview.currentSettings;
+            auto calibration=x.createNestedArray("calibration");for(const auto &p:m.axisProfile){auto a=calibration.createNestedArray();a.add(p.minimum);a.add(p.center);a.add(p.maximum);}
+            x["inputFiltering"]=m.adcHysteresis;x["mode"]=atoi(prefs.opMode);x["connectWiFi"]=prefs.crsfap[0]!='0';x["speedUnits"]=prefs.elrsSpdUnit[0]=='0'?"kmh":"mph";
             x["CRSF channel cadence"]=side?remotePortalPreview.proposedCadence:remotePortalPreview.currentCadence;x["profileId"]=radios[side]->modelId;x["telemetry"]=radios[side]->telemetry;x["power"]=radios[side]->maxPower.label;x["powerUnit"]=radios[side]->maxPower.unit;x["dynamic"]=radios[side]->dynamic;
         }
     }
@@ -217,14 +218,14 @@ static void remotePortalExport() {
     std::unique_ptr<RemoteSettingsSnapshot> snapshot(new(std::nothrow) RemoteSettingsSnapshot);RemoteTransferError e;DynamicJsonDocument doc(REMOTE_TRANSFER_JSON_CAPACITY);
     bool ok=snapshot && captureRemoteSettings(*snapshot,e) && (kind=="backup"?remoteEncodeBackup(doc.to<JsonObject>(),*snapshot,e):remoteEncodeModel(doc.to<JsonObject>(),*snapshot,e));
     if(!ok || doc.overflowed()){if(e.code==RemoteTransferCode::None)remoteTransferFail(e,RemoteTransferCode::TooLarge,"export","Insufficient snapshot/document memory");remotePortalError(e);return;}
-    wm.server->sendHeader("Content-Disposition",kind=="backup"?"attachment; filename=remote.remote-backup.json":"attachment; filename=remote.remote-model.json");remotePortalJson(doc);
+    wm.server->sendHeader("Content-Disposition",kind=="backup"?"attachment; filename=remote.crsf-backup.json":"attachment; filename=remote.remote-model.json");remotePortalJson(doc);
 }
 static void remotePortalApply() {
     if(!remotePortalGate())return;
     uint32_t confirmed;if(!remotePortalUnsigned("confirmed",1,confirmed)||confirmed!=1){remotePortalError(400,"INVALID_VALUE","confirmed","Confirm this preview before activation");return;}
     const String hash=wm.server->arg("fileHash");if(!remotePortalPreview.valid || hash.length()!=64 || strcmp(hash.c_str(),remotePortalPreview.fileHash)){remotePortalError(409,"STALE_PREVIEW","fileHash","Use this session's exact validated preview");return;}
     RemoteTransferError e;if(!applyRemoteTransfer(remotePortalPreview,e)){remotePortalPreview.valid=false;remotePortalError(e,409);return;}
-    remotePortalPreview.valid=false;StaticJsonDocument<96> doc;doc["ok"]=true;doc["restart"]=true;remotePortalJson(doc);remotePortalService();esp_restart();
+    remotePortalPreview.valid=false;StaticJsonDocument<96> doc;doc["ok"]=true;doc["restart"]=true;remotePortalJson(doc);remotePortalService();prepareReboot();esp_restart();
 }
 static void remotePortalReview() {
     if(!remotePortalGate())return;uint32_t confirmed;
@@ -234,10 +235,7 @@ static void remotePortalReview() {
 static void remoteSetupPortal() {
     const char *headers[]={"Origin","Referer","X-Remote-Nonce"};wm.server->collectHeaders(headers,3);
     wm.server->on("/remote-control",HTTP_GET,[](){
-        const char *page="/param#remote-controls";
-#ifdef HAVE_CRSF
-        if(haveNewBoard)page="/param3#remote-controls";
-#endif
+        const char *page="/param3#remote-controls";
         wm.server->sendHeader("Location",page);wm.server->sendHeader("Cache-Control","no-store");wm.server->send(302,"text/plain","");
     });
     wm.server->on("/remote/ui.js",HTTP_GET,[](){wm.server->sendHeader("Content-Encoding","gzip");wm.server->sendHeader("Cache-Control","no-store");wm.server->send_P(200,"application/javascript",(const char*)remoteConfigUiGzip,remoteConfigUiGzipLength);});

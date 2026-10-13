@@ -1,4 +1,5 @@
 import gzip
+from argparse import Namespace
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,14 @@ class CapacityReportTests(unittest.TestCase):
 
     def test_portal_asset_budget_matches_approved_ledger_limit(self):
         self.assertEqual(capacity.PORTAL_ASSET_LIMIT, 8192)
+
+    def test_default_portal_sources_follow_crsf_owned_ui(self):
+        report = capacity.build_report(Namespace(candidate_bin=None, candidate_elf=None,
+                                                  baseline_bin=None, baseline_elf=None,
+                                                  map_file=None, asset_header=None,
+                                                  asset_sources=None))
+        self.assertEqual([Path(row['path']).name for row in report['asset_sources']],
+                         ['crsf_config.html', 'crsf_config.js'])
 
     def test_actual_bin_limit_includes_exact_reserve(self):
         self.assertTrue(capacity.ota_gate(capacity.OTA_IMAGE_LIMIT)['pass'])

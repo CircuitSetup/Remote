@@ -15,6 +15,7 @@ STATIC_RAM_BASELINE = 73_580
 STATIC_RAM_DELTA_LIMIT = 8_192
 STATIC_RAM_LIMIT = STATIC_RAM_BASELINE + STATIC_RAM_DELTA_LIMIT
 PORTAL_ASSET_LIMIT = 8_192
+ROOT = Path(__file__).resolve().parents[1]
 PROGRAM_SECTIONS = ('.iram0.vectors', '.iram0.text', '.dram0.data', '.flash.text', '.flash.rodata')
 
 
@@ -138,7 +139,7 @@ def build_report(args):
             report['image_delta_bytes'] = report['candidate_image_bytes'] - report['baseline_image_bytes']
     asset_path = getattr(args, 'asset_header', None)
     source_paths = getattr(args, 'asset_sources', None) or [
-        path for path in (Path('src/remote_config.html'), Path('src/remote_config.js')) if path.exists()]
+        path for path in (ROOT / 'src/src/CRSF/crsf_config.html', ROOT / 'src/src/CRSF/crsf_config.js') if path.exists()]
     if asset_path:
         count, uncompressed_bytes = asset_header_bytes(asset_path)
         symbols = []

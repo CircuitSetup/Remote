@@ -1,6 +1,7 @@
 
 #ifdef HAVE_CRSF
 
+#include "crsf_model_files.h"
 #include <ArduinoJson.h>
 #include "elrs_crsf.h"
 #include "../../legacy_portal_assets.h"
@@ -168,6 +169,8 @@ WiFiManagerParameter custom_crsfswmap(wmBuildCRSFSwitchMap);
 WiFiManagerParameter custom_ss_crsfcal("<h3>Gimbal Settings</h3>", WFM_SECTS|WFM_HL);
 WiFiManagerParameter custom_crsfcal(wmBuildCRSFCAL, WFM_FOOT);
 
+WiFiManagerParameter custom_remote_controls("<div id='remote-controls'></div><script defer src='/remote/ui.js'></script>");
+
 WiFiManagerParameter * const crsfParmArray[] = {
       &custom_crsfom,
       &custom_crsfmodehelp,
@@ -204,12 +207,22 @@ WiFiManagerParameter * const crsfParmArray[] = {
  * Callback from saveParamsCallback()
  *
  */
+static bool crsf_wifi_loop_settings()
+{
+    if(remoteSettingsBusy() || remoteRadioReviewPending() || (opModeCRSF && elrsMode.deviceConfig().busy())){wm.setParamSaveError(409);return false;}
+    ELRSCrsfSettingsBlob candidate;RemoteTransferError error;
+    if(!buildCRSFPortalInputSettings(candidate,error)){wm.setParamSaveError(400);syncCRSFPortalBuffers();return false;}
+    const auto preferences=snapshotELRSPortalPreferences();flushDelayedSave();
+    if(!saveELRSSettings(candidate,preferences)){wm.setParamSaveError(500);syncCRSFPortalBuffers();return false;}
+    syncCRSFPortalBuffers();return true;
+}
+
 static bool crsf_wifi_saveParamsCallback()
 {
     if(remoteRadioVersioned) {
         const char *names[]={"ctlmr","cmpwr","cdynp"};
         const char *values[]={settings.elrsTlmRatio,settings.elrsMaxPower,settings.elrsDynPower};
-        for(unsigned i=0;i<3;i++)if(wm.server->hasArg(names[i]) && wm.server->arg(names[i])!=values[i])return false;
+        for(unsigned i=0;i<3;i++)if(wm.server->hasArg(names[i]) && wm.server->arg(names[i])!=values[i]){wm.setParamSaveError(409);return false;}
     }
     getServerParam("copm", settings.opMode, 1, 0, 2, 0);
     getServerParam("cpktr", settings.elrsPktRate, 1, 0, 4, DEF_ELRSPKTRATE);
@@ -1282,5 +1295,7 @@ static const char *wmBuildCRSFLogicMix(const char *dest, int op)
     return result;
 #endif
 }
+
+#include "crsf_config_portal.h"
 
 #endif
