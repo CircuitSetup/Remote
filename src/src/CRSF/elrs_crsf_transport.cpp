@@ -161,7 +161,11 @@ void ELRSCrsfTransport::loop(ELRSCrsfTransportHal &hal, unsigned long now, unsig
     nowUs = hal.microsNow();
 
     if((int32_t)((uint32_t)nowUs - _nextTxAtUs) >= 0) {
-        if(_haveServiceFrame && (!_haveServiceTx || ((uint32_t)(now - _lastServiceTxAt) >= CRSF_SERVICE_FRAME_GAP_MS))) {
+        if(_sink) _sink->onCrsfBeforeTx(now);
+        now = hal.millisNow();
+        nowUs = hal.microsNow();
+        // Unread input may contain an armed status; keep RC moving until it is parsed.
+        if(_haveServiceFrame && !hal.serialAvailable() && (!_haveServiceTx || ((uint32_t)(now - _lastServiceTxAt) >= CRSF_SERVICE_FRAME_GAP_MS))) {
             sendFrame(hal, _serviceFrame, _serviceFrameLen, now, nowUs, "ELRS/CRSF CFG", true);
             _haveServiceFrame = false;
             _serviceFrameLen = 0;

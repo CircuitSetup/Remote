@@ -330,7 +330,6 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     }
 #endif
     _transport.setChannels(_channels);
-    _deviceConfig.tick(_transport, configSafety((uint32_t)now), (uint32_t)now);
     _transport.loop(host, now, nowUs);
     now = host.millisNow();
     // Overdue RC slots must release time for ADC work instead of starving every sweep.

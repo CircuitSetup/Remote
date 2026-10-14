@@ -3,6 +3,8 @@ header:
   name: Four axis linear fixture
   modelId:
     0:
+      val: 12
+    1:
       val: 42
 expoData:
   - srcRaw: Ail
@@ -10,7 +12,7 @@ expoData:
     mode: 3
     chn: 0
     swtch: NONE
-    flightModes: "111111111"
+    flightModes: "000000000"
     weight: 100
     offset: 0
     curve: {type: 0, value: 0}
@@ -32,5 +34,8 @@ mixData:
     carryTrim: 0
     mltpx: ADD
     mixWarn: 0
-    flightModes: "111111111"
+    flightModes: "000000000"
     name: Input row
+moduleData:
+  0: {type: TYPE_NONE}
+  1: {type: TYPE_CROSSFIRE}

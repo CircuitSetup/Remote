@@ -3012,6 +3012,50 @@ static void test_unsafe_transition_cancels_unsent_write()
     TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
 }
 
+static void test_core_rechecks_fresh_radio_status_before_mutation_tx()
+{
+    for(bool backlog : {false, true}) {
+        for(uint8_t flags : {uint8_t(0), uint8_t(1), uint8_t(8), uint8_t(9)}) {
+            FakeHost host;
+            ELRSCrsfCore core;
+            beginAt(core, host, defaultConfig(), 0, 0);
+            core.setDeviceConfigAccess(true, false);
+            auto &device = core.deviceConfig();
+            TEST_ASSERT_TRUE(device.discover(1));
+            loopAt(core, host, 0, 0);
+            host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 3));
+            loopAt(core, host, 1, 1000);
+            host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, 0, 0}));
+            loopAt(core, host, 2, 2000);
+            loopAt(core, host, 501, 501000);
+            TEST_ASSERT_TRUE(device.write(0xEE, 1, device.deviceAt(0)->generation,
+                                          ELRSParameterValue(9, 0), ELRSParameterValue(9, 1), 3));
+            loopAt(core, host, 600, 600000);
+            host.queueFrame(makeTextSelectionEntryFrame(1, "Packet Rate", "50Hz;250Hz", 0, 1));
+            loopAt(core, host, 601, 601000);
+            if(backlog) {
+                std::vector<uint8_t> echo;
+                for(const auto &frame : host.writes) if(frame[2] == 0x16) echo = frame;
+                TEST_ASSERT_EQUAL_UINT(26, echo.size());
+                for(unsigned i = 0; i < 3; ++i) host.queueFrame(echo);
+            }
+            host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, flags, 0}));
+            loopAt(core, host, 700, 700000);
+
+            unsigned writes = 0;
+            for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5] == 1) ++writes;
+            if(backlog) {
+                TEST_ASSERT_EQUAL_UINT(0, writes);
+                loopAt(core, host, 710, 710000);
+                writes = 0;
+                for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5] == 1) ++writes;
+            }
+            TEST_ASSERT_EQUAL_UINT(flags == 0 ? 1 : 0, writes);
+            if(flags) TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsafe, (int)device.status().error);
+        }
+    }
+}
+
 static void test_readback_rejection_is_not_success()
 {
     for(int accepted = 0; accepted < 2; accepted++) {
@@ -3081,6 +3125,27 @@ static void test_module_swap_invalidates_pending_write()
     feedDevice(device, makeDeviceInfoFrame("Different module", 4), 800);
     TEST_ASSERT_EQUAL((int)ELRSDeviceError::Stale, (int)device.status().error);
     TEST_ASSERT_FALSE(device.read(0xEE, 1, expected.generation, 4));
+}
+
+static void test_module_swap_invalidates_cached_model_id()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    feedDevice(device, modelMatchEntry(9), 601);
+    TEST_ASSERT_TRUE(device.modelIdKnown());
+    TEST_ASSERT_EQUAL_UINT8(9, device.modelId());
+
+    feedDevice(device, makeDeviceInfoFrame("Different module", 4), 700);
+    TEST_ASSERT_FALSE(device.modelIdKnown());
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 3));
+    deviceStep(device, transport, host, 800);
+    feedDevice(device, modelMatchEntry(42), 801);
+    TEST_ASSERT_TRUE(device.modelIdKnown());
+    TEST_ASSERT_EQUAL_UINT8(42, device.modelId());
 }
 
 static void test_band_change_refreshes_rate_antenna_and_power()
@@ -6097,9 +6162,11 @@ int main(int argc, char **argv)
     RUN_TEST(test_off_race_stale_status_blocks_mutation);
     RUN_TEST(test_final_ch5_blocks_stop_named_safe);
     RUN_TEST(test_unsafe_transition_cancels_unsent_write);
+    RUN_TEST(test_core_rechecks_fresh_radio_status_before_mutation_tx);
     RUN_TEST(test_readback_rejection_is_not_success);
     RUN_TEST(test_id_63_allowed_64_rejected);
     RUN_TEST(test_module_swap_invalidates_pending_write);
+    RUN_TEST(test_module_swap_invalidates_cached_model_id);
     RUN_TEST(test_band_change_refreshes_rate_antenna_and_power);
     RUN_TEST(test_crossband_forced_gemini_is_not_overridden);
     RUN_TEST(test_busy_write_cannot_change_inflight_value);

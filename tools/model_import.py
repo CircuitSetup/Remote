@@ -19,6 +19,13 @@ KNOWN_SWITCH_POSITIONS = {
     "tx16s": {"SA": 3, "SB": 3, "SC": 3, "SD": 3, "SE": 3, "SG": 3, "SF": 2},
     "boxer": {"SA": 2, "SB": 3, "SC": 3, "SD": 2},
 }
+MODULE_TYPES = {
+    "TYPE_NONE", "TYPE_PPM", "TYPE_XJT_PXX1", "TYPE_ISRM_PXX2", "TYPE_DSM2",
+    "TYPE_CROSSFIRE", "TYPE_MULTIMODULE", "TYPE_R9M_PXX1", "TYPE_R9M_PXX2",
+    "TYPE_R9M_LITE_PXX1", "TYPE_R9M_LITE_PXX2", "TYPE_GHOST",
+    "TYPE_R9M_LITE_PRO_PXX2", "TYPE_SBUS", "TYPE_XJT_LITE_PXX2",
+    "TYPE_FLYSKY_AFHDS2A", "TYPE_FLYSKY_AFHDS3", "TYPE_LEMON_DSMP",
+}
 ROOT_KEYS = {
     "semver", "header", "timers", "noGlobalFunctions", "thrTrim", "trimInc",
     "displayTrims", "ignoreSensorIds", "showInstanceIds", "disableThrottleWarning",
@@ -220,6 +227,58 @@ def _constant_int(value):
     return None
 
 
+def _flight_modes_unconditional(row):
+    value = row.get("flightModes", 0)
+    return type(value) is int and value == 0 or value == "000000000"
+
+
+def _crsf_model_id(doc, errors):
+    modules = doc.get("moduleData", {})
+    if not isinstance(modules, dict):
+        _fail(errors, "moduleData", "Cannot determine the active CRSF module from moduleData")
+        return None
+    indexed = {}
+    for key, module in modules.items():
+        index = _index_key(key)
+        if index not in (0, 1) or index in indexed or not isinstance(module, dict):
+            _fail(errors, "moduleData", "Invalid moduleData; expected internal and external module records")
+            return None
+        kind = module.get("type", "TYPE_NONE")
+        if not isinstance(kind, str) or kind not in MODULE_TYPES:
+            _fail(errors, f"moduleData.{index}.type", "Invalid module type in moduleData")
+            return None
+        indexed[index] = kind
+    crsf = [index for index, kind in indexed.items() if kind == "TYPE_CROSSFIRE"]
+    if len(crsf) != 1:
+        _fail(errors, "moduleData", "Cannot determine one active CRSF module")
+        return None
+    module_id = crsf[0]
+    header = doc.get("header")
+    if not isinstance(header, dict):
+        _fail(errors, "header.modelId", "Cannot determine the active CRSF module model ID")
+        return None
+    if "modelId" not in header:
+        return 0
+    ids = header["modelId"]
+    id_indexes = [_index_key(key) for key in ids] if isinstance(ids, dict) else []
+    if (not isinstance(ids, dict) or len(set(id_indexes)) != len(ids) or
+            any(index not in (0, 1) for index in id_indexes)):
+        _fail(errors, "header.modelId", "Cannot determine the active CRSF module model ID")
+        return None
+    missing = object()
+    entry = next((value for key, value in ids.items() if _index_key(key) == module_id), missing)
+    if entry is missing:
+        return 0
+    if not isinstance(entry, dict):
+        _fail(errors, f"header.modelId.{module_id}", "Invalid model ID record for the active CRSF module")
+        return None
+    value = entry.get("val", 0)
+    if type(value) is not int or not 0 <= value <= 63:
+        _fail(errors, f"header.modelId.{module_id}.val", "Invalid or missing model ID for the active CRSF module")
+        return None
+    return value
+
+
 def _source(value, mapping, path, errors):
     if not isinstance(value, str):
         _fail(errors, path, "Expected a supported physical control source")
@@ -244,18 +303,40 @@ def _source(value, mapping, path, errors):
         source = mapping["_inputMap"][int(input_source.group(1))]
         return source
     switches = mapping["switchMap"]
-    switch_match = re.fullmatch(r"([A-Z][A-Z0-9]*?)([01])?", tag)
-    switch_tag = switch_match.group(1) if switch_match else tag
-    if switch_tag in switches:
-        item = switches[switch_tag]
-        edge_position_invert = bool(switch_match and switch_match.group(2) == "0")
-        return (5 + item["input"]) | (0x80 if bool(item["reverse"]) ^ reverse ^ edge_position_invert else 0)
-    logical = re.fullmatch(r"L0?([1-9]|1[0-6])", tag)
+    if tag in switches:
+        item = switches[tag]
+        return (5 + item["input"]) | (0x80 if bool(item["reverse"]) ^ reverse else 0)
+    logical = re.fullmatch(r"ls\(([1-9]|1[0-6])\)", tag)
     if logical:
         index = int(logical.group(1)) - 1
         if index in mapping.get("_logicalMap", {}):
             return mapping["_logicalMap"][index] | (0x80 if reverse else 0)
     _fail(errors, path, f"Unsupported source {value!r}; feedback, timers, telemetry and nonmapped controls are rejected")
+    return None
+
+
+def _condition(value, mapping, path, errors):
+    if not isinstance(value, str):
+        _fail(errors, path, "Expected a mapped two-position switch or earlier logical switch condition")
+        return None
+    reverse = value.startswith("!")
+    tag = value[1:] if reverse else value
+    logical = re.fullmatch(r"L0?([1-9]|1[0-6])", tag)
+    if logical:
+        index = int(logical.group(1)) - 1
+        if index in mapping.get("_logicalMap", {}):
+            return mapping["_logicalMap"][index] | (0x80 if reverse else 0)
+        _fail(errors, path, f"Unsupported or forward-referenced logical switch {value!r}")
+        return None
+    switch = re.fullmatch(r"([A-Z][A-Z0-9]*?)([012])", tag)
+    if switch and switch.group(1) in mapping["switchMap"]:
+        if switch.group(2) == "1":
+            _fail(errors, path, "Middle-position switch conditions are unsupported")
+            return None
+        item = mapping["switchMap"][switch.group(1)]
+        invert_position = switch.group(2) == "0"
+        return (5 + item["input"]) | (0x80 if bool(item["reverse"]) ^ reverse ^ invert_position else 0)
+    _fail(errors, path, f"Unsupported switch condition {value!r}; use a mapped two-position control or earlier logical switch")
     return None
 
 
@@ -294,17 +375,7 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
         for key in set(header) - {"name", "bitmap", "labels", "modelId"}:
             _fail(errors, f"header.{key}", "Unknown header field")
     profile = _default_profile(source_radio, source_version, source_name, mapping)
-    if isinstance(header, dict) and isinstance(header.get("modelId"), dict):
-        module_keys = [_index_key(k) for k in header["modelId"]]
-        if len(module_keys) != len(set(module_keys)):
-            _fail(errors, "header.modelId", "Duplicate module index")
-        module = next((v for k, v in header["modelId"].items() if _index_key(k) == 0), None)
-        if module:
-            value = module.get("val") if isinstance(module, dict) else None
-            if type(value) is not int or not 0 <= value <= 63:
-                _fail(errors, "header.modelId.0.val", "Receiver/model ID must be from 0 through 63")
-            else:
-                profile["radio"]["modelId"] = value
+    profile["radio"]["modelId"] = _crsf_model_id(doc, errors) or 0
 
     for axis in ("Ail", "Ele", "Rud", "Thr"):
         if axis not in mapping["axes"]:
@@ -342,7 +413,7 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
                 _fail(errors, f"{path}.curve.value", "Only positive constant expo from 0 through 100 is supported")
         elif curve not in ({"type": 0, "value": 0}, 0, None):
             _fail(errors, f"{path}.curve", "Differential and custom curves are unsupported")
-        if (row.get("swtch", "NONE") != "NONE" or row.get("flightModes", "111111111") != "111111111" or
+        if (row.get("swtch", "NONE") != "NONE" or not _flight_modes_unconditional(row) or
                 row.get("weight", 100) != 100 or row.get("offset", 0) != 0 or
                 row.get("trimSource", row.get("carryTrim", 0)) not in (0, None) or
                 row.get("mode", 3) != 3 or row.get("scale", 0) not in (0, None)):
@@ -420,11 +491,12 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
         definition = row.get("def", "")
         parts = definition.split(",") if isinstance(definition, str) else []
         and_switch = row.get("andsw", "NONE")
-        fn = {"FUNC_GREATER": 1, "FUNC_LESS": 2, "FUNC_AND": 3, "FUNC_OR": 4, "FUNC_XOR": 5}.get(func)
-        if fn is None or len(parts) != (2 if fn >= 3 else 2):
+        fn = {"FUNC_VPOS": 1, "FUNC_VNEG": 2, "FUNC_AND": 3, "FUNC_OR": 4, "FUNC_XOR": 5}.get(func)
+        if fn is None or len(parts) != 2:
             _fail(errors, path, f"Unsupported logical function {func!r}")
             continue
-        a = _source(parts[0], mapping, f"{path}.def", errors)
+        a = (_source(parts[0], mapping, f"{path}.def", errors) if fn <= 2 else
+             _condition(parts[0], mapping, f"{path}.def", errors))
         b = 0
         threshold = 0
         if fn <= 2:
@@ -433,17 +505,17 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
                 _fail(errors, f"{path}.def", "Axis threshold comparison required")
                 continue
             raw = int(parts[1])
-            if raw % 10 or not -100 <= raw // 10 <= 100:
-                _fail(errors, f"{path}.def", "Threshold must be an exact Remote percentage boundary")
+            if not -100 <= raw <= 100:
+                _fail(errors, f"{path}.def", "Threshold must be from -100 through 100 percent")
                 continue
-            threshold = raw // 10
+            threshold = raw
         else:
-            b = _source(parts[1], mapping, f"{path}.def", errors)
+            b = _condition(parts[1], mapping, f"{path}.def", errors)
             if a is None or b is None or a < 5 or b < 5:
                 _fail(errors, f"{path}.def", "Boolean logic requires two mapped two-position switches or earlier logical slots")
                 continue
         if and_switch != "NONE":
-            and_switch = _source(and_switch, mapping, f"{path}.andsw", errors)
+            and_switch = _condition(and_switch, mapping, f"{path}.andsw", errors)
             if and_switch is None or and_switch < 5:
                 _fail(errors, f"{path}.andsw", "Only a mapped two-position switch is supported")
                 continue
@@ -483,7 +555,7 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
             _fail(errors, path, "Delayed, timed, trim, warning and curve behavior is unsupported")
         if row.get("curve", {"type": 0, "value": 0}) not in ({"type": 0, "value": 0}, 0, None):
             _fail(errors, f"{path}.curve", "Nonlinear curves are unsupported")
-        if row.get("flightModes", "111111111") != "111111111":
+        if not _flight_modes_unconditional(row):
             _fail(errors, f"{path}.flightModes", "Flight-mode-dependent mixes are unsupported")
         dest = _int(row.get("destCh"), f"{path}.destCh", errors, 0, 15)
         source = _source(row.get("srcRaw"), mapping, f"{path}.srcRaw", errors)
@@ -493,7 +565,7 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
         if switch == "NONE":
             switch = 0
         else:
-            switch = _source(switch, mapping, f"{path}.swtch", errors)
+            switch = _condition(switch, mapping, f"{path}.swtch", errors)
             if switch is not None and switch < 5:
                 _fail(errors, f"{path}.swtch", "Conditional mixes require a mapped two-position switch")
         mux = {"ADD": 0, "MUL": 1, "REPL": 2}.get(row.get("mltpx", "ADD"))
@@ -520,9 +592,6 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
             _fail(errors, f"limitData.{channel}", "Nondefault limits on mixed outputs are unsupported because Remote mix rows bypass axis output limits")
     profile["mixes"][:len(foreign_lines)] = foreign_lines
 
-    if isinstance(header, dict) and isinstance(header.get("modelId"), dict):
-        if any(_index_key(k) not in {0, 1, 2} for k in header["modelId"]):
-            _fail(errors, "header.modelId", "Unknown module selection")
     return profile
 
 

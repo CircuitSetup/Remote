@@ -185,7 +185,7 @@ bool applyRemoteTransfer(const RemoteRestorePreview &preview,RemoteTransferError
     if(!saveELRSSettings(candidate.crsf,p,true))return remoteTransferFail(e,RemoteTransferCode::WriteFailed,"crsf","CRSF save stopped; check storage and fresh radio status");return true;
 }
 bool remoteCompleteRadioReview(){
-    if(remoteSettingsBusy())return false;RemoteTransferError e;if(!remoteFileActivationSafe(e))return false;
+    if(!opModeCRSF || remoteSettingsBusy())return false;RemoteTransferError e;if(!remoteFileActivationSafe(e))return false;
     if(opModeCRSF){auto &c=elrsMode.deviceConfig();if(!c.modelIdKnown() || c.modelId()!=remoteRadioPreferences.modelId)return false;
         const char *labels[]={remoteRadioPreferences.maxPower.label,remoteRadioPreferences.telemetry,remoteRadioPreferences.dynamic};const char *units[]={remoteRadioPreferences.maxPower.unit,"",""};RemoteSettingsSnapshot s;remoteCaptureRfChoices(s);
         for(unsigned i=0;i<3;i++){const auto &r=rfObservations[i+5];if(r.generation!=s.deviceGeneration || (uint32_t)(millis()-r.at)>1000 || strcmp(r.choice.label,labels[i]) || strcmp(r.choice.unit,units[i]))return false;}}

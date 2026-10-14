@@ -3,6 +3,7 @@ import json
 import hashlib
 import contextlib
 import io
+import socket
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from radio_snapshot import (RadioClient, capture_snapshot, make_preview, apply_preview,
                             read_document, write_document, _print_error,
-                            MAX_FILE_BYTES)  # noqa: E402
+                            ApplyError, OperationOutcomeUnknown, MAX_FILE_BYTES)  # noqa: E402
 
 
 def parameter(device, field, name, value, kind=1, unit="", options="", role="", writable=True):
@@ -61,6 +62,9 @@ class FakeRemote:
         self.model_id = 4
         self.model_id_known = True
         self.reset_model_on_discovery = False
+        self.lose_write_response = None
+        self.lose_poll_response = None
+        self.invalid_write_readback = None
 
     def device(self, address):
         return next(d for d in self.devices if d["address"] == address)
@@ -77,7 +81,7 @@ class FakeRemote:
             p = dict(self.params[d][f])
             if d == 238 and p.get('role') == 'modelMatch':
                 self.model_id_known = True
-            if d in self.context_values and f in self.context_values[d].get(0, {}):
+            if d in self.context_values and f in next(iter(self.context_values[d].values()), {}):
                 cursor = self.params[d][1]["value"]
                 p["value"] = self.context_values[d][cursor][f]
                 p["hash"] += cursor * 100
@@ -87,7 +91,7 @@ class FakeRemote:
                 raise ValueError("stale generation")
             p = self.params[d][f]
             cursor = self.params[d].get(1, {}).get("value", -1)
-            contextual = d in self.context_values and f in self.context_values[d].get(0, {})
+            contextual = d in self.context_values and f in next(iter(self.context_values[d].values()), {})
             current_value = self.context_values[d][cursor][f] if contextual else p["value"]
             current_hash = p["hash"] + cursor * 100 if contextual else p["hash"]
             if int(action["hash"]) != current_hash or int(action["expected"]) != current_value:
@@ -117,6 +121,13 @@ class FakeRemote:
             raise AssertionError(f"unexpected API action: {name}")
         self.operation = {"state": "complete", "device": int(action.get("device", 0)),
                           "field": int(action.get("field", 0)), "parameter": p}
+        if name == "write" and self.invalid_write_readback is not None:
+            readback, unreadable = self.invalid_write_readback
+            self.invalid_write_readback = None
+            p.pop("value", None)
+            p.update(readback)
+            if unreadable:
+                self.unreadable_fields.add((d, f))
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -133,6 +144,16 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def lose_response(self, mode):
+        if mode == "drop":
+            self.close_connection = True
+            self.connection.shutdown(socket.SHUT_RDWR)
+            self.connection.close()
+        elif mode == "server-error":
+            self.send_json({"message": "write acknowledgment unavailable"}, 500)
+        else:
+            self.send_json("unreadable operation response")
+
     def do_GET(self):
         if self.headers.get("Origin") != f"http://{self.headers.get('Host')}":
             self.send_json({"code": "ACCESS_DENIED", "path": "session", "message": "bad origin"}, 403)
@@ -144,6 +165,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                             "armedKnown": True, "armed": r.armed, "statusAgeMs": r.status_age,
                             "modelId": r.model_id if r.model_id_known else None})
         elif self.path == "/remote/operation":
+            if self.remote.lose_poll_response:
+                mode = self.remote.lose_poll_response
+                self.remote.lose_poll_response = None
+                self.lose_response(mode)
+                return
             self.send_json(self.remote.operation)
         else:
             self.send_json({"message": "missing"}, 404)
@@ -166,6 +192,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 operation_id = self.remote.next_id
                 self.remote.next_id += 1
                 self.remote.operation["id"] = operation_id
+                if values["action"] == "write" and self.remote.lose_write_response:
+                    endpoint, mode = self.remote.lose_write_response
+                    self.remote.lose_write_response = None
+                    if endpoint == "post":
+                        self.lose_response(mode)
+                        return
+                    self.remote.lose_poll_response = mode
                 self.send_json({"id": operation_id, "state": "queued"}, 202)
             except ValueError as exc:
                 self.send_json({"code": "STALE", "path": "generation", "message": str(exc)}, 409)
@@ -411,6 +444,94 @@ class RadioSnapshotTests(unittest.TestCase):
         self.assertEqual(self.fake.params[236][2]["value"], 0)
         self.assertEqual(len([a for a in self.fake.actions if a["action"] == "write"]), 2)
 
+    def _numeric_receiver(self):
+        self.fake.params[236][1].update(type=0, name="OutputCh", minimum=1, maximum=2,
+                                       value=1, options="")
+        self.fake.params[236][2].update(type=0, name="InputCh", minimum=1, maximum=16,
+                                       value=1, options="")
+        self.fake.context_values[236] = {1: {2: 1, 3: 0, 4: 0}, 2: {2: 16, 3: 0, 4: 1}}
+
+    def test_numeric_selector_capture_requires_sweep(self):
+        self._numeric_receiver()
+        snapshot = capture_snapshot(self.client)
+        rx = next(d for d in snapshot["devices"] if d["role"] == "rx")
+        self.assertFalse(rx["complete"])
+        self.assertFalse(snapshot["complete"])
+        self.assertEqual(rx["fields"], [])
+        with self.assertRaisesRegex(ValueError, "RX capture is incomplete"):
+            make_preview(self.client, snapshot, device_role="rx")
+        self.assertFalse(any(a["action"] == "write" for a in self.fake.actions))
+
+    def test_numeric_selector_capture_preview_and_apply_multiple_outputs(self):
+        self._numeric_receiver()
+        source = capture_snapshot(self.client, selector_sweep=True)
+        rx = next(d for d in source["devices"] if d["role"] == "rx")
+        self.assertTrue(source["complete"])
+        self.assertEqual([r["selectorRaw"] for r in rx["outputContexts"]], [1, 2])
+        self.assertEqual([r["fields"]["inputch"]["value"] for r in rx["outputContexts"]], [1, 16])
+        self.assertEqual(self.fake.params[236][1]["value"], 1)
+        self.assertEqual([a["value"] for a in self.fake.actions if a["action"] == "write"], ["2", "1"])
+        self.fake.context_values[236] = {1: {2: 16, 3: 0, 4: 1}, 2: {2: 1, 3: 0, 4: 0}}
+        preview = make_preview(self.client, source, device_role="rx", selector_sweep=True)
+        self.assertEqual(preview["changes"], [])
+        self.assertEqual(preview["priorValues"], [])
+        self.assertEqual([(c["key"], c["expected"], c["value"])
+                          for r in preview["outputPlan"]["contexts"] for c in r["changes"]],
+                         [("inputch", 16, 1), ("invert", 1, 0),
+                          ("inputch", 1, 16), ("invert", 0, 1)])
+        result = apply_preview(self.client, preview, confirmed=True, receiver_confirmed=True)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(self.fake.context_values[236], {1: {2: 1, 3: 0, 4: 0}, 2: {2: 16, 3: 0, 4: 1}})
+        self.assertEqual(self.fake.params[236][1]["value"], 1)
+
+    def test_numeric_selector_invalid_ranges_never_write(self):
+        self._numeric_receiver()
+        for minimum, maximum in ((1, 17), (2, 1)):
+            with self.subTest(minimum=minimum, maximum=maximum):
+                self.fake.params[236][1].update(minimum=minimum, maximum=maximum)
+                snapshot = capture_snapshot(self.client, selector_sweep=True)
+                rx = next(d for d in snapshot["devices"] if d["role"] == "rx")
+                self.assertFalse(rx["complete"])
+                self.assertEqual(rx["outputContexts"], [])
+                self.assertFalse(any(a["action"] == "write" for a in self.fake.actions))
+
+    def test_numeric_selector_failure_restores_original_cursor(self):
+        self._numeric_receiver()
+        self.fake.context_values[236][2][2] = "unreadable"
+        snapshot = capture_snapshot(self.client, selector_sweep=True)
+        rx = next(d for d in snapshot["devices"] if d["role"] == "rx")
+        self.assertFalse(rx["complete"])
+        self.assertEqual(self.fake.params[236][1]["value"], 1)
+        self.assertEqual([a["value"] for a in self.fake.actions if a["action"] == "write"], ["2", "1"])
+
+    def test_numeric_selector_preview_rejects_unadvertised_context_or_input(self):
+        self._numeric_receiver()
+        source = capture_snapshot(self.client, selector_sweep=True)
+        rx = next(d for d in source["devices"] if d["role"] == "rx")
+        rx["outputContexts"][1]["selectorRaw"] = 3
+        reseal(source)
+        with self.assertRaisesRegex(ValueError, "unrepresented output rows"):
+            make_preview(self.client, source, device_role="rx", selector_sweep=True)
+        rx["outputContexts"][1]["selectorRaw"] = 2
+        rx["outputContexts"][1]["fields"]["inputch"]["value"] = 17
+        reseal(source)
+        with self.assertRaisesRegex(ValueError, "outside the live target range"):
+            make_preview(self.client, source, device_role="rx", selector_sweep=True)
+        self.assertEqual(self.fake.context_values[236], {1: {2: 1, 3: 0, 4: 0}, 2: {2: 16, 3: 0, 4: 1}})
+        self.assertEqual(self.fake.params[236][1]["value"], 1)
+
+    def test_numeric_selector_apply_failure_rolls_back_and_restores_cursor(self):
+        self._numeric_receiver()
+        source = capture_snapshot(self.client, selector_sweep=True)
+        self.fake.context_values[236] = {1: {2: 16, 3: 0, 4: 1}, 2: {2: 1, 3: 0, 4: 0}}
+        preview = make_preview(self.client, source, device_role="rx", selector_sweep=True)
+        self.fake.fail_write_context = (236, 2, 4)
+        with self.assertRaises(ApplyError) as caught:
+            apply_preview(self.client, preview, confirmed=True, receiver_confirmed=True)
+        self.assertEqual(caught.exception.result["status"], "rolled-back")
+        self.assertEqual(self.fake.context_values[236], {1: {2: 16, 3: 0, 4: 1}, 2: {2: 1, 3: 0, 4: 0}})
+        self.assertEqual(self.fake.params[236][1]["value"], 1)
+
     def test_selector_sweep_marks_unrecognized_per_output_fields_incomplete(self):
         self.fake.params[236][5] = parameter(236, 5, "Vendor Output Function", 0, 9, "", "A;B")
         self.fake.devices[1]["fieldCount"] = 5
@@ -478,6 +599,73 @@ class RadioSnapshotTests(unittest.TestCase):
             apply_preview(self.client, preview, confirmed=True)
         self.assertEqual(caught.exception.result["status"], "outcome-unknown")
         self.assertEqual(self.fake.params[238][1]["value"], 0)
+
+    def test_lost_write_response_reconciles_and_rolls_back_without_retry(self):
+        for endpoint in ("post", "poll"):
+            for mode in ("drop", "unreadable", "server-error"):
+                with self.subTest(endpoint=endpoint, mode=mode):
+                    preview = self._two_change_preview()
+                    self.fake.actions.clear()
+                    self.fake.lose_write_response = (endpoint, mode)
+                    with self.assertRaises(ApplyError) as caught:
+                        apply_preview(self.client, preview, confirmed=True)
+                    self.assertEqual(caught.exception.result["status"], "rolled-back")
+                    self.assertEqual(caught.exception.result["applied"], [1])
+                    self.assertEqual(self.fake.params[238][1]["value"], 1)
+                    self.assertEqual(self.fake.params[238][2]["value"], 1)
+                    self.assertEqual([(a["field"], a["value"]) for a in self.fake.actions if a["action"] == "write"],
+                                     [("1", "0"), ("1", "1")])
+
+    def test_lost_write_network_response_with_unreadable_result_is_unknown(self):
+        for endpoint in ("post", "poll"):
+            with self.subTest(endpoint=endpoint):
+                self.fake.unreadable_fields.clear()
+                preview = self._two_change_preview()
+                self.fake.actions.clear()
+                self.fake.unknown_write_field = 1
+                self.fake.lose_write_response = (endpoint, "drop")
+                with self.assertRaises(ApplyError) as caught:
+                    apply_preview(self.client, preview, confirmed=True)
+                self.assertEqual(caught.exception.result["status"], "outcome-unknown")
+                self.assertEqual(self.fake.params[238][1]["value"], 0)
+                self.assertEqual(self.fake.params[238][2]["value"], 1)
+                self.assertEqual([(a["field"], a["value"]) for a in self.fake.actions if a["action"] == "write"],
+                                 [("1", "0")])
+
+    def test_definite_write_rejection_and_read_network_failure_stay_value_errors(self):
+        param = dict(self.fake.params[238][1], hash=0)
+        with self.assertRaises(ValueError) as caught:
+            self.client.write_parameter(param, 1, 0)
+        self.assertNotIsInstance(caught.exception, OperationOutcomeUnknown)
+        self.assertEqual(self.fake.params[238][1]["value"], 1)
+        self.fake.lose_poll_response = "drop"
+        with self.assertRaises(ValueError) as caught:
+            self.client.read_parameter(238, 1, 1)
+        self.assertNotIsInstance(caught.exception, OperationOutcomeUnknown)
+        self.assertEqual(self.client.read_parameter(238, 1, 1)["value"], 1)
+
+    def test_invalid_completed_write_value_reconciles_without_replaying_post(self):
+        for readback in ({}, {"value": "0"}, {"value": 0.0}, {"value": False}, {"value": 1}):
+            for unreadable in (False, True):
+                with self.subTest(readback=readback, unreadable=unreadable):
+                    self.fake.unreadable_fields.clear()
+                    preview = self._two_change_preview()
+                    self.fake.actions.clear()
+                    self.fake.invalid_write_readback = (readback, unreadable)
+                    with self.assertRaises(ApplyError) as caught:
+                        apply_preview(self.client, preview, confirmed=True)
+                    result = caught.exception.result
+                    if unreadable:
+                        self.assertEqual(result["status"], "outcome-unknown")
+                        self.assertEqual(self.fake.params[238][1]["value"], 0)
+                        writes = [("1", "0")]
+                    else:
+                        self.assertEqual(result["status"], "rolled-back")
+                        self.assertEqual(result["applied"], [1])
+                        self.assertEqual(self.fake.params[238][1]["value"], 1)
+                        writes = [("1", "0"), ("1", "1")]
+                    self.assertEqual(self.fake.params[238][2]["value"], 1)
+                    self.assertEqual([(a["field"], a["value"]) for a in self.fake.actions if a["action"] == "write"], writes)
 
     def test_selector_sweep_requires_maintenance_disarmed_connected_state(self):
         self.fake.armed = True

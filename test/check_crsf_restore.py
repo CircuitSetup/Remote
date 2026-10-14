@@ -53,7 +53,7 @@ HEADERS["SD.h"] = '#pragma once\n#include "FS.h"\n'
 runtime_source = (ROOT / "src/src/CRSF/crsf_model_restore.cpp").read_text(encoding="utf-8")
 runtime = runtime_source[
     runtime_source.index("static uint32_t settingsGeneration=1;"):
-    runtime_source.index("bool remoteCompleteRadioReview(){")
+    runtime_source.rindex("\n#endif")
 ]
 
 CASES = r'''
@@ -77,6 +77,15 @@ extern unsigned long testNow;
 inline unsigned long millis() { return testNow; }
 ELRSCrsfSettingsBlob snapshotELRSSettings();
 void testTransferService();
+bool opModeCRSF = false;
+struct ReviewRadioConfig {
+    bool known = true;
+    uint8_t id = 9;
+    bool modelIdKnown() const { return known; }
+    uint8_t modelId() const { return id; }
+};
+struct { ReviewRadioConfig config; ReviewRadioConfig &deviceConfig() { return config; } } elrsMode;
+ELRSRadioPreferences remoteRadioPreferences;
 
 #define REMOTE_TRANSFER_TEST
 '''
@@ -182,6 +191,30 @@ static void testPreviewBindingAndApply() {
     assert(savedPortal.cadence == 4 && savedPortal.speedUnits == 1);
     assert(remoteRadioReviewPending());
 }
+static void testRadioReviewRequiresActiveCrsfAndReadback() {
+    livePortal.radioReview = 1;
+    remoteRadioPreferences = livePortal.radio;
+    remoteSetMaintenance(true);
+    unsigned calls = saveCalls;
+    assert(!remoteCompleteRadioReview());
+    assert(livePortal.radioReview == 1 && saveCalls == calls);
+
+    opModeCRSF = true;
+    assert(!remoteCompleteRadioReview());
+    assert(livePortal.radioReview == 1 && saveCalls == calls);
+    const char *labels[] = {livePortal.radio.maxPower.label, livePortal.radio.telemetry, livePortal.radio.dynamic};
+    const char *units[] = {livePortal.radio.maxPower.unit, "", ""};
+    for(unsigned i = 0; i < 3; ++i) {
+        auto &observation = rfObservations[i + 5];
+        observation.generation = 0;
+        observation.at = millis();
+        strcpy(observation.choice.label, labels[i]);
+        strcpy(observation.choice.unit, units[i]);
+    }
+    assert(remoteCompleteRadioReview());
+    assert(livePortal.radioReview == 0 && saveCalls == calls + 1);
+    opModeCRSF = false;
+}
 static void testCapabilityBindingAndStorage() {
     livePortal.radioReview = 0;
     ELRSParameterView choice; choice.device = 0xee; choice.type = 9; choice.field = 3;
@@ -210,7 +243,7 @@ int main() {
     livePortal.radio.modelId = 2; strcpy(livePortal.radio.telemetry, "Std");
     strcpy(livePortal.radio.dynamic, "Off"); strcpy(livePortal.radio.maxPower.label, "100mW");
     strcpy(livePortal.radio.maxPower.unit, "mW");
-    testFileValidation(); testPreviewBindingAndApply(); testCapabilityBindingAndStorage();
+    testFileValidation(); testPreviewBindingAndApply(); testRadioReviewRequiresActiveCrsfAndReadback(); testCapabilityBindingAndStorage();
     puts("CRSF model bounds, preview binding/expiry, upload selection and CRSF-only review pass");
 }
 '''

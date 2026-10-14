@@ -8,6 +8,7 @@ import json
 import re
 import sys
 import time
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -107,7 +108,8 @@ class RadioClient:
         self.nonce = ""
         self._opener = build_opener(ProxyHandler({}), _NoRedirect)
 
-    def _request(self, method: str, path: str, values=None):
+    def _request(self, method: str, path: str, values=None, outcome_unknown=False):
+        response_error = OperationOutcomeUnknown if outcome_unknown else ValueError
         headers = {"Origin": self.origin, "Cache-Control": "no-store", "Accept": "application/json"}
         if self.nonce:
             headers["X-Remote-Nonce"] = self.nonce
@@ -122,26 +124,30 @@ class RadioClient:
                     raise ValueError(f"Remote returned HTTP {response.status}")
                 payload = response.read(MAX_RESPONSE_BYTES + 1)
         except HTTPError as exc:
+            rejection_error = response_error if exc.code >= 500 else ValueError
             try:
                 payload = exc.read(MAX_RESPONSE_BYTES + 1)
                 doc = _json_bytes(payload)
                 if not isinstance(doc, dict):
                     raise ValueError("unexpected response")
             except Exception:
-                raise ValueError(f"Remote rejected the request with HTTP {exc.code}") from None
+                raise rejection_error(f"Remote rejected the request with HTTP {exc.code}") from None
             code, field = doc.get("code", "REQUEST_FAILED"), doc.get("path", "")
             message = str(doc.get("message", "Rejected"))
             if re.search(r"password|credential|secret|token|ssid", str(field) + " " + message, re.I):
                 message = "Response details masked"
                 field = ""
-            raise ValueError(f"{code} {field}: {message}".strip()) from None
-        except (URLError, TimeoutError, OSError) as exc:
-            raise ValueError("Remote API request failed; check the Remote network connection") from None
+            raise rejection_error(f"{code} {field}: {message}".strip()) from None
+        except (URLError, TimeoutError, OSError, HTTPException):
+            raise response_error("Remote API request failed; check the Remote network connection") from None
         if len(payload) > MAX_RESPONSE_BYTES:
-            raise ValueError("Remote API response exceeds its bound")
-        doc = _json_bytes(payload)
+            raise response_error("Remote API response exceeds its bound")
+        try:
+            doc = _json_bytes(payload)
+        except ValueError as exc:
+            raise response_error(str(exc)) from None
         if not isinstance(doc, dict):
-            raise ValueError("Remote API returned an unexpected JSON object")
+            raise response_error("Remote API returned an unexpected JSON object")
         return doc
 
     def open_session(self):
@@ -165,13 +171,20 @@ class RadioClient:
             raise ValueError("Open a Remote session first")
         if values.get("action") not in {"discover", "status", "read", "write"}:
             raise ValueError("radio snapshots never issue commands, assignments, or profile selections")
-        response = self._request("POST", "/remote/action", values)
+        is_write = values.get("action") == "write"
+        response = self._request("POST", "/remote/action", values, outcome_unknown=is_write)
         if response.get("state") != "queued" or not isinstance(response.get("id"), int):
-            raise ValueError("Remote did not queue the requested operation")
+            error = OperationOutcomeUnknown if is_write else ValueError
+            raise error("Remote did not acknowledge the requested operation")
         operation_id = response["id"]
         deadline = time.monotonic() + self.operation_timeout
         while time.monotonic() < deadline:
-            result = self._request("GET", "/remote/operation")
+            try:
+                result = self._request("GET", "/remote/operation")
+            except ValueError as exc:
+                if is_write:
+                    raise OperationOutcomeUnknown("write acknowledgment unavailable; outcome is unknown: " + str(exc)) from None
+                raise
             if result.get("id") != operation_id:
                 time.sleep(self.poll_interval)
                 continue
@@ -210,7 +223,8 @@ class RadioClient:
                              expected=param["value"], value=desired)
         observed = result.get("parameter")
         if (not isinstance(observed, dict) or observed.get("device") != param["device"] or
-                observed.get("field") != param["field"]):
+                observed.get("field") != param["field"] or
+                type(observed.get("value")) is not int or observed["value"] != desired):
             raise OperationOutcomeUnknown("write completed without a matching readback")
         return observed
 
@@ -289,6 +303,26 @@ def _fresh_metadata(client, address):
     return response, _metadata(device)
 
 
+def _selector_choices(selector):
+    kind = selector.get("type")
+    minimum, maximum = selector.get("minimum"), selector.get("maximum")
+    if (kind not in PERSISTENT_TYPES or type(minimum) is not int or type(maximum) is not int or
+            minimum > maximum):
+        raise ValueError("output count is unavailable or exceeds 16")
+    if kind == 9:
+        selections = [(raw, label) for raw, label in enumerate(str(selector.get("options", "")).split(";"))
+                      if label and minimum <= raw <= maximum]
+    else:
+        if maximum - minimum + 1 > MAX_OUTPUTS:
+            raise ValueError("output count is unavailable or exceeds 16")
+        selections = [(raw, str(raw)) for raw in range(minimum, maximum + 1)]
+    if not selections or len(selections) > MAX_OUTPUTS:
+        raise ValueError("output count is unavailable or exceeds 16")
+    if len({label for _, label in selections}) != len(selections):
+        raise ValueError("output labels are ambiguous")
+    return selections
+
+
 def _write_selector(client, address, field, desired):
     response = client.status()
     raw = _find_device(response, address)
@@ -297,8 +331,10 @@ def _write_selector(client, address, field, desired):
     meta = _metadata(raw)
     _assert_selector_safety(response)
     param = client.read_parameter(address, field, meta["generation"])
-    if param.get("type") != 9 or not param.get("writable") or param.get("hidden"):
+    if not param.get("writable") or param.get("hidden"):
         raise ValueError("Output Ch is not an available writable selection")
+    if type(desired) is not int or desired not in dict(_selector_choices(param)):
+        raise ValueError("Output Ch value is outside the advertised output choices")
     if param["value"] == desired:
         return param
     observed = client.write_parameter(param, meta["generation"], desired)
@@ -309,18 +345,14 @@ def _write_selector(client, address, field, desired):
 
 def _capture_output_contexts(client, device, output_field, initial_selector, issues):
     address = device["address"]
-    options = str(initial_selector.get("options", "")).split(";")
-    minimum, maximum = int(initial_selector.get("minimum", 0)), int(initial_selector.get("maximum", len(options) - 1))
-    selections = [(raw, label) for raw, label in enumerate(options) if label and minimum <= raw <= maximum]
-    if not selections or len(selections) > MAX_OUTPUTS:
-        issues.append({"device": address, "field": output_field, "reason": "output count is unavailable or exceeds 16"})
+    try:
+        selections = _selector_choices(initial_selector)
+        original, _ = _field_value(initial_selector)
+        if original not in dict(selections):
+            raise ValueError("Output Ch cursor is outside the advertised output choices")
+    except ValueError as exc:
+        issues.append({"device": address, "field": output_field, "reason": str(exc)})
         return []
-    labels = [label for _, label in selections]
-    if len(labels) != len(set(labels)):
-        issues.append({"device": address, "field": output_field,
-                       "reason": "output labels are ambiguous"})
-        return []
-    original, original_label = _field_value(initial_selector)
     contexts = []
     dependent_fields = {}
     unrelated_persistent = {}
@@ -428,7 +460,7 @@ def capture_snapshot(client: RadioClient, selector_sweep: bool = False, discover
                 record["notCaptured"].append({"field": field, "reason": f"persistent parameter type {kind!r} is unsupported"})
                 record["complete"] = False
                 continue
-            if name in SELECTOR_NAMES and kind == 9:
+            if name in SELECTOR_NAMES:
                 if output_selector is not None:
                     duplicate_output_selector = True
                 output_selector = param
@@ -609,7 +641,7 @@ def _read_live_device(client, metadata):
             params.append(param)
         if len(params) > MAX_FIELDS_PER_DEVICE:
             raise ValueError("live target exceeds 64 persistent fields")
-    has_selector = any(p.get("type") == 9 and _name_key(p.get("name")) in SELECTOR_NAMES for p in params)
+    has_selector = any(_name_key(p.get("name")) in SELECTOR_NAMES for p in params)
     return [p for p in params if not has_selector or _name_key(p.get("name")) not in SELECTOR_NAMES | SELECTOR_GROUP]
 
 
@@ -648,13 +680,9 @@ def _build_output_plan(source, target):
             target_selector.get("type"), _name_key(target_selector.get("name")), target_selector.get("unit", "")):
         raise ValueError("source and live receiver output selector descriptors differ")
     for selector, contexts in ((source_selector, source_contexts), (target_selector, target_contexts)):
-        labels_available = str(selector.get("options", "")).split(";")
-        minimum = int(selector.get("minimum", 0))
-        maximum = int(selector.get("maximum", len(labels_available) - 1))
-        options = {label for raw, label in enumerate(labels_available)
-                   if label and minimum <= raw <= maximum}
-        labels = {row.get("selectorLabel") for row in contexts}
-        if options != labels:
+        options = _selector_choices(selector)
+        if (len(contexts) != len(options) or
+                {(row.get("selectorRaw"), row.get("selectorLabel")) for row in contexts} != set(options)):
             raise ValueError("source or live output selector has unrepresented output rows")
     contexts = []
     selector_map = []

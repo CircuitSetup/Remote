@@ -1,10 +1,8 @@
 # Compile the actual portal/migration callbacks; stub only UI and storage dependencies.
 import re
-import tempfile
 
 from check_crsf_adc import ROOT, compile_and_run
 
-tempfile.tempdir = r"C:\Users\John\.codex\scratch\Remote-elrs-page"
 assert_error_mode = r'''
 #ifdef _WIN32
 #include <stdlib.h>

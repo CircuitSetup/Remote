@@ -389,6 +389,7 @@ bool ELRSDeviceConfig::deviceInfo(const uint8_t *payload, size_t length)
               next.fieldCount != _devices[index].fieldCount || next.parameterVersion != _devices[index].parameterVersion) {
         _generation++;
         _haveRadio = false;
+        if(next.address == 0xEE) { _modelIdKnown = false; _modelMatchField = 0; }
         for(uint8_t i = 0; i < _deviceCount; i++) _devices[i].generation = _generation;
         memset(_parentKnown, 0, sizeof(_parentKnown));
         if(busy() && _request != Discover) fail(ELRSDeviceError::Stale);

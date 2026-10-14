@@ -172,6 +172,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ELRSAxesResult sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force = false);
         uint8_t samplePackStates(ELRSCrsfHost &host, unsigned long now);
         bool onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) override;
+        void onCrsfBeforeTx(unsigned long now) override {
+            _deviceConfig.tick(_transport, configSafety((uint32_t)now), (uint32_t)now);
+        }
 
         void updateCalibrationButton(ELRSCrsfHost &host, unsigned long now, int battWarn);
         void handleCalibrationShort(ELRSCrsfHost &host, unsigned long now, int battWarn);

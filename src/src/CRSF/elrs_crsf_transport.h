@@ -79,6 +79,7 @@ class ELRSCrsfTransportSink {
         virtual ~ELRSCrsfTransportSink() {}
 
         virtual bool onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) = 0;
+        virtual void onCrsfBeforeTx(unsigned long now) {}
 };
 
 class ELRSCrsfTransport {
