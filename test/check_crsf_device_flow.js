@@ -42,8 +42,9 @@ const buttonFor=(f,id,label)=>descendants(f.elements[id]).find(n=>n.tag==='butto
 function parameter(device,field,name,extra={}){
  return {device,field,name,generation:device===238?3:7,type:9,value:0,minimum:0,maximum:2,options:'First;Second;Third',unit:'',hash:field*17,hidden:false,writable:true,role:'',...extra};
 }
-function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX=false,transform=()=>{}}={}){
+function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX=false,transform=()=>{},fieldCount=4,operationAdvanceMs=0}={}){
  const elements={},calls=[],timers=[],confirmations=[];
+ let clock=0,sessionNonce='',sessionExpires=0;
  const body=new Element('body'),form=new Element('form'),rootNode=new Element('div'),save=new Element('button');
  form.action=formAction;rootNode.id='remote-controls';save.type='submit';body.append(form);form.append(rootNode,save);
  const document={readyState:'complete',getElementById:id=>elements[id]??=(new Element()),createElement:tag=>new Element(tag)};
@@ -61,14 +62,22 @@ function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX
   parameter(236,3,'Set Failsafe Pos',{type:13,writable:false,commandAllowed:true,info:'Capture PWM positions'}),
   parameter(236,4,'Read-only value',{writable:false}),parameter(236,5,'Hidden value',{hidden:true})
  ];
+ for(let field=5;field<=fieldCount;field++)params.push(parameter(238,field,'TX field '+field,{writable:false,role:''}));
  transform(params,radio);
  let current={state:'idle'},sequence=0;
  const generation=d=>d===238?radio.txGeneration:radio.rxGeneration;
  async function fetch(url,options={}){
   const pathname=url.split('?')[0],values=options.body instanceof URLSearchParams?Object.fromEntries(options.body):{};
   calls.push({path:pathname,url,method:options.method||'GET',headers:options.headers,...values});let data={},ok=true;
-  if(pathname==='/remote/session')data={nonce:'a'.repeat(32)};
-  else if(pathname==='/remote/devices')data={crsfActive,localAP,throttleReady:radio.throttleReady,rfKnown:true,connected:true,modelMatched:true,armedKnown:true,armed:false,ch5:172,statusAgeMs:10,devices:!crsfActive?[]:[...(radio.txPresent?[{address:238,name:'TX',fieldCount:4,generation:radio.txGeneration}]:[]),{address:236,name:'RX',fieldCount:5,generation:radio.rxGeneration}]};
+  const gated=['/remote/action','/remote/operation','/remote/export','/remote/upload','/remote/apply','/remote/review'].includes(pathname);
+  if(pathname==='/remote/session'){
+   const supplied=options.headers?.['X-Remote-Nonce'];
+   if(!sessionNonce)sessionNonce='a'.repeat(32);else if(supplied!==sessionNonce)sessionNonce='b'.repeat(32);
+   sessionExpires=clock+300000;data={nonce:sessionNonce};
+  }else if(gated&&(options.headers?.['X-Remote-Nonce']!==sessionNonce||clock>=sessionExpires)){
+   ok=false;data={code:'ACCESS_DENIED',path:'session',message:'Connect through Remote and use a current session'};
+  }else if(gated)sessionExpires=clock+300000;
+  if(pathname==='/remote/devices')data={crsfActive,localAP,throttleReady:radio.throttleReady,rfKnown:true,connected:true,modelMatched:true,armedKnown:true,armed:false,ch5:172,statusAgeMs:10,devices:!crsfActive?[]:[...(radio.txPresent?[{address:238,name:'TX',fieldCount,generation:radio.txGeneration}]:[]),{address:236,name:'RX',fieldCount:5,generation:radio.rxGeneration}]};
   else if(pathname==='/remote/upload')data={fileHash:'b'.repeat(64),calibration:"Keep this Remote's calibration"};
   else if(pathname==='/remote/apply'||pathname==='/remote/review')data={ok:true};
   else if(pathname==='/remote/action'){
@@ -90,13 +99,37 @@ function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX
     }
    }
    data={id:current.id,state:'queued'};
-  }else if(pathname==='/remote/operation')data=current;
+  }else if(pathname==='/remote/operation'){data=current;clock+=operationAdvanceMs;}
   return {ok,json:async()=>structuredClone(data),blob:async()=>new Blob(['{}'])};
  }
  vm.runInNewContext(embedded,{document,module:{exports:{}},Option,fetch,URLSearchParams,FormData,confirm:message=>{confirmations.push(message);return radio.confirm;},URL:{createObjectURL:()=>'',revokeObjectURL:()=>{}},setTimeout:fn=>{timers.push(fn);return timers.length;}});
- return {elements,calls,timers,document,rootNode,body,form,save,radio,params,confirmations};
+ return {elements,calls,timers,document,rootNode,body,form,save,radio,params,confirmations,advanceTime:ms=>{clock+=ms;},elapsed:()=>clock,replaceRemoteSession:()=>{sessionNonce='b'.repeat(32);sessionExpires=clock+300000;}};
 }
 const settle=()=>new Promise(setImmediate);
+async function sessionRenewal(){
+ const idle=fixture();await settle();assert.equal(idle.calls.filter(c=>c.path==='/remote/session').length,1);
+ idle.advanceTime(300001);const before=idle.calls.length;await idle.elements.txRefresh.onclick();
+ assert.equal(idle.calls.slice(before).filter(c=>c.path==='/remote/session').length,1,'user operation renews an expired idle session first');
+ assert.equal(idle.calls.slice(before).filter(c=>c.path==='/remote/action'&&c.action==='read').length,4,'expired session renewal preserves the intended readback operation');
+ assert.equal(inputFor(idle,'txFields','TX Power').value,1);
+ const long=fixture({fieldCount:20,operationAdvanceMs:30000});await settle();await long.elements.txRefresh.onclick();
+ assert(long.elapsed()>300000,'sequential reads exceed five minutes');
+ assert.equal(long.calls.filter(c=>c.path==='/remote/action'&&c.action==='read').length,20,'sliding operation polls keep a long menu readback authenticated');
+ assert(!long.calls.some(c=>c.path==='/remote/action'&&c.action==='read'&&!c.headers['X-Remote-Nonce']),'long reads retain the session nonce');
+ const same=fixture();await settle();same.elements.file.files=[new Blob(['{}'])];same.elements.kind.value='backup';await same.elements.preview.onclick();assert.equal(same.elements.apply.disabled,false);
+ const sessionCount=same.calls.filter(c=>c.path==='/remote/session').length;await same.elements.status.onclick();
+ assert.equal(same.calls.filter(c=>c.path==='/remote/session').length,sessionCount+1,'each guarded action renews the session');
+ assert.equal(same.elements.apply.disabled,false,'same-token renewal keeps the exact validated preview available');
+ const replaced=fixture();await settle();replaced.elements.file.files=[new Blob(['{}'])];replaced.elements.kind.value='backup';await replaced.elements.preview.onclick();assert.equal(replaced.elements.apply.disabled,false);
+ replaced.replaceRemoteSession();const start=replaced.calls.length;await replaced.elements.apply.onclick();
+ assert.equal(replaced.calls.slice(start).filter(c=>c.path==='/remote/session').length,1,'operation detects replaced token before running');
+ assert(!replaced.calls.slice(start).some(c=>c.path==='/remote/devices'||c.path==='/remote/apply'),'replacement aborts stale apply instead of replaying it');
+ assert.equal(replaced.elements.apply.disabled,true,'token replacement invalidates the local preview');
+ const staleMutation=fixture();await settle();await staleMutation.elements.txRefresh.onclick();inputFor(staleMutation,'txFields','TX Power').value='2';
+ staleMutation.replaceRemoteSession();const mutationStart=staleMutation.calls.length;await buttonFor(staleMutation,'txFields','Preview TX Power change').onclick();
+ assert(!staleMutation.calls.slice(mutationStart).some(c=>c.path==='/remote/action'),'replaced session aborts stale radio mutation without replay');
+ assert.match(staleMutation.elements.message.textContent,/session changed/i);
+}
 async function liveControls(){
  const f=fixture({absentTX:true});await settle();
  assert.equal(typeof f.elements.txRefresh.onclick,'function','dedicated TX refresh executes a production handler');
@@ -220,7 +253,7 @@ async function filesAndFooter(){
  assert.equal(general.save.parentNode,general.form);assert.equal(general.save.getAttribute('form'),null);
 }
 (async()=>{
- await liveControls();await receiverContextAndCommands();await truthfulFailuresAndSupport();await genericTextReadback();await filesAndFooter();
+ await sessionRenewal();await liveControls();await receiverContextAndCommands();await truthfulFailuresAndSupport();await genericTextReadback();await filesAndFooter();
  portalLayout(html);assert(embedded.endsWith(script),'gzip JavaScript differs from source');
  assert([...uiHeader.matchAll(/0x([0-9a-f]{2})/gi)].length<=8192,'UI exceeds 8 KiB gzip budget');
  console.log('TX ownership/readback, RX output generations, failsafe confirmation/cancel, unavailable controls, AP/LAN files, footer and compressed parity PASS');

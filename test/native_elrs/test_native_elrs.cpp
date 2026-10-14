@@ -4128,6 +4128,197 @@ static void test_module_ping_keeps_rc_running_while_waiting_for_settings()
     }
 }
 
+
+class TransportReplySink : public ELRSCrsfTransportSink {
+    public:
+        std::vector<std::vector<uint8_t>> payloads;
+        bool onCrsfFrame(uint8_t, uint8_t type, const uint8_t *payload, size_t length, unsigned long) override {
+            TEST_ASSERT_EQUAL_HEX8(0x2B, type);
+            payloads.emplace_back(payload, payload + length);
+            return false;
+        }
+};
+
+class PreWriteRxHost : public FakeHost {
+    public:
+        std::vector<uint8_t> beforeWrite;
+        void setDriverEnabled(bool enabled) override {
+            FakeHost::setDriverEnabled(enabled);
+            if(enabled && !beforeWrite.empty()) {
+                queueFrame(beforeWrite);
+                beforeWrite.clear();
+            }
+        }
+};
+
+static void check_split_receiver_reply_echo(int echoMode, bool echoInPayload = false)
+{
+    PreWriteRxHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    transport.setSink(&sink);
+    beginAt(transport, host, config, 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    reply[0] = 0xEA;
+    if(echoInPayload) {
+        std::copy(host.writes[0].begin(), host.writes[0].end(), reply.begin() + 34);
+        reply.back() = ELRSCrsfTransport::crc8D5(reply.data() + 2, reply.size() - 3);
+        payload.assign(reply.begin() + 3, reply.end() - 1);
+    }
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 34));
+    transportAt(transport, host, 1, 1000);
+    TEST_ASSERT_TRUE(sink.payloads.empty());
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    if(echoMode == 4) {
+        uint16_t channels[16] = {};
+        channels[0] = 1200;
+        transport.setChannels(channels);
+    }
+    if(echoMode == 5 || echoMode == 6) {
+        const std::vector<uint8_t> requestPayload = echoMode == 6 ? std::vector<uint8_t>(58, 'a') : std::vector<uint8_t>{1, 0};
+        auto request = makeExtendedFrame(0xC8, 0x2C, 0xEC, 0xEA, requestPayload);
+        TEST_ASSERT_TRUE(transport.queueServiceFrame(request.data(), request.size()));
+    }
+    if(echoMode == 7) host.beforeWrite.assign(reply.begin() + 34, reply.begin() + 38);
+    host.loopbackWriteToRx = echoMode == 1 || echoMode == 5 || echoMode == 6 || echoMode == 7;
+    if(echoMode == 3)
+        host.rxAppendAfterWrite.assign(host.writes[0].begin(), host.writes[0].begin() + 10);
+    transportAt(transport, host, 4, 4000);
+    host.loopbackWriteToRx = false;
+    if(echoMode == 2) host.queueFrame(host.writes.back());
+    if(echoMode == 4) host.queueFrame(host.writes.front());
+    if(echoMode == 3) {
+        transportAt(transport, host, 4, 4500);
+        host.queueFrame(std::vector<uint8_t>(host.writes.back().begin() + 10, host.writes.back().end()));
+        transportAt(transport, host, 4, 4700);
+    }
+    host.queueFrame(std::vector<uint8_t>(reply.begin() + (echoMode == 7 ? 38 : 34), reply.end()));
+    transportAt(transport, host, 5, 5000);
+    transportAt(transport, host, 5, 5500);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT32(payload.size(), sink.payloads[0].size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload.data(), sink.payloads[0].data(), payload.size());
+    TEST_ASSERT_TRUE(transport.status().lastRawFrame.crcValid);
+    TEST_ASSERT_TRUE(transport.status().everReplied);
+    TEST_ASSERT_EQUAL_UINT32(2, host.writes.size());
+    TEST_ASSERT_EQUAL_UINT32(0, host.txStarts[0]);
+    TEST_ASSERT_EQUAL_UINT32(4000, host.txStarts[1]);
+}
+
+static void test_split_receiver_reply_survives_synchronous_rc_echo() { check_split_receiver_reply_echo(1); }
+static void test_split_receiver_reply_survives_delayed_rc_echo() { check_split_receiver_reply_echo(2); }
+static void test_split_receiver_reply_survives_fragmented_rc_echo() { check_split_receiver_reply_echo(3); }
+static void test_split_receiver_reply_survives_previous_rc_echo() { check_split_receiver_reply_echo(4); }
+static void test_split_receiver_reply_survives_service_echo() { check_split_receiver_reply_echo(5); }
+static void test_split_receiver_reply_survives_maximum_service_echo() { check_split_receiver_reply_echo(6); }
+static void test_split_receiver_reply_keeps_bytes_received_before_write() { check_split_receiver_reply_echo(7); }
+static void test_split_receiver_reply_without_echo_is_unchanged() { check_split_receiver_reply_echo(0); }
+static void test_valid_receiver_payload_at_tx_boundary_is_not_stripped() { check_split_receiver_reply_echo(0, true); }
+
+
+static void check_receiver_reply_across_multiple_echo_slots(int chunkSize)
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    transport.setSink(&sink);
+    beginAt(transport, host, config, 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    reply[0] = 0xEA;
+    int slot = 0;
+    for(size_t start = 0; start < reply.size(); start += chunkSize, slot++) {
+        const size_t end = std::min(start + chunkSize, reply.size());
+        host.queueFrame(std::vector<uint8_t>(reply.begin() + start, reply.begin() + end));
+        transportAt(transport, host, 1 + slot * 4, 1000 + slot * 4000);
+        if(end < reply.size()) {
+            TEST_ASSERT_TRUE(sink.payloads.empty());
+            TEST_ASSERT_FALSE(transport.status().everReplied);
+            host.loopbackWriteToRx = true;
+            transportAt(transport, host, 4 + slot * 4, 4000 + slot * 4000);
+            host.loopbackWriteToRx = false;
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload.data(), sink.payloads[0].data(), payload.size());
+    TEST_ASSERT_TRUE(transport.status().lastRawFrame.crcValid);
+    TEST_ASSERT_EQUAL_UINT32(slot, host.writes.size());
+    for(int i = 0; i < slot; i++) TEST_ASSERT_EQUAL_UINT32(i * 4000, host.txStarts[i]);
+}
+
+static void test_receiver_reply_survives_two_interposed_rc_echoes() { check_receiver_reply_across_multiple_echo_slots(20); }
+static void test_receiver_reply_survives_six_interposed_rc_echoes() { check_receiver_reply_across_multiple_echo_slots(10); }
+
+static void test_echo_recovery_requires_valid_recovered_crc()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    transport.setSink(&sink);
+    beginAt(transport, host, ELRSCrsfTransportConfig(), 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    reply[0] = 0xEA;
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 34));
+    transportAt(transport, host, 1, 1000);
+    host.loopbackWriteToRx = true;
+    transportAt(transport, host, 4, 4000);
+    host.loopbackWriteToRx = false;
+    reply.back() ^= 1;
+    host.queueFrame(std::vector<uint8_t>(reply.begin() + 34, reply.end()));
+    transportAt(transport, host, 5, 5000);
+    TEST_ASSERT_TRUE(sink.payloads.empty());
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    auto next = makeFrame(0x2B, {0xEA, 0xEC, 2, 0, 0, 12, 'O', 'K', 0});
+    host.queueFrame(next);
+    transportAt(transport, host, 6, 6000);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT8(2, sink.payloads[0][2]);
+}
+
+
+static void test_echo_recovery_preserves_valid_resync_frame_in_damaged_input()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    transport.setSink(&sink);
+    beginAt(transport, host, ELRSCrsfTransportConfig(), 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    const auto inner = makeFrame(0x2B, {0xEA, 0xEC, 2, 0, 0, 12, 'O', 'K', 0});
+    std::copy(host.writes[0].begin(), host.writes[0].end(), reply.begin() + 20);
+    std::copy(inner.begin(), inner.end(), reply.begin() + 46);
+    reply.back() = ELRSCrsfTransport::crc8D5(reply.data() + 2, reply.size() - 3) ^ 1;
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 20));
+    transportAt(transport, host, 1, 1000);
+    transportAt(transport, host, 4, 4000); // No physical echo; matching bytes belong to damaged input.
+    host.queueFrame(std::vector<uint8_t>(reply.begin() + 20, reply.end()));
+    host.queueFrame(std::vector<uint8_t>(26, 'a'));
+    transportAt(transport, host, 5, 5000);
+    transportAt(transport, host, 5, 5500);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT32(inner.size() - 4, sink.payloads[0].size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(inner.data() + 3, sink.payloads[0].data(), inner.size() - 4);
+}
+
 static void test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer()
 {
     FakeHost host;
@@ -5945,6 +6136,19 @@ int main(int argc, char **argv)
     RUN_TEST(test_module_settings_apply_after_targets_are_found_without_full_scan);
     RUN_TEST(test_module_settings_do_not_write_packet_rate_target_or_change_transport_rate);
     RUN_TEST(test_module_ping_keeps_rc_running_while_waiting_for_settings);
+    RUN_TEST(test_split_receiver_reply_survives_synchronous_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_delayed_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_fragmented_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_previous_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_service_echo);
+    RUN_TEST(test_split_receiver_reply_survives_maximum_service_echo);
+    RUN_TEST(test_split_receiver_reply_keeps_bytes_received_before_write);
+    RUN_TEST(test_split_receiver_reply_without_echo_is_unchanged);
+    RUN_TEST(test_valid_receiver_payload_at_tx_boundary_is_not_stripped);
+    RUN_TEST(test_receiver_reply_survives_two_interposed_rc_echoes);
+    RUN_TEST(test_receiver_reply_survives_six_interposed_rc_echoes);
+    RUN_TEST(test_echo_recovery_requires_valid_recovered_crc);
+    RUN_TEST(test_echo_recovery_preserves_valid_resync_frame_in_damaged_input);
     RUN_TEST(test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer);
     RUN_TEST(test_service_probe_drain_preserves_following_module_reply_bytes);
     RUN_TEST(test_service_probe_drain_preserves_immediate_c8_link_stats_without_echo);

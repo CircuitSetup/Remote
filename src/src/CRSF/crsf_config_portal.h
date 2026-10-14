@@ -63,6 +63,7 @@ static bool remotePortalToken(bool expiry=true) {
 }
 static bool remotePortalGate() {
     if(!remotePortalActiveNetwork() || !remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP or connected network and use a current session");return false;}
+    remotePortalExpires=millis()+300000U;
     return true;
 }
 static bool remotePortalRadioBusy() {
@@ -83,10 +84,15 @@ static bool remotePortalSigned(const char *name,int32_t &value) {
 }
 static void remotePortalSession() {
     if(!remotePortalActiveNetwork() || !remotePortalOrigin()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP or connected network to start a session");return;}
-    if(remoteSettingsBusy() || remotePortalUploading || (remotePortalRadioBusy() && !remotePortalToken(false))) {remotePortalError(409,"BUSY","session","An operation owns the session");return;}
-    for(unsigned i=0;i<4;i++) snprintf(remotePortalNonce+i*8,9,"%08x",esp_random());
-    remotePortalOwner=wm.server->client().remoteIP();remotePortalExpires=millis()+300000U;remotePortalPreview.valid=false;
-    remotePortalUploadFiles=0;
+    const bool sameOwnerToken=remotePortalToken(false);
+    if(remoteSettingsBusy() || remotePortalUploading || (remotePortalRadioBusy() && !sameOwnerToken)) {remotePortalError(409,"BUSY","session","An operation owns the session");return;}
+    if(sameOwnerToken) {
+        remotePortalExpires=millis()+300000U;
+    } else {
+        for(unsigned i=0;i<4;i++) snprintf(remotePortalNonce+i*8,9,"%08x",esp_random());
+        remotePortalOwner=wm.server->client().remoteIP();remotePortalExpires=millis()+300000U;remotePortalPreview.valid=false;
+        remotePortalUploadFiles=0;
+    }
     StaticJsonDocument<128> doc;doc["nonce"]=remotePortalNonce;remotePortalJson(doc);
 }
 static void remotePortalDevices() {

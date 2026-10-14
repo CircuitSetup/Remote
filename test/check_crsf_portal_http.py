@@ -199,7 +199,7 @@ unsigned long millis(){return now;}int gateError=0;void remotePortalError(int co
 int main(){
  server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8";server.headers["X-Remote-Nonce"]=remotePortalNonce;WiFi.connected=true;
  assert(!remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin());
- assert(remotePortalToken()&&remotePortalGate());
+ uint32_t priorExpiry=remotePortalExpires;assert(remotePortalToken()&&remotePortalGate());assert(remotePortalExpires==now+300000U&&remotePortalExpires!=priorExpiry);uint32_t activeExpiry=remotePortalExpires;
  server.c.local={10,0,0,9};assert(!remotePortalActiveNetwork()&&!remotePortalGate());server.c.local={10,0,0,8};
  server.host="10.0.0.8.evil";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin()&&!remotePortalGate());
  server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin()&&!remotePortalGate());
@@ -207,8 +207,73 @@ int main(){
  server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalGate());server.headers["X-Remote-Nonce"]=remotePortalNonce;server.headers.erase("X-Remote-Nonce");assert(!remotePortalGate());server.headers["X-Remote-Nonce"]=remotePortalNonce;
  server.c.peer={10,0,0,23};assert(!remotePortalToken()&&!remotePortalGate());server.c.peer={10,0,0,22};now=remotePortalExpires;assert(!remotePortalToken()&&!remotePortalGate());
  // The same default gate accepts a valid Remote AP connection.
+ assert(remotePortalExpires==activeExpiry);
  now=1000;server.c.local={192,168,4,1};server.c.peer={192,168,4,22};server.host="remote.local";server.headers["Origin"]="http://remote.local";remotePortalOwner={192,168,4,22};
  assert(remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin()&&remotePortalGate());
+}
+'''
+        compile_and_run(harness, [], [])
+
+    def test_session_renewal_preserves_preview_only_for_same_owner_token(self):
+        signatures = (
+            r"static bool remotePortalLocalAP\(\)",
+            r"static bool remotePortalActiveNetwork\(\)",
+            r"static bool remotePortalOrigin\(\)",
+            r"static bool remotePortalToken\(bool expiry=true\)",
+            r"static void remotePortalSession\(\)",
+        )
+        session = function(PORTAL, r"static void remotePortalSession\(\)")
+        self.assertIn('doc["nonce"]=remotePortalNonce', session)
+        production = "\n".join(function(PORTAL, signature) for signature in signatures)
+        harness = r'''#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <string>
+#undef assert
+#define assert(condition) do { if(!(condition)) return __LINE__; } while(0)
+class String{std::string v;public:String()=default;String(const char*s):v(s?s:""){}String(std::string s):v(std::move(s)){}size_t length()const{return v.size();}bool isEmpty()const{return v.empty();}const char*c_str()const{return v.c_str();}char operator[](size_t i)const{return v[i];}void remove(size_t i){v.erase(i);}bool endsWith(const char*s)const{return v.size()>=strlen(s)&&v.compare(v.size()-strlen(s),strlen(s),s)==0;}bool startsWith(const String&s)const{return v.rfind(s.v,0)==0;}friend String operator+(const String&a,const String&b){return a.v+b.v;}friend String operator+(const String&a,const char*b){return a.v+b;}friend bool operator==(const String&a,const String&b){return a.v==b.v;}friend bool operator==(const String&a,const char*b){return a.v==b;}friend bool operator!=(const String&a,const String&b){return !(a==b);}};
+class IPAddress{uint8_t a[4]{};public:IPAddress()=default;IPAddress(int x,int y,int z,int w):a{(uint8_t)x,(uint8_t)y,(uint8_t)z,(uint8_t)w}{}uint8_t operator[](int i)const{return a[i];}String toString()const{return std::to_string(a[0])+"."+std::to_string(a[1])+"."+std::to_string(a[2])+"."+std::to_string(a[3]);}friend bool operator==(const IPAddress&x,const IPAddress&y){return !memcmp(x.a,y.a,4);}friend bool operator!=(const IPAddress&x,const IPAddress&y){return !(x==y);}};
+struct Client{IPAddress local{192,168,4,1},peer{192,168,4,22};IPAddress localIP()const{return local;}IPAddress remoteIP()const{return peer;}};
+constexpr int HTTP_GET=0,HTTP_POST=1;int requestMethod=HTTP_POST;
+#define WL_CONNECTED 3
+struct Server{Client c;std::map<std::string,std::string>headers;std::string host="192.168.4.1";Client&client(){return c;}String header(const char*n){return headers.count(n)?String(headers[n]):String();}String hostHeader(){return host;}int method()const{return requestMethod;}}server;
+struct Settings{char hostName[32]="remote";}settings;
+struct Wifi{IPAddress ap{192,168,4,1},sta{10,0,0,8};bool connected=true;IPAddress softAPIP()const{return ap;}IPAddress localIP()const{return sta;}int status()const{return connected?WL_CONNECTED:0;}}WiFi;
+struct Manager{Server*server=&::server;}wm;
+char remotePortalNonce[33]={};IPAddress remotePortalOwner;uint32_t remotePortalExpires=0,now=1000;unsigned long millis(){return now;}
+struct Preview{bool valid=true;uint32_t expiresAt=12345;char fileHash[65]="abababababababababababababababababababababababababababababababab";}remotePortalPreview;
+bool remotePortalUploading=false,settingsBusy=false,radioBusy=false;uint8_t remotePortalUploadFiles=0;int errorCode=0;uint32_t randomValue=1,maintenanceExpiresAt=777;
+bool remoteSettingsBusy(){return settingsBusy;}bool remotePortalRadioBusy(){return radioBusy;}uint32_t esp_random(){return randomValue++;}void remoteSetMaintenance(bool){maintenanceExpiresAt=now+300000U;}
+struct JsonProxy{JsonProxy&operator=(const char*){return *this;}};template<size_t N>struct StaticJsonDocument{JsonProxy operator[](const char*){return {};}};
+template<class T>void remotePortalJson(T&){}void remotePortalError(int code,const char*,const char*,const char*){errorCode=code;}
+'''
+        harness += production + r'''
+int main(){
+ server.headers["Origin"]="http://192.168.4.1";
+ // First session starts a new token and invalidates an old preview.
+ remotePortalSession();assert(remotePortalNonce[0]&&remotePortalPreview.valid==false&&remotePortalOwner==server.c.peer);
+ char issued[33];memcpy(issued,remotePortalNonce,sizeof(issued));
+ // A same-owner request with that nonce renews even after idle expiry.
+ remotePortalPreview.valid=true;remotePortalPreview.expiresAt=12345;char originalHash[65];memcpy(originalHash,remotePortalPreview.fileHash,sizeof(originalHash));
+ server.headers["X-Remote-Nonce"]=issued;now=UINT32_MAX-100000U;remotePortalExpires=now-1U;radioBusy=true;
+ remotePortalSession();assert(!strcmp(issued,remotePortalNonce));assert(remotePortalExpires==now+300000U);assert(remotePortalPreview.valid&&remotePortalPreview.expiresAt==12345&&!strcmp(remotePortalPreview.fileHash,originalHash)&&maintenanceExpiresAt==777);
+ assert(remotePortalToken());now+=300001U;assert(!remotePortalToken());
+ // Wrong owner or nonce cannot renew while a radio operation is owned.
+ now=100;remotePortalExpires=200;server.c.peer={192,168,4,23};assert(!remotePortalToken(false));remotePortalSession();assert(errorCode==409&&!strcmp(issued,remotePortalNonce)&&remotePortalOwner==IPAddress(192,168,4,22));
+ server.c.peer={192,168,4,22};server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalToken(false));remotePortalSession();assert(errorCode==409&&!strcmp(issued,remotePortalNonce));
+ // Same owner but invalid Host/Origin or local interface cannot renew.
+ server.headers["X-Remote-Nonce"]=issued;server.host="192.168.4.1.evil";server.headers["Origin"]="http://192.168.4.1.evil";remotePortalSession();assert(errorCode==403&&!strcmp(issued,remotePortalNonce));
+ server.host="192.168.4.1";server.headers["Origin"]="http://192.168.4.1";server.c.local={10,0,0,9};remotePortalSession();assert(errorCode==403&&!strcmp(issued,remotePortalNonce));
+ // Busy storage/upload ownership always blocks renewal.
+ server.c.local={192,168,4,1};settingsBusy=true;remotePortalSession();assert(errorCode==409&&!strcmp(issued,remotePortalNonce));settingsBusy=false;
+ remotePortalUploading=true;remotePortalSession();assert(errorCode==409&&!strcmp(issued,remotePortalNonce));remotePortalUploading=false;radioBusy=false;
+ // Renewal across millis wrap keeps the preview's separate expiry unchanged.
+ now=UINT32_MAX-50000U;remotePortalExpires=now-1U;remotePortalPreview.valid=true;remotePortalPreview.expiresAt=77;
+ remotePortalSession();assert(!strcmp(issued,remotePortalNonce)&&remotePortalPreview.valid&&remotePortalPreview.expiresAt==77&&remotePortalToken()&&maintenanceExpiresAt==777);
+ // A different owner starts a new token only when idle and invalidates the old preview.
+ now=500;remotePortalPreview.valid=true;server.c.peer={192,168,4,23};server.headers.erase("X-Remote-Nonce");remotePortalSession();
+ assert(strcmp(issued,remotePortalNonce)&&remotePortalOwner==server.c.peer&&!remotePortalPreview.valid);
 }
 '''
         compile_and_run(harness, [], [])
