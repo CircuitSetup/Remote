@@ -50,6 +50,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         void loop(int battWarn);
 
         bool isCalibrating() const;
+        bool throttleReady() const;
         bool fakePowerOn() const;
         uint16_t finalChannel5() const { return _core.channelAt(4); }
         ELRSCrsfStatus getStatus() const;
@@ -89,6 +90,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
 
         ELRSAxesResult sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], uint32_t &completedAt,
                                  ELRSAxesRequest request, uint32_t txBudgetUs) override;
+        int16_t rawThrottleSample() const override { return _stagingAxes[3]; }
         bool readFakePowerSwitch() override;
         bool readStopSwitch() override;
         bool readButtonA() override;
@@ -136,6 +138,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         uint32_t _lastAdsProbeAt = 0;
         bool _adsRetryPending = false;
         int16_t _stagingAxes[ELRS_GIMBAL_AXIS_COUNT] = {};
+        ELRSOneEuroFilter _adcFilters[ELRS_GIMBAL_AXIS_COUNT];
 
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
         int16_t _filteredAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };

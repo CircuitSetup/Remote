@@ -12,10 +12,22 @@
  <div class="hl"><h3>Live ELRS controls</h3></div>
  <p id="access"><small>Loading connection status…</small></p>
  <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connect through the Remote AP or connected network to use live controls.</div>
- <p><small>FakePower off does not disarm the receiver. Set final CH5 low, disarm and disconnect RF before changing TX RF settings or activating a model.</small></p>
+ <p><small>FakePower off does not disarm the receiver. Set final CH5 low and disarm before radio changes. Disconnect RF for Packet Rate, other critical TX settings, or model activation.</small></p>
  <button type="button" id="maintenance">Enter maintenance (5 minutes)</button>
  <button type="button" id="status">Refresh RF status</button>
  <small id="safety"></small>
+</div>
+<div class="ss">
+ <div class="hl"><h3>Transmitter</h3></div>
+ <p><small>Live values and choices come from the discovered transmitter menu. Enter maintenance and refresh disarmed RF status before changes. Packet Rate changes also require RF disconnected.</small></p>
+ <button type="button" id="txRefresh">Refresh transmitter readback</button>
+ <div id="txFields">Refresh to read transmitter settings.</div>
+</div>
+<div class="ss">
+ <div class="hl"><h3>Receiver outputs</h3></div>
+ <p><small>Receiver output changes and failsafe capture require RF connected and the receiver disarmed. Choose the physical output, then its incoming RC channel. Output changes refresh dependent settings before further edits.</small></p>
+ <button type="button" id="rxRefresh">Refresh receiver readback</button>
+ <div id="rxFields">Refresh to read receiver output settings.</div>
 </div>
 <div class="ss">
  <div class="hl"><h3>Radio devices</h3></div>
@@ -32,7 +44,7 @@
 </div>
 <div class="ss">
  <div class="hl"><h3>CRSF settings files</h3></div>
- <p><small>CRSF backups include model settings and input calibration. Portable models keep this Remote’s input calibration. File operations require connection through this Remote AP. They do not require a password.</small></p>
+ <p><small>CRSF backups include model settings and input calibration. Portable models keep this Remote’s input calibration. File operations work through this Remote AP or connected network without a password.</small></p>
  <button type="button" id="backup">Download CRSF settings backup</button>
  <button type="button" id="model">Download portable model</button>
  <label>Native file <input id="file" type="file" accept=".json"></label>

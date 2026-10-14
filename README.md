@@ -1014,7 +1014,7 @@ The **Motor RPM speed** fields default to the TT-02R with the Spektrum SPMXSEMC0
 
 ##### &#9193; CRSF channel cadence (restart required)
 
-Selects how often the Remote sends channel frames to the transmitter module: 50, 100, 150, 250, or 500 Hz, with 250 Hz as the default. This is separate from the module's over-the-air RF packet rate, which is selected through **Radio devices**. Save and restart to change the CRSF channel cadence.
+Selects how often the Remote sends channel frames to the transmitter module: 50, 100, 150, 250, or 500 Hz, with 250 Hz as the default. This is separate from the module's over-the-air RF packet rate, which is selected through the live **Transmitter** section. Save and restart to change the CRSF channel cadence.
 
 ##### &#9193; Speed units
 
@@ -1053,7 +1053,9 @@ Limits follow the physical input when channels are remapped. Reversal changes wh
 
 ##### &#9193; ELRS/CRSF Gimbal Calibration
 
-**Jitter tolerance** and **Throttle idle deadband** each accept 0-32 ADC counts and default to 5; 0 disables the adjustment. Jitter tolerance holds an input until its filtered reading changes enough. Throttle idle deadband holds the throttle at minimum output near its calibrated idle endpoint, including reversed throttle.
+Gimbal ADC inputs use a speed-adaptive filter: steady sticks get stronger smoothing, while faster movement gets less smoothing to reduce delay. The filter uses elapsed sample time and restarts from a fresh reading after stale input or an ADC error. **Jitter tolerance** and **Throttle idle deadband** each accept 0-32 ADC counts and default to 5; 0 disables that adjustment. Jitter tolerance holds an input until its filtered reading changes enough, while calibrated center and endpoint transitions remain reachable. Throttle idle deadband holds the throttle at minimum output near its calibrated idle endpoint, including reversed throttle.
+
+At startup and after calibration, an ADC fault, or stale input, throttle output stays neutral until both the fresh raw and filtered throttle readings reach the saved calibrated center. Move the physical throttle to its calibrated center to unlock it; FakePower off alone does not unlock it. The lock covers the mapped throttle channel and active mixes sourced from throttle. The live safety line reports when throttle output is locked. This lock requires a fresh sample and does not change channel mappings, reversal, calibration points, travel limits, or mix definitions.
 
 This section shows live ADC readings after filtering and jitter tolerance, before throttle idle adjustments, calibration mapping, and output travel limits. Move a gimbal to its low, center, or high position and click the matching *Capture* button. When you save the page, those stabilized ADC counts are stored and used as the three-point calibration before Travel Limits:
 
@@ -1065,11 +1067,15 @@ Values between the saved points are interpolated, and anything outside the saved
 
 ##### &#9193; Live ELRS controls and Radio devices
 
-Live controls are available through the Remote AP or over the network the Remote is connected to. CRSF settings file operations require connection through the Remote AP. Neither requires an AP password. The radio must be active to discover and control devices.
+Live controls and CRSF settings file operations are available through the Remote AP or over the network the Remote is connected to, without a password. File operations still require a current portal session and an exact validated preview before activation. The radio must be active to discover and control devices.
 
-Click **Discover devices**, select a transmitter or receiver, and choose a field. Labels, units, ranges, and choices come from the device's menu descriptors, so controls are not tied to a Ranger Micro. Read-only, hidden, or unsupported fields cannot be edited. A change is previewed, explicitly confirmed, and read back from the device; failures are reported rather than treated as a successful write. Supported commands have their own start, confirm, and cancel controls.
+In **Transmitter**, click **Refresh transmitter readback** to discover/read **Telemetry Ratio**, **Packet Rate**, **TX Power**, and **Dynamic power**, independently of the selected generic device. Values, units, ranges, and choices come from the discovered transmitter descriptors; there are no module-specific field numbers or preset option lists. **TX Power** is the configured maximum power, not a measurement of current transmit power. **Dynamic power** retains advertised AUX choices. Packet Rate is the module's over-the-air RF rate; it is separate from Remote's CRSF channel cadence. See the [ExpressLRS transmitter menu guide](https://www.expresslrs.org/quick-start/transmitters/lua-howto/).
 
-Enter **maintenance** for a five-minute session before sensitive changes. With CRSF active, transmitter RF changes and model-file activation require fresh disconnected/disarmed RF status, final CH5 low, FakePower off, and no calibration or self-test in progress. **FakePower off does not disarm the receiver.** Receiver assignment/output operations require the connected receiver to be disarmed and separately confirmed.
+In **Receiver outputs**, click **Refresh receiver readback**. **Physical PWM output** selects the receiver pin/output being configured (**Output Ch**); **Incoming RC channel** maps an over-the-air channel to that selected output (**Input Ch**). Changing the output rereads its dependent fields before further edits. **Capture failsafe positions** stores the current positions for all configured PWM outputs, requires explicit confirmation, and preserves any device confirmation/cancel prompt. It does not edit arbitrary failsafe pulse values. See the [ExpressLRS PWM receiver guide](https://www.expresslrs.org/hardware/pwm-receivers/).
+
+**Radio devices** retains the generic menu for other advertised fields: click **Discover devices**, select a transmitter or receiver, and choose a field. Read-only, hidden, unsupported, missing, or unreadable fields cannot be edited through dedicated controls. A change is previewed, explicitly confirmed, and read back from its owning device; dependent options refresh afterward. Generation changes invalidate old live values. Failed writes or dependent readbacks require a refresh before further edits and do not report verified success. Supported commands have their own start, confirm, and cancel controls.
+
+Enter **maintenance** for a five-minute session before sensitive changes. With CRSF active, changes require fresh disarmed RF status, final CH5 low, FakePower off, and no calibration or self-test in progress. Packet Rate and other critical TX settings, TX profile selection, and model-file activation also require RF disconnected. Telemetry Ratio, TX Power, and Dynamic power follow the fresh disarmed transmitter gate. **FakePower off does not disarm the receiver.** Receiver assignment/output operations require the connected receiver to be disarmed and separately confirmed.
 
 Use **TX profile ID (0-63)** and **Select and verify TX profile** to select the intended transmitter model. **Assign connected receiver to this profile** is a separate action; selecting a profile alone does not establish a verified receiver binding.
 
@@ -1090,7 +1096,7 @@ To restore or import a native file:
 1. Choose the JSON file and its **File type**: Portable model or CRSF settings backup. Each native file is limited to 16 KiB.
 2. Click **Validate and preview file** and review the proposed model and calibration changes.
 3. Enter maintenance, refresh the required radio status, then confirm **Activate this preview and restart**.
-4. After reboot, discover/read the radio and verify the imported profile and radio preferences. Complete **Finish imported radio review after readback** before normal preference application resumes.
+4. After reboot, discover/read the radio and verify the imported profile and radio preferences. The review action rereads the transmitter preferences even when a receiver is selected. Complete **Finish imported radio review after readback** before normal preference application resumes.
 
 A preview expires after five minutes and must still match the uploaded file, local settings, and device capabilities. If any of those change, validate and preview again. File activation uses a checked CRSF settings save and restarts only after a successful save.
 

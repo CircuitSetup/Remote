@@ -342,4 +342,55 @@ static inline int16_t elrsIirFilterStep(int16_t previous, int16_t sample, uint8_
     return (int16_t)(previous + step);
 }
 
+constexpr float ELRS_ADC_FILTER_MIN_CUTOFF_HZ = 1.0f;
+constexpr float ELRS_ADC_FILTER_BETA = 0.02f;
+constexpr float ELRS_ADC_FILTER_DERIVATIVE_CUTOFF_HZ = 1.0f;
+constexpr uint32_t ELRS_ADC_FILTER_STALE_US = 100000UL;
+
+class ELRSOneEuroFilter {
+    public:
+        void reset() { _initialized = false; }
+
+        int16_t update(int16_t sample, uint32_t nowUs)
+        {
+            if(!_initialized) {
+                _initialized = true;
+                _previousRaw = _filtered = (float)sample;
+                _derivative = 0.0f;
+                _lastAtUs = nowUs;
+                return sample;
+            }
+
+            const uint32_t elapsedUs = nowUs - _lastAtUs;
+            if(elapsedUs > ELRS_ADC_FILTER_STALE_US) {
+                reset();
+                return update(sample, nowUs);
+            }
+            if(!elapsedUs) return (int16_t)roundf(_filtered);
+
+            const float dt = elapsedUs * 0.000001f;
+            const float raw = (float)sample;
+            const float derivative = (raw - _previousRaw) / dt;
+            _derivative += alpha(ELRS_ADC_FILTER_DERIVATIVE_CUTOFF_HZ, dt) * (derivative - _derivative);
+            const float cutoff = ELRS_ADC_FILTER_MIN_CUTOFF_HZ + ELRS_ADC_FILTER_BETA * fabsf(_derivative);
+            _filtered += alpha(cutoff, dt) * (raw - _filtered);
+            _previousRaw = raw;
+            _lastAtUs = nowUs;
+            return (int16_t)roundf(_filtered);
+        }
+
+    private:
+        static float alpha(float cutoff, float dt)
+        {
+            const float tau = 1.0f / (6.28318530718f * cutoff);
+            return 1.0f / (1.0f + tau / dt);
+        }
+
+        bool _initialized = false;
+        float _previousRaw = 0.0f;
+        float _filtered = 0.0f;
+        float _derivative = 0.0f;
+        uint32_t _lastAtUs = 0;
+};
+
 #endif

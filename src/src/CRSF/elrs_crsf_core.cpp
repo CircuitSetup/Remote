@@ -182,6 +182,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _haveAds = false;
     _haveStableAxes = false;
     _haveGoodAxes = false;
+    _throttleReady = false;
     _axisSweepActive = false;
     _fakePowerOn = false;
     _selfTestActive = false;
@@ -395,6 +396,11 @@ bool ELRSCrsfCore::selfTestActive() const
 bool ELRSCrsfCore::isCalibrating() const
 {
     return (_calStage != CAL_IDLE) || _calCapturePending;
+}
+
+bool ELRSCrsfCore::throttleReady() const
+{
+    return _throttleReady && _logHost && !adcFaultActive(_logHost->millisNow());
 }
 
 bool ELRSCrsfCore::fakePowerOn() const
@@ -619,6 +625,7 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
     _axisSweepActive = false;
     if(result == ELRS_AXES_ERROR) {
         _haveStableAxes = false;
+        _throttleReady = false;
         if(_calCapturePending) {
             _calCapturePending = false;
             showOverlay("ADC", host.millisNow(), 1000);
@@ -626,6 +633,8 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
         return result;
     }
 
+    if(_haveGoodAxes && (uint32_t)(completedAt - _lastGoodAxesAt) > CRSF_INPUT_STALE_MS)
+        _throttleReady = false;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = axes[i];
         const ELRSInputAxisProfile &profile = _axisProfiles[i];
@@ -652,6 +661,18 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
     _haveAds = true;
     _haveGoodAxes = true;
     _lastGoodAxesAt = completedAt;
+
+    const int16_t rawThrottle = host.rawThrottleSample();
+    const int centerDelta = (int)axes[AXIS_THROTTLE] - _axisProfiles[AXIS_THROTTLE].center;
+    const int rawCenterDelta = (int)rawThrottle - _axisProfiles[AXIS_THROTTLE].center;
+    const int centerBand = (_config.adcHysteresis > _axisProfiles[AXIS_THROTTLE].deadband)
+        ? _config.adcHysteresis : _axisProfiles[AXIS_THROTTLE].deadband;
+    if(!_throttleReady && !isCalibrating() && axes[AXIS_THROTTLE] >= 0 &&
+       axes[AXIS_THROTTLE] <= 2047 && rawThrottle >= 0 && rawThrottle <= 2047 &&
+       centerDelta >= -centerBand && centerDelta <= centerBand &&
+       rawCenterDelta >= -centerBand && rawCenterDelta <= centerBand) {
+        _throttleReady = true;
+    }
 
     return ELRS_AXES_READY;
 }
@@ -835,6 +856,7 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
 void ELRSCrsfCore::requestCalibrationCapture(ELRSCrsfHost &host, unsigned long now)
 {
     if(_calCapturePending) return;
+    _throttleReady = false;
     _calCaptureStage = _calStage;
     _calCaptureRequestedAt = (uint32_t)now;
     _calCapturePending = true;
@@ -959,6 +981,7 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     if(_selfTestActive) {
         writeGimbalChannels(true);
         writeFixedChannelIfUnclaimed(_config.switchRouting.channels[0], CRSF_CHANNEL_MAX);
+        clampLockedThrottleOutputs();
         return;
     }
 
@@ -978,6 +1001,18 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     }
     applyMixes(now, (uint16_t)(stopOn | (fakePowerOn << 1) | (buttonAOn << 2) |
                                (buttonBOn << 3) | ((uint16_t)packStates << 4)));
+    clampLockedThrottleOutputs();
+}
+
+void ELRSCrsfCore::clampLockedThrottleOutputs()
+{
+    if(_throttleReady) return;
+    if(_inputRouting.throttleChannel)
+        _channels[_inputRouting.throttleChannel - 1] = CRSF_CHANNEL_MID;
+    for(const auto &line : _config.mixes.lines) {
+        if(line.channel >= 1 && line.channel <= 16 && line.source == AXIS_THROTTLE + 1)
+            _channels[line.channel - 1] = CRSF_CHANNEL_MID;
+    }
 }
 
 void ELRSCrsfCore::resetChannels(uint16_t defaultTicks)
@@ -991,7 +1026,7 @@ void ELRSCrsfCore::writeGimbalChannels(bool safeOutputs)
 {
     writeGimbalChannel(_inputRouting.aileronChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_AILERON));
     writeGimbalChannel(_inputRouting.elevatorChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_ELEVATOR));
-    writeGimbalChannel(_inputRouting.throttleChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
+    writeGimbalChannel(_inputRouting.throttleChannel, (safeOutputs || !_throttleReady) ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
     writeGimbalChannel(_inputRouting.rudderChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_RUDDER));
 }
 
@@ -1020,6 +1055,7 @@ bool ELRSCrsfCore::channelClaimedByGimbal(uint8_t channel) const
 int16_t ELRSCrsfCore::axisToUs(uint8_t axis) const
 {
     if(axis >= ELRS_GIMBAL_AXIS_COUNT) return ELRS_INPUT_US_MID;
+    if(axis == AXIS_THROTTLE && !_throttleReady) return ELRS_INPUT_US_MID;
     const ELRSInputAxisProfile &profile = _axisProfiles[axis];
     return axis == AXIS_THROTTLE
         ? elrsInputModelThrottleToUs(profile, _stableAxes[axis], _config.throttleIdleDeadband)
@@ -1131,6 +1167,7 @@ void ELRSCrsfCore::updateInputFaults(ELRSCrsfHost &host, unsigned long now)
         _faultFlags = (uint8_t)(_faultFlags & ~(ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
     }
 
+    if(adcFault) _throttleReady = false;
     if(adcFault != _adcFaultActive) {
         _adcFaultActive = adcFault;
         if(adcFault) {

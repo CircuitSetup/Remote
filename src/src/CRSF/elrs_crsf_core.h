@@ -56,6 +56,7 @@ class ELRSCrsfHost : public ELRSCrsfTransportHal {
 
         virtual ELRSAxesResult sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], uint32_t &completedAt,
                                          ELRSAxesRequest request, uint32_t txBudgetUs) = 0;
+        virtual int16_t rawThrottleSample() const = 0;
         virtual bool readFakePowerSwitch() = 0;
         virtual bool readStopSwitch() = 0;
         virtual bool readButtonA() = 0;
@@ -124,6 +125,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool selfTestActive() const;
 
         bool isCalibrating() const;
+        bool throttleReady() const;
         bool fakePowerOn() const;
 
         uint32_t baudRate() const;
@@ -182,6 +184,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void updateLocalSwitches(ELRSCrsfHost &host, uint16_t states);
         void resetChannels(uint16_t defaultTicks);
         void writeGimbalChannels(bool safeOutputs);
+        void clampLockedThrottleOutputs();
         void writeGimbalChannel(uint8_t channel, uint16_t ticks);
         void writeFixedChannelIfUnclaimed(uint8_t channel, uint16_t ticks);
         bool channelClaimedByGimbal(uint8_t channel) const;
@@ -263,6 +266,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         bool _axisSweepActive = false;
         bool _fakePowerOn = false;
         bool _selfTestActive = false;
+        bool _throttleReady = false;
 
         unsigned long _startedAt = 0;
         unsigned long _selfTestUntil = 0;

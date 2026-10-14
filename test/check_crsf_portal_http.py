@@ -51,16 +51,15 @@ class CRSFPortalHTTPTests(unittest.TestCase):
         self.assertIn('sendHeader("Content-Encoding","gzip")', setup)
         self.assertIn('"Content-Encoding","gzip"', setup)
 
-    def test_remote_routes_keep_origin_nonce_and_ap_only_file_gate(self):
-        gate = function(PORTAL, r"static bool remotePortalGate\(bool apOnly=true\)")
-        for check in ("remotePortalLocalAP()", "remotePortalActiveNetwork()", "remotePortalOrigin()", "remotePortalToken()"):
+    def test_remote_routes_share_connected_network_gate(self):
+        gate = function(PORTAL, r"static bool remotePortalGate\(\)")
+        for check in ("remotePortalActiveNetwork()", "remotePortalOrigin()", "remotePortalToken()"):
             self.assertIn(check, gate)
-        self.assertNotIn("protectedAP", PORTAL)
+        self.assertNotIn("apOnly", gate)
         self.assertNotIn("settings.appw", PORTAL)
-        for name in ("Export", "Apply", "Review"):
+        for name in ("Export", "Apply", "Review", "Operation", "Action"):
             self.assertIn('if(!remotePortalGate())return', function(PORTAL, rf"static void remotePortal{name}\(\)"))
-        for name in ("Operation", "Action"):
-            self.assertIn('if(!remotePortalGate(false))return', function(PORTAL, rf"static void remotePortal{name}\(\)"))
+        self.assertIn('doc["throttleReady"]=elrsMode.throttleReady()', function(PORTAL, r"static void remotePortalDevices\(\)"))
         for check in ("remotePortalActiveNetwork()", "remotePortalOrigin()"):
             self.assertIn(check, function(PORTAL, r"static void remotePortalSession\(\)"))
         self.assertIn('doc["localAP"]=remotePortalLocalAP()', function(PORTAL, r"static void remotePortalDevices\(\)"))
@@ -111,7 +110,7 @@ class CRSFPortalHTTPTests(unittest.TestCase):
             r"static bool remotePortalActiveNetwork\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
-            r"static bool remotePortalGate\(bool apOnly=true\)",
+            r"static bool remotePortalGate\(\)",
             r"static bool remotePortalUnsigned\(const char \*name,uint32_t max,uint32_t &value\)",
             r"static bool remotePortalSigned\(const char \*name,int32_t &value\)",
         )
@@ -158,13 +157,13 @@ int main(){
 '''
         compile_and_run(harness, [], [])
 
-    def test_live_gate_accepts_station_origin_while_file_gate_stays_ap_local(self):
+    def test_default_gate_accepts_connected_station_and_rejects_invalid_session(self):
         signatures = (
             r"static bool remotePortalLocalAP\(\)",
             r"static bool remotePortalActiveNetwork\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
-            r"static bool remotePortalGate\(bool apOnly=true\)",
+            r"static bool remotePortalGate\(\)",
         )
         production = "\n".join(function(PORTAL, signature) for signature in signatures)
         harness = r'''#include <cassert>
@@ -172,6 +171,8 @@ int main(){
 #include <cstring>
 #include <map>
 #include <string>
+#undef assert
+#define assert(condition) do { if(!(condition)) return __LINE__; } while(0)
 class String {
  std::string v;
 public:
@@ -198,19 +199,16 @@ unsigned long millis(){return now;}int gateError=0;void remotePortalError(int co
 int main(){
  server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8";server.headers["X-Remote-Nonce"]=remotePortalNonce;WiFi.connected=true;
  assert(!remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin());
- assert(remotePortalToken()&&remotePortalGate(false));
- server.c.local={10,0,0,9};assert(!remotePortalActiveNetwork()&&!remotePortalGate(false));server.c.local={10,0,0,8};
- assert(!remotePortalGate()&&gateError==403); // File gate remains AP-only.
- server.host="10.0.0.8.evil";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin());
- server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin());
- server.headers["Origin"]="http://10.0.0.8";WiFi.connected=false;assert(!remotePortalActiveNetwork()&&!remotePortalGate(false));WiFi.connected=true;
- server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalGate(false));server.headers["X-Remote-Nonce"]=remotePortalNonce;
- server.c.peer={10,0,0,23};assert(!remotePortalToken());server.c.peer={10,0,0,22};now=remotePortalExpires;assert(!remotePortalToken());
- // AP access stays valid, but station-only file access does not.
+ assert(remotePortalToken()&&remotePortalGate());
+ server.c.local={10,0,0,9};assert(!remotePortalActiveNetwork()&&!remotePortalGate());server.c.local={10,0,0,8};
+ server.host="10.0.0.8.evil";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin()&&!remotePortalGate());
+ server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin()&&!remotePortalGate());
+ server.headers["Origin"]="http://10.0.0.8";WiFi.connected=false;assert(!remotePortalActiveNetwork()&&!remotePortalGate());WiFi.connected=true;
+ server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalGate());server.headers["X-Remote-Nonce"]=remotePortalNonce;server.headers.erase("X-Remote-Nonce");assert(!remotePortalGate());server.headers["X-Remote-Nonce"]=remotePortalNonce;
+ server.c.peer={10,0,0,23};assert(!remotePortalToken()&&!remotePortalGate());server.c.peer={10,0,0,22};now=remotePortalExpires;assert(!remotePortalToken()&&!remotePortalGate());
+ // The same default gate accepts a valid Remote AP connection.
  now=1000;server.c.local={192,168,4,1};server.c.peer={192,168,4,22};server.host="remote.local";server.headers["Origin"]="http://remote.local";remotePortalOwner={192,168,4,22};
  assert(remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin()&&remotePortalGate());
- server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="remote.local";server.headers["Origin"]="http://remote.local";remotePortalOwner={10,0,0,22};
- assert(!remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin()&&remotePortalGate(false));
 }
 '''
         compile_and_run(harness, [], [])

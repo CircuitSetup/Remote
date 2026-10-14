@@ -324,16 +324,42 @@ static void test_identical_new_sweeps_remain_fresh() {
 static void test_filter_and_hysteresis_update_once_per_new_sample() {
     resetFixture(); ELRSCrsfMode mode; beginMode(mode); completeSweep(mode);
     int16_t axes[4]; const int16_t old[4] = {1000,800,600,400};
-    for(int i = 0; i < 4; i++) Wire.values[i] += 20;
+    for(int i = 0; i < 4; i++) Wire.values[i] = old[i] + 400;
     completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
-    for(int i = 0; i < 4; i++) assert(axes[i] == old[i]); // IIR +5, held inside tolerance.
-    for(int i = 0; i < 4; i++) Wire.values[i] = old[i] + 405;
+    int16_t first[4]; memcpy(first, axes, sizeof(first));
+    for(int i = 0; i < 4; i++) assert(first[i] > old[i] + 100 && first[i] < old[i] + 400);
     const unsigned transactions = Wire.transactions;
-    for(int poll = 0; poll < 1000; poll++) { assert(mode.readCurrentRawAxes(axes)); for(int i = 0; i < 4; i++) assert(axes[i] == old[i]); }
+    for(int poll = 0; poll < 1000; poll++) {
+        assert(mode.readCurrentRawAxes(axes));
+        for(int i = 0; i < 4; i++) assert(axes[i] == first[i]);
+    }
     assert(Wire.transactions == transactions);
     completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
-    for(int i = 0; i < 4; i++) assert(axes[i] == old[i] + 105); // 1005 -> 1105 exactly once.
+    for(int i = 0; i < 4; i++) assert(axes[i] > first[i] && axes[i] <= old[i] + 400);
     puts("test_filter_and_hysteresis_update_once_per_new_sample passed");
+}
+static void test_throttle_lock_requires_raw_and_filtered_center() {
+    resetFixture(); ELRSCrsfMode mode;
+    for(int i = 0; i < 4; i++) Wire.values[i] = 0;
+    beginMode(mode); completeSweep(mode);
+    assert(!mode.throttleReady() && ticks(2) == 992);
+
+    Wire.values[3] = 1280; // The fresh raw sample crosses center; the filter briefly remains near 1022.
+    completeSweep(mode); int16_t axes[4]; assert(mode.readCurrentRawAxes(axes));
+    assert(axes[3] >= 1015 && axes[3] <= 1030);
+    assert(!mode.throttleReady() && ticks(2) == 992);
+    for(int i = 0; i < 3; i++) {
+        completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
+        assert(!mode.throttleReady() && ticks(2) == 992);
+    }
+
+    Wire.values[3] = 1024;
+    for(int i = 0; i < 100 && !mode.throttleReady(); i++) {
+        completeSweep(mode); assert(mode.readCurrentRawAxes(axes));
+        if(!mode.throttleReady()) assert(ticks(2) == 992);
+    }
+    assert(mode.throttleReady() && ticks(2) == 992);
+    puts("Throttle remains locked when filter lag masks off-center raw ADC and unlocks after centered samples");
 }
 static void test_adapter_neutral_endpoints_limits_and_consumers() {
     for(bool prop : {false,true}) for(bool descending : {false,true}) for(bool reverse : {false,true}) {
@@ -352,9 +378,18 @@ static void test_adapter_neutral_endpoints_limits_and_consumers() {
     const ELRSOutputLimits limits[4] = {{1200,1800},{1200,1800},{1200,1800},{1200,1800}};
     const int16_t raw[] = {0,1024,2047}; const uint16_t expected[] = {500,992,1483};
     for(int point = 0; point < 3; point++) {
-        resetFixture(); ELRSCrsfMode mode; for(int i = 0; i < 4; i++) Wire.values[i] = raw[point];
-        beginMode(mode, 250, false, limits); runFor(mode, 12000); int16_t axes[4]; assert(mode.readCurrentRawAxes(axes));
-        for(int i = 0; i < 4; i++) { assert(axes[i] == raw[point]); assert(ticks(i) == expected[point]); }
+        resetFixture(); ELRSCrsfMode mode;
+        for(int i = 0; i < 4; i++) Wire.values[i] = 1024;
+        beginMode(mode, 250, false, limits); runFor(mode, 12000);
+        assert(mode.throttleReady());
+        for(int i = 0; i < 4; i++) Wire.values[i] = raw[point];
+        runFor(mode, 3000000); int16_t axes[4]; assert(mode.readCurrentRawAxes(axes));
+        for(int i = 0; i < 4; i++) {
+            if(point == 0) assert(axes[i] <= 5);
+            else if(point == 2) assert(axes[i] >= 2042);
+            else assert(abs(axes[i] - raw[point]) <= 2);
+            assert(ticks(i) == expected[point]);
+        }
     }
     puts("CRSF real ADC filter neutral, endpoints, reversal, limits, standalone/prop readers passed");
 }
@@ -376,14 +411,15 @@ static void test_calibration_discards_inflight_sweep_and_captures_fresh_once() {
     assert(mode.isCalibrating());
     // The unchanged stale-input overlay covers the prompt for one second.
     Wire.setStuck(false); completeSweep(mode); runFor(mode, 1200000);
-    assert(displayText == "TLO"); runFor(mode, 220000); assert(displayText == "TLO");
+    assert(displayText == "TLO");
+    int16_t stabilizedCenters[4]; assert(mode.readCurrentRawAxes(stabilizedCenters));
+    runFor(mode, 220000); assert(displayText == "TLO");
     for(int point = 0; point < 8; point++) {
         for(int i = 0; i < 4; i++) Wire.values[i] = point & 1 ? 2047 : 0;
-        runFor(mode, 220000); pressCalibration(mode);
+        runFor(mode, 3000000); pressCalibration(mode);
     }
     assert(!mode.isCalibrating() && calibrationSaves == 1);
-    const int16_t centers[4] = {1250,1100,950,800};
-    for(int i = 0; i < 4; i++) assert(savedCalibration[i].center == centers[i]);
+    for(int i = 0; i < 4; i++) assert(savedCalibration[i].center == stabilizedCenters[i]);
     assert(maxDelayUs <= 150);
     puts("Actual adapter calibration discards partial sweep, captures fresh axes once, and keeps RC slots passed");
 }
@@ -416,6 +452,7 @@ int main(int argc, char **argv) {
     test_cached_axes_do_not_refresh_input_age();
     test_identical_new_sweeps_remain_fresh();
     test_filter_and_hysteresis_update_once_per_new_sample();
+    test_throttle_lock_requires_raw_and_filtered_center();
     test_adapter_neutral_endpoints_limits_and_consumers();
     test_calibration_discards_inflight_sweep_and_captures_fresh_once();
     test_missing_adc_retry_restart_and_diagnostics();

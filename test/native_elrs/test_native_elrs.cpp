@@ -150,6 +150,11 @@ class FakeHost : public ELRSCrsfHost {
             return ELRS_AXES_READY;
         }
 
+        int16_t rawThrottleSample() const override
+        {
+            return useRawThrottleOverride ? rawThrottleOverride : axes[AXIS_THROTTLE];
+        }
+
         bool readFakePowerSwitch() override
         {
             return fakePower;
@@ -267,6 +272,8 @@ class FakeHost : public ELRSCrsfHost {
         ELRSAxisCalibrationData calibration[ELRS_GIMBAL_AXIS_COUNT];
         bool axesAvailable = true;
         bool axesPending = false;
+        bool useRawThrottleOverride = false;
+        int16_t rawThrottleOverride = 0;
         bool axesAwaiting = false;
         bool fakePower = false;
         bool stop = false;
@@ -805,13 +812,14 @@ static void test_rc_frame_packing_and_driver_enable()
 
     host.axes[AXIS_AILERON] = 2047;
     host.axes[AXIS_ELEVATOR] = 1024;
-    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_THROTTLE] = 1024;
     host.axes[AXIS_RUDDER] = 2047;
     host.stop = true;
     host.buttonA = true;
     host.packStates = 0b11001010;
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    host.axes[AXIS_THROTTLE] = 0;
     loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[0]);
@@ -941,6 +949,51 @@ static void test_light_iir_filter_converges_on_small_stable_changes()
         for(int i = 0; i < 5; i++) filtered = elrsIirFilterStep(filtered, sample, 2);
         TEST_ASSERT_EQUAL_INT16(sample, filtered);
     }
+}
+
+static void test_one_euro_filter_suppresses_jitter_and_tracks_steps()
+{
+    float adaptiveNoise = 0.0f, quarterNoise = 0.0f;
+    ELRSOneEuroFilter filter;
+    int16_t quarter = 1000;
+    uint32_t at = 0;
+    for(int i = 0; i < 200; i++) {
+        const int16_t sample = (i & 1) ? 1004 : 996;
+        at += 4000;
+        const int16_t adaptive = filter.update(sample, at);
+        if(i > 20) {
+            adaptiveNoise += (adaptive - 1000) * (adaptive - 1000);
+            quarterNoise += (quarter - 1000) * (quarter - 1000);
+        }
+        quarter = elrsIirFilterStep(quarter, sample, 2);
+    }
+    TEST_ASSERT_TRUE(adaptiveNoise < quarterNoise * 0.5f);
+    const float adaptiveRms = sqrtf(adaptiveNoise / 179.0f);
+    const float quarterRms = sqrtf(quarterNoise / 179.0f);
+    TEST_ASSERT_TRUE(adaptiveRms < 0.35f);
+    TEST_ASSERT_TRUE(quarterRms > 0.65f);
+
+    filter.reset();
+    for(int i = 0; i <= 100; i++)
+        quarter = filter.update((int16_t)(1000 + i), (uint32_t)(200000 + i * 20000));
+    TEST_ASSERT_TRUE(quarter >= 1090);
+    TEST_ASSERT_TRUE(quarter <= 1100);
+
+    for(uint32_t intervalUs : {2000U, 4000U, 20000U}) {
+        filter.reset();
+        TEST_ASSERT_EQUAL_INT16(1000, filter.update(1000, 100000));
+        const int16_t adaptiveStep = filter.update(1400, 100000 + intervalUs);
+        TEST_ASSERT_TRUE(adaptiveStep > 1100);
+        if(intervalUs == 2000U) TEST_ASSERT_INT16_WITHIN(5, 1156, adaptiveStep);
+        if(intervalUs == 4000U) TEST_ASSERT_INT16_WITHIN(5, 1223, adaptiveStep);
+        if(intervalUs == 20000U) TEST_ASSERT_INT16_WITHIN(5, 1341, adaptiveStep);
+    }
+    filter.reset();
+    filter.update(1000, UINT32_MAX - 1000U);
+    TEST_ASSERT_TRUE(filter.update(1400, 3000U) > 1100);
+    const int16_t before = filter.update(1500, 3000U);
+    TEST_ASSERT_EQUAL_INT16(before, filter.update(0, 3000U));
+    TEST_ASSERT_EQUAL_INT16(0, filter.update(0, 103001U));
 }
 
 static void test_output_limits_scale_each_side_of_neutral()
@@ -1161,10 +1214,12 @@ static void test_output_limits_preserve_safe_neutral_and_idle()
         config.inputRouting = {4, 3, 2, 1};
         for(auto &limits : config.outputLimits) limits = {1200, 1800};
         for(auto &profile : config.axisProfiles) profile.expo = 100;
-        host.axes[AXIS_THROTTLE] = 0;
+        host.axes[AXIS_THROTTLE] = 1024;
         host.axesAvailable = scenario != 0;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         if(scenario) {
+            host.axes[AXIS_THROTTLE] = 0;
+            loopAtMs(core, host, 20, 0);
             TEST_ASSERT_EQUAL_UINT16(500, core.channelAt(1));
             if(scenario == 1) host.axesAvailable = false;
             else core.startSelfTest(0);
@@ -1317,17 +1372,23 @@ static void test_gimbal_curves_are_independent_and_follow_channel_routing()
             config.axisProfiles[axis] = {300, 900, 1500, 0, 0, strengths[axis]};
             host.axes[axis] = 600;
         }
+        host.axes[AXIS_THROTTLE] = 900;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+        host.axes[AXIS_THROTTLE] = 600; loopAtMs(core, host, 20, 0);
         for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
         // Changing Elevator cannot change the other three physical outputs.
         config.axisProfiles[AXIS_ELEVATOR].expo = 100;
+        host.axes[AXIS_THROTTLE] = 900;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 20));
+        host.axes[AXIS_THROTTLE] = 600; loopAtMs(core, host, 40, 0);
         TEST_ASSERT_EQUAL_UINT16(888, core.channelAt(channels[permuted][AXIS_ELEVATOR]));
         for(int axis : {AXIS_AILERON, AXIS_RUDDER, AXIS_THROTTLE}) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
         // Curves shape calibrated input before travel limits scale each physical axis.
         config.axisProfiles[AXIS_ELEVATOR].expo = strengths[AXIS_ELEVATOR];
         for(auto &limits : config.outputLimits) limits = {1200, 1800};
+        host.axes[AXIS_THROTTLE] = 900;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 40));
+        host.axes[AXIS_THROTTLE] = 600; loopAtMs(core, host, 60, 0);
         const uint16_t limited[] = {819, 746, 929, 654};
         for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(limited[axis], core.channelAt(channels[permuted][axis]));
     }
@@ -1839,10 +1900,12 @@ static void test_adc_fault_and_self_test_keep_remapped_throttle_neutral()
         config.inputRouting = elrsDefaultGimbalRouting();
         config.inputRouting.elevatorChannel = 3;
         config.inputRouting.throttleChannel = 2;
-        host.axes[AXIS_THROTTLE] = 0;
+        host.axes[AXIS_THROTTLE] = 1024;
         host.axesAvailable = scenario != 0;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         if(scenario) {
+            host.axes[AXIS_THROTTLE] = 0;
+            loopAtMs(core, host, 20, 0);
             TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(1));
             if(scenario == 1) host.axesAvailable = false;
             else core.startSelfTest(0);
@@ -1931,7 +1994,7 @@ static void test_control_mapping_and_reversed_axis_calibration()
 
     host.axes[AXIS_AILERON] = 2047;
     host.axes[AXIS_ELEVATOR] = 1024;
-    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_THROTTLE] = 1024;
     host.axes[AXIS_RUDDER] = 2047;
     host.stop = true;
     host.fakePower = true;
@@ -1942,6 +2005,7 @@ static void test_control_mapping_and_reversed_axis_calibration()
     config.axisProfiles[AXIS_RUDDER].reverse = 1;
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    host.axes[AXIS_THROTTLE] = 0;
     loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
@@ -1976,12 +2040,13 @@ static void test_axis_order_aileron_elevator_throttle_rudder_matches_runtime_ban
     TEST_ASSERT_EQUAL_UINT8(2, AXIS_RUDDER);
     TEST_ASSERT_EQUAL_UINT8(3, AXIS_THROTTLE);
 
-    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_THROTTLE] = 1024;
     host.axes[AXIS_RUDDER] = 512;
     host.axes[AXIS_ELEVATOR] = 1536;
     host.axes[AXIS_AILERON] = 2047;
 
     TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    host.axes[AXIS_THROTTLE] = 0;
     loopAt(core, host, 20, 20000);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
@@ -4273,7 +4338,7 @@ static void test_invalid_button_calibration_preserves_minimum_throttle()
     for(int i = 0; i < 9; i++) calibrationPress(core, host, now);
     TEST_ASSERT_FALSE(core.isCalibrating());
     TEST_ASSERT_EQUAL_INT(0, host.savedCalibrationCount);
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_failed_button_capture_does_not_advance_calibration()
@@ -4307,7 +4372,7 @@ static void test_valid_descending_button_calibration_is_saved()
     TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
     TEST_ASSERT_EQUAL_INT16(2047, host.calibration[AXIS_THROTTLE].minimum);
     TEST_ASSERT_EQUAL_INT16(0, host.calibration[AXIS_THROTTLE].maximum);
-    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_failed_button_calibration_save_reports_error()
@@ -4325,7 +4390,7 @@ static void test_failed_button_calibration_save_reports_error()
     TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
     TEST_ASSERT_FALSE(core.isCalibrating());
     TEST_ASSERT_EQUAL_STRING("ERR", host.displayText.c_str());
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_transport_sends_across_micros_rollover()
@@ -4529,8 +4594,10 @@ static void test_throttle_idle_band_handles_all_profile_directions()
             for(int offset = 0; offset <= 5; offset++) {
                 FakeHost host;
                 ELRSCrsfCore core;
-                host.axes[AXIS_THROTTLE] = idle + direction * offset;
+                host.axes[AXIS_THROTTLE] = profile.center;
                 beginAt(core, host, config, 0);
+                host.axes[AXIS_THROTTLE] = idle + direction * offset;
+                loopAtMs(core, host, 20, 0);
                 TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
             }
             FakeHost host;
@@ -4565,20 +4632,22 @@ static void test_throttle_idle_entry_bypasses_hysteresis()
                 int direction = (full > idle) ? 1 : -1;
                 FakeHost host;
                 ELRSCrsfCore core;
-                host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                host.axes[AXIS_THROTTLE] = profile.center;
                 beginAt(core, host, config, 0);
+                host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                loopAtMs(core, host, 20, 0);
                 TEST_ASSERT_TRUE(core.channelAt(2) > 172);
                 host.axes[AXIS_THROTTLE] = idle + direction * (narrow ? 9 : 5);
-                for(unsigned long now = 20; now <= 60; now += 20) {
+                for(unsigned long now = 40; now <= 80; now += 20) {
                     loopAtMs(core, host, now, 0);
                     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                 }
                 if(!narrow) {
                     host.axes[AXIS_THROTTLE] = idle + direction * 10;
-                    loopAtMs(core, host, 80, 0);
+                    loopAtMs(core, host, 100, 0);
                     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                     host.axes[AXIS_THROTTLE] = idle + direction * 11;
-                    loopAtMs(core, host, 100, 0);
+                    loopAtMs(core, host, 120, 0);
                     TEST_ASSERT_TRUE(core.channelAt(2) > 172);
                 }
             }
@@ -4610,8 +4679,10 @@ static void test_input_tolerances_are_adjustable_and_can_be_disabled()
     config.axisProfiles[AXIS_THROTTLE].minimum = 300;
     config.axisProfiles[AXIS_THROTTLE].center = 900;
     config.axisProfiles[AXIS_THROTTLE].maximum = 1500;
-    host.axes[AXIS_THROTTLE] = 305;
+    host.axes[AXIS_THROTTLE] = 900;
     beginAt(core, host, config, 100);
+    host.axes[AXIS_THROTTLE] = 305;
+    loopAtMs(core, host, 120, 0);
     TEST_ASSERT_EQUAL_UINT16(179, core.channelAt(2));
 }
 
@@ -4964,9 +5035,11 @@ static void test_none_frees_channels_for_other_input_types()
     config.inputRouting.throttleChannel = 5;
     config.switchRouting.channels[0] = 1;
     host.stop = true;
-    host.axes[AXIS_THROTTLE] = 2047;
+    host.axes[AXIS_THROTTLE] = 1024;
     TEST_ASSERT_TRUE(elrsIsValidInputRouting(config.inputRouting, config.switchRouting));
     TEST_ASSERT_TRUE(beginAt(core, host, config, 1000));
+    host.axes[AXIS_THROTTLE] = 2047;
+    loopAtMs(core, host, 1020, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
@@ -5486,12 +5559,12 @@ static void test_mix_rejects_malformed_lines()
 static void test_logic_mix_core_chain_and_post_mix_limits()
 {
     FakeHost host; ELRSCrsfCore core; auto c=defaultConfig();
-    host.axes[AXIS_AILERON]=2047; host.axes[AXIS_THROTTLE]=0; host.packStates=1;
+    host.axes[AXIS_AILERON]=2047; host.axes[AXIS_THROTTLE]=1024; host.packStates=1;
     c.logic.rules[0]={2,4,0,-90,0}; c.logic.rules[1]={3,9,17,0,0};
     c.mixes.lines[0]={9,18,0,100,0,2}; c.mixes.lines[1]={10,18,0,100,0,2};
     c.mixes.lines[2]={1,1,17,50,0,2};
     c.outputLimits[AXIS_AILERON]={1200,1700};
-    TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+    TEST_ASSERT_TRUE(core.begin(host,c,0)); host.axes[AXIS_THROTTLE]=0; loopAt(core,host,20,20000);
     TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(8));
     TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(9));
     TEST_ASSERT_EQUAL_UINT16(1155,core.channelAt(0)); // Half input, then destination limits once.
@@ -5539,6 +5612,131 @@ static void test_mix_core_none_sources_calibration_and_prop_mode()
     }
 }
 
+static void test_throttle_stays_neutral_until_calibrated_center()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 0;
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1024;
+    loopAt(core, host, 20, 20000);
+    TEST_ASSERT_TRUE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1400;
+    loopAt(core, host, 40, 40000);
+    TEST_ASSERT_TRUE(core.channelAt(config.inputRouting.throttleChannel - 1) > 992);
+}
+
+static void test_throttle_unlock_requires_raw_and_filtered_center()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 1022; // Filtered lag appears inside the default center band.
+    host.useRawThrottleOverride = true;
+    host.rawThrottleOverride = 1280; // Completed physical ADC sample remains far from center.
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1024;
+    host.rawThrottleOverride = 1024;
+    loopAt(core, host, 20, 20000);
+    TEST_ASSERT_TRUE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+}
+
+static void test_throttle_lock_uses_profile_center_and_protects_mix_outputs()
+{
+    for(bool reverse : {false, true}) {
+        FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+        config.axisProfiles[AXIS_THROTTLE] = {100, 1100, 2000, (uint16_t)reverse, 12, 0};
+        config.inputRouting.throttleChannel = 5;
+        for(uint8_t &channel : config.switchRouting.channels) channel = 0;
+        config.mixes.lines[0] = {5, 25, 0, 100, 30, 2};
+        config.mixes.lines[1] = {7, 4, 0, 100, 20, 2};
+        host.axes[AXIS_THROTTLE] = reverse ? 2000 : 100;
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+        TEST_ASSERT_FALSE(core.throttleReady());
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(4));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(6));
+
+        host.axes[AXIS_THROTTLE] = 1100;
+        loopAt(core, host, 20, 20000);
+        TEST_ASSERT_TRUE(core.throttleReady());
+        host.axes[AXIS_THROTTLE] = reverse ? 1400 : 800;
+        loopAt(core, host, 40, 40000);
+        TEST_ASSERT_TRUE(core.channelAt(4) > 992);
+        TEST_ASSERT_TRUE(core.channelAt(6) != 992);
+    }
+}
+
+static void test_throttle_relocks_after_service_gap_until_center_recovered()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 1024;
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_TRUE(core.throttleReady());
+
+    host.axesPending = true;
+    loopAt(core, host, 120, 120000);
+    TEST_ASSERT_FALSE(core.throttleReady());
+    host.axesPending = false;
+    host.axes[AXIS_THROTTLE] = 0;
+    loopAt(core, host, 140, 140000);
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1024;
+    loopAt(core, host, 160, 160000);
+    TEST_ASSERT_TRUE(core.throttleReady());
+
+    FakeHost gapHost; ELRSCrsfCore gapCore;
+    gapHost.axes[AXIS_THROTTLE] = 1024;
+    TEST_ASSERT_TRUE(beginAt(gapCore, gapHost, config, 0, 0));
+    TEST_ASSERT_TRUE(gapCore.throttleReady());
+    gapHost.setTime(120, 120000);
+    TEST_ASSERT_FALSE(gapCore.throttleReady());
+    gapHost.axes[AXIS_THROTTLE] = 1500;
+    loopAt(gapCore, gapHost, 120, 120000);
+    TEST_ASSERT_FALSE(gapCore.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, gapCore.channelAt(config.inputRouting.throttleChannel - 1));
+
+    FakeHost errorHost; ELRSCrsfCore errorCore;
+    errorHost.axes[AXIS_THROTTLE] = 1024;
+    TEST_ASSERT_TRUE(beginAt(errorCore, errorHost, config, 0, 0));
+    TEST_ASSERT_TRUE(errorCore.throttleReady());
+    errorHost.axesAvailable = false;
+    loopAt(errorCore, errorHost, 20, 20000);
+    TEST_ASSERT_FALSE(errorCore.throttleReady());
+    errorHost.axesAvailable = true;
+    errorHost.axes[AXIS_THROTTLE] = 0;
+    loopAt(errorCore, errorHost, 40, 40000);
+    TEST_ASSERT_FALSE(errorCore.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, errorCore.channelAt(config.inputRouting.throttleChannel - 1));
+    errorHost.axes[AXIS_THROTTLE] = 1024;
+    loopAt(errorCore, errorHost, 60, 60000);
+    TEST_ASSERT_TRUE(errorCore.throttleReady());
+}
+
+static void test_throttle_self_test_keeps_direct_mixes_neutral_while_locked()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 0;
+    config.mixes.lines[0] = {5, 4, 0, 100, 0, 2};
+    config.mixes.lines[1] = {7, 4, 0, 100, 0, 2};
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_FALSE(core.throttleReady());
+
+    core.startSelfTest(10);
+    loopAt(core, host, 20, 20000);
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(4));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(6));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(5)); // Unrelated switch output keeps self-test behavior.
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -5549,6 +5747,11 @@ int main(int argc, char **argv)
     RUN_TEST(test_logic_mix_core_chain_and_post_mix_limits);
     RUN_TEST(test_mix_core_stale_inputs_selftest_and_corrupt_config);
     RUN_TEST(test_mix_core_none_sources_calibration_and_prop_mode);
+    RUN_TEST(test_throttle_stays_neutral_until_calibrated_center);
+    RUN_TEST(test_throttle_unlock_requires_raw_and_filtered_center);
+    RUN_TEST(test_throttle_lock_uses_profile_center_and_protects_mix_outputs);
+    RUN_TEST(test_throttle_relocks_after_service_gap_until_center_recovered);
+    RUN_TEST(test_throttle_self_test_keeps_direct_mixes_neutral_while_locked);
     RUN_TEST(test_mix_weight_offset_order_and_limits);
     RUN_TEST(test_mix_sources_gates_and_unavailability);
     RUN_TEST(test_mix_rejects_malformed_lines);
@@ -5623,6 +5826,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_debug_log_only_emits_on_axis_change);
     RUN_TEST(test_light_iir_filter_moves_quarter_step_toward_sample);
     RUN_TEST(test_light_iir_filter_converges_on_small_stable_changes);
+    RUN_TEST(test_one_euro_filter_suppresses_jitter_and_tracks_steps);
     RUN_TEST(test_output_limits_scale_each_side_of_neutral);
     RUN_TEST(test_output_limits_validate_and_clamp);
     RUN_TEST(test_output_limits_follow_axes_through_reverse_and_routing);

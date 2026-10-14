@@ -61,8 +61,8 @@ static bool remotePortalToken(bool expiry=true) {
     const String nonce=wm.server->header("X-Remote-Nonce");
     return remotePortalNonce[0] && nonce.length()==32 && !strcmp(nonce.c_str(),remotePortalNonce) && wm.server->client().remoteIP()==remotePortalOwner && (!expiry || (int32_t)(millis()-remotePortalExpires)<0);
 }
-static bool remotePortalGate(bool apOnly=true) {
-    if((apOnly ? !remotePortalLocalAP() : !remotePortalActiveNetwork()) || !remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session",apOnly?"Connect through this Remote AP and use a current session":"Connect through this Remote network and use a current session");return false;}
+static bool remotePortalGate() {
+    if(!remotePortalActiveNetwork() || !remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP or connected network and use a current session");return false;}
     return true;
 }
 static bool remotePortalRadioBusy() {
@@ -94,6 +94,7 @@ static void remotePortalDevices() {
 #ifdef HAVE_CRSF
     doc["crsfActive"]=opModeCRSF;
     if(opModeCRSF) {
+        doc["throttleReady"]=elrsMode.throttleReady();
         auto &config=elrsMode.deviceConfig();for(unsigned i=0;i<config.deviceCount();i++){const auto *d=config.deviceAt(i);auto x=devices.createNestedObject();x["address"]=d->address;x["name"]=d->name;x["fieldCount"]=d->fieldCount;x["generation"]=d->generation;x["serial"]=d->serial;x["hardwareVersion"]=d->hardwareVersion;x["softwareVersion"]=d->softwareVersion;x["parameterVersion"]=d->parameterVersion;}
         auto s=config.radioStatus(millis());doc["rfKnown"]=s.rfConnectionKnown;doc["connected"]=s.rfConnected;doc["modelMatched"]=s.modelMatched;doc["armedKnown"]=s.armedKnown;doc["armed"]=s.armed;doc["statusAgeMs"]=s.statusAgeMs;doc["ch5"]=elrsMode.finalChannel5();if(config.modelIdKnown())doc["modelId"]=config.modelId();
     }
@@ -122,7 +123,7 @@ static void remotePortalApplyPreferences() {
 #endif
 }
 static void remotePortalOperation() {
-    if(!remotePortalGate(false))return;
+    if(!remotePortalGate())return;
     remotePortalApplyPreferences();
     StaticJsonDocument<2048> doc;
 #ifdef HAVE_CRSF
@@ -139,7 +140,7 @@ static void remotePortalOperation() {
     remotePortalJson(doc);
 }
 static void remotePortalAction() {
-    if(!remotePortalGate(false))return;
+    if(!remotePortalGate())return;
     remotePortalApplyPreferences();
     if(remoteSettingsBusy() || remotePortalUploading){remotePortalError(409,"BUSY","action","Storage operation is active");return;}
     const String action=wm.server->arg("action");uint32_t device=0,field=0,generation=0,id=0,code=0,type=0,hash=0;int32_t expected=0,value=0;
