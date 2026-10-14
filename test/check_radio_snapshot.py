@@ -265,11 +265,16 @@ class RadioSnapshotTests(unittest.TestCase):
             self.client.action(action="command", device=238, field=4)
         self.assertFalse(any(action["action"] == "command" for action in self.fake.actions))
 
-    def test_client_accepts_open_ap_session_but_checks_local_ap_flag(self):
+    def test_client_uses_nonce_but_allows_lan_session(self):
         self.assertEqual(self.client.devices()["localAP"], True)
         self.fake.local_ap = False
-        with self.assertRaisesRegex(ValueError, "Remote AP's WiFi network"):
+        self.assertEqual(self.client.devices()["localAP"], False)
+        self.client.action(action="status")
+        self.client.nonce = ""
+        with self.assertRaisesRegex(ValueError, "Open a Remote session first"):
             self.client.devices()
+        with self.assertRaisesRegex(ValueError, "Open a Remote session first"):
+            self.client.action(action="status")
 
     def test_error_output_masks_credentials_and_file_bound_is_enforced(self):
         output = io.StringIO()

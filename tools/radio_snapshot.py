@@ -88,14 +88,14 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 class RadioClient:
-    """Narrow client for live radio operations from the Remote AP network."""
+    """Narrow client for live radio operations through the Remote AP or connected network."""
 
     def __init__(self, host: str, timeout: float = 4.0, poll_interval: float = 0.2,
                  operation_timeout: float = 30.0):
         parsed = urlsplit(host)
         if (parsed.scheme != "http" or not parsed.hostname or parsed.username or parsed.password or
                 parsed.path not in ("", "/") or parsed.query or parsed.fragment):
-            raise ValueError("host must be an explicit plain HTTP origin such as http://192.168.4.1")
+            raise ValueError("host must be an explicit plain HTTP origin such as http://192.168.4.1 or http://remote.local")
         try:
             parsed.port
         except ValueError:
@@ -136,7 +136,7 @@ class RadioClient:
                 field = ""
             raise ValueError(f"{code} {field}: {message}".strip()) from None
         except (URLError, TimeoutError, OSError) as exc:
-            raise ValueError("Remote API request failed; check the Remote AP connection") from None
+            raise ValueError("Remote API request failed; check the Remote network connection") from None
         if len(payload) > MAX_RESPONSE_BYTES:
             raise ValueError("Remote API response exceeds its bound")
         doc = _json_bytes(payload)
@@ -148,15 +148,13 @@ class RadioClient:
         response = self._request("POST", "/remote/session", {})
         nonce = response.get("nonce")
         if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", nonce):
-            raise ValueError("Remote did not return a valid session from the Remote AP")
+            raise ValueError("Remote did not return a valid session")
         self.nonce = nonce
 
     def devices(self):
         if not self.nonce:
-            raise ValueError("Open a Remote AP session first")
+            raise ValueError("Open a Remote session first")
         response = self._request("GET", "/remote/devices")
-        if not response.get("localAP"):
-            raise ValueError("Connect through this Remote AP's WiFi network")
         devices = response.get("devices")
         if not isinstance(devices, list) or len(devices) > MAX_DEVICES:
             raise ValueError("Remote device list is missing or exceeds the four-device bound")
@@ -164,7 +162,7 @@ class RadioClient:
 
     def action(self, **values):
         if not self.nonce:
-            raise ValueError("Open a protected Remote session first")
+            raise ValueError("Open a Remote session first")
         if values.get("action") not in {"discover", "status", "read", "write"}:
             raise ValueError("radio snapshots never issue commands, assignments, or profile selections")
         response = self._request("POST", "/remote/action", values)
@@ -1238,7 +1236,7 @@ def _parser():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     capture = commands.add_parser("capture", help="capture a radio snapshot")
-    capture.add_argument("--host", required=True, help="explicit Remote AP origin, e.g. http://192.168.4.1")
+    capture.add_argument("--host", required=True, help="explicit Remote origin, e.g. http://192.168.4.1 or http://remote.local")
     capture.add_argument("--out", required=True, type=Path)
     capture.add_argument("--selector-sweep", action="store_true", help="explicitly sweep RX output cursor (requires maintenance and connected disarmed RX)")
     preview = commands.add_parser("preview", help="compare one device group against live descriptors")

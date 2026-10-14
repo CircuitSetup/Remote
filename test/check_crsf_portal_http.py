@@ -51,15 +51,17 @@ class CRSFPortalHTTPTests(unittest.TestCase):
         self.assertIn('sendHeader("Content-Encoding","gzip")', setup)
         self.assertIn('"Content-Encoding","gzip"', setup)
 
-    def test_all_remote_routes_require_ap_origin_nonce(self):
-        gate = function(PORTAL, r"static bool remotePortalGate\(\)")
-        for check in ("remotePortalLocalAP()", "remotePortalOrigin()", "remotePortalToken()"):
+    def test_remote_routes_keep_origin_nonce_and_ap_only_file_gate(self):
+        gate = function(PORTAL, r"static bool remotePortalGate\(bool apOnly=true\)")
+        for check in ("remotePortalLocalAP()", "remotePortalActiveNetwork()", "remotePortalOrigin()", "remotePortalToken()"):
             self.assertIn(check, gate)
         self.assertNotIn("protectedAP", PORTAL)
         self.assertNotIn("settings.appw", PORTAL)
-        for name in ("Operation", "Action", "Export", "Apply", "Review"):
-            self.assertRegex(function(PORTAL, rf"static void remotePortal{name}\(\)"), r"if\(!remotePortalGate\(\)\)return")
-        for check in ("remotePortalLocalAP()", "remotePortalOrigin()"):
+        for name in ("Export", "Apply", "Review"):
+            self.assertIn('if(!remotePortalGate())return', function(PORTAL, rf"static void remotePortal{name}\(\)"))
+        for name in ("Operation", "Action"):
+            self.assertIn('if(!remotePortalGate(false))return', function(PORTAL, rf"static void remotePortal{name}\(\)"))
+        for check in ("remotePortalActiveNetwork()", "remotePortalOrigin()"):
             self.assertIn(check, function(PORTAL, r"static void remotePortalSession\(\)"))
         self.assertIn('doc["localAP"]=remotePortalLocalAP()', function(PORTAL, r"static void remotePortalDevices\(\)"))
         upload = function(PORTAL, r"static void remotePortalUpload\(\)")
@@ -106,9 +108,10 @@ class CRSFPortalHTTPTests(unittest.TestCase):
     def test_actual_origin_nonce_and_numeric_gates(self):
         signatures = (
             r"static bool remotePortalLocalAP\(\)",
+            r"static bool remotePortalActiveNetwork\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
-            r"static bool remotePortalGate\(\)",
+            r"static bool remotePortalGate\(bool apOnly=true\)",
             r"static bool remotePortalUnsigned\(const char \*name,uint32_t max,uint32_t &value\)",
             r"static bool remotePortalSigned\(const char \*name,int32_t &value\)",
         )
@@ -132,9 +135,10 @@ public:
 class IPAddress{uint8_t a[4]{};public:IPAddress()=default;IPAddress(int x,int y,int z,int w):a{(uint8_t)x,(uint8_t)y,(uint8_t)z,(uint8_t)w}{}uint8_t operator[](int i)const{return a[i];}String toString()const{return std::to_string(a[0])+"."+std::to_string(a[1])+"."+std::to_string(a[2])+"."+std::to_string(a[3]);}friend bool operator==(const IPAddress&x,const IPAddress&y){return !memcmp(x.a,y.a,4);}friend bool operator!=(const IPAddress&x,const IPAddress&y){return !(x==y);}};
 struct Client{IPAddress local{192,168,4,1},peer{192,168,4,22};IPAddress localIP()const{return local;}IPAddress remoteIP()const{return peer;}};
 constexpr int HTTP_GET=0;int requestMethod=HTTP_GET;
+#define WL_CONNECTED 3
 struct Server{Client c;std::map<std::string,std::string>headers,args;Client&client(){return c;}String header(const char*n){return headers.count(n)?String(headers[n]):String();}String hostHeader(){return "192.168.4.1";}String arg(const char*n){return args.count(n)?String(args[n]):String();}int method()const{return requestMethod;}} server;
  struct Settings{char hostName[32]="remote";}settings;
-struct Wifi{IPAddress softAPIP()const{return {192,168,4,1};}}WiFi;
+struct Wifi{IPAddress softAPIP()const{return {192,168,4,1};}IPAddress localIP()const{return {192,168,4,1};}int status()const{return WL_CONNECTED;}}WiFi;
 struct Manager{Server*server=&::server;}wm;
 char remotePortalNonce[33]="0123456789abcdef0123456789abcdef";IPAddress remotePortalOwner{192,168,4,22};uint32_t remotePortalExpires=2000,now=1000;
 unsigned long millis(){return now;}int gateError=0;void remotePortalError(int code,const char*,const char*,const char*){gateError=code;}
@@ -150,6 +154,63 @@ int main(){
  now=remotePortalExpires;assert(!remotePortalToken());now=1000;
  server.args["n"]="63";assert(remotePortalUnsigned("n",63,u)&&u==63);server.args["n"]="+1";assert(!remotePortalUnsigned("n",63,u));server.args["n"]="64";assert(!remotePortalUnsigned("n",63,u));
  server.args["n"]="-2147483648";assert(remotePortalSigned("n",s)&&s==INT32_MIN);server.args["n"]="2147483648";assert(!remotePortalSigned("n",s));server.args["n"]=" 1";assert(!remotePortalSigned("n",s));
+}
+'''
+        compile_and_run(harness, [], [])
+
+    def test_live_gate_accepts_station_origin_while_file_gate_stays_ap_local(self):
+        signatures = (
+            r"static bool remotePortalLocalAP\(\)",
+            r"static bool remotePortalActiveNetwork\(\)",
+            r"static bool remotePortalOrigin\(\)",
+            r"static bool remotePortalToken\(bool expiry=true\)",
+            r"static bool remotePortalGate\(bool apOnly=true\)",
+        )
+        production = "\n".join(function(PORTAL, signature) for signature in signatures)
+        harness = r'''#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <string>
+class String {
+ std::string v;
+public:
+ String()=default;String(const char*s):v(s?s:""){}String(std::string s):v(std::move(s)){}
+ size_t length()const{return v.size();}bool isEmpty()const{return v.empty();}const char*c_str()const{return v.c_str();}
+ char operator[](size_t i)const{return v[i];}void remove(size_t i){v.erase(i);}
+ bool endsWith(const char*s)const{return v.size()>=strlen(s)&&v.compare(v.size()-strlen(s),strlen(s),s)==0;}
+ bool startsWith(const String&s)const{return v.rfind(s.v,0)==0;}
+ friend String operator+(const String&a,const String&b){return a.v+b.v;}friend String operator+(const String&a,const char*b){return a.v+b;}
+ friend bool operator==(const String&a,const String&b){return a.v==b.v;}friend bool operator==(const String&a,const char*b){return a.v==b;}friend bool operator!=(const String&a,const String&b){return !(a==b);}
+};
+class IPAddress{uint8_t a[4]{};public:IPAddress()=default;IPAddress(int x,int y,int z,int w):a{(uint8_t)x,(uint8_t)y,(uint8_t)z,(uint8_t)w}{}uint8_t operator[](int i)const{return a[i];}String toString()const{return std::to_string(a[0])+"."+std::to_string(a[1])+"."+std::to_string(a[2])+"."+std::to_string(a[3]);}friend bool operator==(const IPAddress&x,const IPAddress&y){return !memcmp(x.a,y.a,4);}friend bool operator!=(const IPAddress&x,const IPAddress&y){return !(x==y);}};
+struct Client{IPAddress local{192,168,4,1},peer{192,168,4,22};IPAddress localIP()const{return local;}IPAddress remoteIP()const{return peer;}};
+constexpr int HTTP_GET=0;int requestMethod=HTTP_GET;
+#define WL_CONNECTED 3
+struct Server{Client c;std::map<std::string,std::string>headers;std::string host="192.168.4.1";Client&client(){return c;}String header(const char*n){return headers.count(n)?String(headers[n]):String();}String hostHeader(){return host;}int method()const{return requestMethod;}} server;
+struct Settings{char hostName[32]="remote";}settings;
+struct Wifi{IPAddress ap{192,168,4,1},sta{10,0,0,8};bool connected=false;IPAddress softAPIP()const{return ap;}IPAddress localIP()const{return sta;}int status()const{return connected?3:0;}}WiFi;
+struct Manager{Server*server=&::server;}wm;
+char remotePortalNonce[33]="0123456789abcdef0123456789abcdef";IPAddress remotePortalOwner{10,0,0,22};uint32_t remotePortalExpires=2000,now=1000;
+unsigned long millis(){return now;}int gateError=0;void remotePortalError(int code,const char*,const char*,const char*){gateError=code;}
+'''
+        harness += production + r'''
+int main(){
+ server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8";server.headers["X-Remote-Nonce"]=remotePortalNonce;WiFi.connected=true;
+ assert(!remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin());
+ assert(remotePortalToken()&&remotePortalGate(false));
+ server.c.local={10,0,0,9};assert(!remotePortalActiveNetwork()&&!remotePortalGate(false));server.c.local={10,0,0,8};
+ assert(!remotePortalGate()&&gateError==403); // File gate remains AP-only.
+ server.host="10.0.0.8.evil";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin());
+ server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin());
+ server.headers["Origin"]="http://10.0.0.8";WiFi.connected=false;assert(!remotePortalActiveNetwork()&&!remotePortalGate(false));WiFi.connected=true;
+ server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalGate(false));server.headers["X-Remote-Nonce"]=remotePortalNonce;
+ server.c.peer={10,0,0,23};assert(!remotePortalToken());server.c.peer={10,0,0,22};now=remotePortalExpires;assert(!remotePortalToken());
+ // AP access stays valid, but station-only file access does not.
+ now=1000;server.c.local={192,168,4,1};server.c.peer={192,168,4,22};server.host="remote.local";server.headers["Origin"]="http://remote.local";remotePortalOwner={192,168,4,22};
+ assert(remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin()&&remotePortalGate());
+ server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="remote.local";server.headers["Origin"]="http://remote.local";remotePortalOwner={10,0,0,22};
+ assert(!remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin()&&remotePortalGate(false));
 }
 '''
         compile_and_run(harness, [], [])

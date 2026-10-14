@@ -35,7 +35,7 @@ class Element{
  focus(){}
 }
 class Option{constructor(label,value){this.textContent=label;this.value=String(value);this.dataset={};}}
-function fixture(crsfActive,formAction='/param3save'){
+function fixture(crsfActive,formAction='/param3save',localAP=true){
  const elements={},calls=[],timers=[];
  const body=new Element('body'),form=new Element('form'),rootNode=new Element('div'),save=new Element('button');
  form.action=formAction;rootNode.id='remote-controls';save.type='submit';body.append(form);form.append(rootNode,save);
@@ -47,7 +47,7 @@ function fixture(crsfActive,formAction='/param3save'){
   const path=url.split('?')[0],values=options.body instanceof URLSearchParams?Object.fromEntries(options.body):{};
   calls.push({path,method:options.method||'GET',...values});let data={},ok=true;
   if(path==='/remote/session')data={nonce:'a'.repeat(32)};
-  else if(path==='/remote/devices')data={crsfActive,localAP:true,devices:crsfActive?[{address:238,name:'TX',fieldCount:1,generation:1}]:[],...(crsfActive?{rfKnown:true,connected:false,armedKnown:true,armed:false,ch5:172}: {})};
+  else if(path==='/remote/devices')data={crsfActive,localAP,devices:crsfActive?[{address:238,name:'TX',fieldCount:1,generation:1}]:[],...(crsfActive?{rfKnown:true,connected:false,armedKnown:true,armed:false,ch5:172}: {})};
   else if(path==='/remote/upload')data={fileHash:'b'.repeat(64),calibration:'Keep this Remote\'s calibration'};
   else if(path==='/remote/apply'||path==='/remote/review')data={ok:true};
   else if(path==='/remote/action'){if(values.action==='status'&&!crsfActive){ok=false;data={code:'UNSUPPORTED_BEHAVIOR',message:'CRSF inactive'};}else data={id:1,state:'queued'};}
@@ -71,7 +71,7 @@ async function settingsSaveAtPageEnd(){
 }
 async function nonCrsfFilesAndReview(){
  const f=fixture(false);await settle();
- assert.match(f.elements.access.textContent,/Connected to the Remote AP/i);
+ assert.match(f.elements.access.textContent,/Connected to Remote/i);
  f.elements.file.files=[{size:2}];f.elements.kind.value='backup';
  await f.elements.preview.onclick();await f.elements.apply.onclick();await f.elements.review.onclick();
  assert(f.calls.some(c=>c.path==='/remote/apply'&&c.method==='POST'));
@@ -80,7 +80,7 @@ async function nonCrsfFilesAndReview(){
 }
 async function openApKeepsLiveAndFileControls(){
  const f=fixture(true);await settle();
- assert.match(f.elements.access.textContent,/Connected to the Remote AP/i);
+ assert.match(f.elements.access.textContent,/Connected to Remote/i);
  assert.equal(f.elements.maintenance.disabled,false);
  assert.equal(f.elements.discover.disabled,false);
  for(const id of ['backup','model','preview','review'])assert.equal(f.elements[id].disabled,false,`${id} requires no AP password`);
@@ -90,7 +90,16 @@ async function openApKeepsLiveAndFileControls(){
  assert(f.calls.some(c=>c.path==='/remote/upload'),'open AP can preview CRSF settings files');
  assert.equal(f.elements.apply.disabled,false,'open AP can activate a validated file preview');
 }
+async function networkPortalKeepsLiveControlsAndDisablesApFiles(){
+ const f=fixture(true,'/param3save',false);await settle();
+ assert.match(f.elements.access.textContent,/Connected to Remote/i);
+ assert.equal(f.elements.maintenance.disabled,false,'LAN portal can enter live radio maintenance');
+ assert.equal(f.elements.discover.disabled,false,'LAN portal can inspect the radio');
+ for(const id of ['backup','model','file','kind','preview','apply','review'])assert.equal(f.elements[id].disabled,true,`${id} remains AP-only`);
+ await f.elements.maintenance.onclick();
+ assert(f.calls.some(c=>c.path==='/remote/action'&&c.action==='maintenance'),'LAN portal Live control actions are enabled');
+}
 portalLayout(html);
 assert(embedded.endsWith(script),'gzip JavaScript differs from the current UI source');
 assert(embedded.includes('const settingsForm=remoteControls.closest("form")'));
-Promise.all([settingsSaveAtPageEnd(),nonCrsfFilesAndReview(),openApKeepsLiveAndFileControls()]).then(()=>console.log('CRSF page order, deferred asset, footer Save association, legacy-field removal, compressed UI, inactive-radio file flow and open-AP live/file controls PASS')).catch(e=>{console.error(e);process.exitCode=1;});
+Promise.all([settingsSaveAtPageEnd(),nonCrsfFilesAndReview(),openApKeepsLiveAndFileControls(),networkPortalKeepsLiveControlsAndDisablesApFiles()]).then(()=>console.log('CRSF page order, deferred asset, footer Save association, legacy-field removal, compressed UI, inactive-radio file flow and AP/LAN controls PASS')).catch(e=>{console.error(e);process.exitCode=1;});

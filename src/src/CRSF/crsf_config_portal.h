@@ -43,10 +43,16 @@ static bool remotePortalLocalAP() {
     return local==ap && peer[0]==ap[0] && peer[1]==ap[1] && peer[2]==ap[2];
 }
 
+static bool remotePortalActiveNetwork() {
+    return remotePortalLocalAP() ||
+        (WiFi.status()==WL_CONNECTED && wm.server->client().localIP()==WiFi.localIP());
+}
+
 static bool remotePortalOrigin() {
     const String origin=wm.server->header("Origin");String host=wm.server->hostHeader();
     if(host.endsWith(":80"))host.remove(host.length()-3);
-    if(host!=WiFi.softAPIP().toString() && host!=settings.hostName && host!=String(settings.hostName)+".local")return false;
+    const String local=wm.server->client().localIP().toString();
+    if(host!=local && host!=settings.hostName && host!=String(settings.hostName)+".local")return false;
     const String expected=String("http://")+host;
     if(!origin.isEmpty()) return origin==expected || origin==expected+":80";
     const String referer=wm.server->header("Referer");return wm.server->method()==HTTP_GET && (referer.startsWith(expected+"/") || referer.startsWith(expected+":80/"));
@@ -55,8 +61,8 @@ static bool remotePortalToken(bool expiry=true) {
     const String nonce=wm.server->header("X-Remote-Nonce");
     return remotePortalNonce[0] && nonce.length()==32 && !strcmp(nonce.c_str(),remotePortalNonce) && wm.server->client().remoteIP()==remotePortalOwner && (!expiry || (int32_t)(millis()-remotePortalExpires)<0);
 }
-static bool remotePortalGate() {
-    if(!remotePortalLocalAP() || !remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP and use a current session");return false;}
+static bool remotePortalGate(bool apOnly=true) {
+    if((apOnly ? !remotePortalLocalAP() : !remotePortalActiveNetwork()) || !remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session",apOnly?"Connect through this Remote AP and use a current session":"Connect through this Remote network and use a current session");return false;}
     return true;
 }
 static bool remotePortalRadioBusy() {
@@ -76,7 +82,7 @@ static bool remotePortalSigned(const char *name,int32_t &value) {
     value=minus?-(int64_t)n:n;return true;
 }
 static void remotePortalSession() {
-    if(!remotePortalLocalAP() || !remotePortalOrigin()) {remotePortalError(403,"ACCESS_DENIED","session","Connect to this Remote AP to start a session");return;}
+    if(!remotePortalActiveNetwork() || !remotePortalOrigin()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP or connected network to start a session");return;}
     if(remoteSettingsBusy() || remotePortalUploading || (remotePortalRadioBusy() && !remotePortalToken(false))) {remotePortalError(409,"BUSY","session","An operation owns the session");return;}
     for(unsigned i=0;i<4;i++) snprintf(remotePortalNonce+i*8,9,"%08x",esp_random());
     remotePortalOwner=wm.server->client().remoteIP();remotePortalExpires=millis()+300000U;remotePortalPreview.valid=false;
@@ -116,7 +122,7 @@ static void remotePortalApplyPreferences() {
 #endif
 }
 static void remotePortalOperation() {
-    if(!remotePortalGate())return;
+    if(!remotePortalGate(false))return;
     remotePortalApplyPreferences();
     StaticJsonDocument<2048> doc;
 #ifdef HAVE_CRSF
@@ -133,7 +139,7 @@ static void remotePortalOperation() {
     remotePortalJson(doc);
 }
 static void remotePortalAction() {
-    if(!remotePortalGate())return;
+    if(!remotePortalGate(false))return;
     remotePortalApplyPreferences();
     if(remoteSettingsBusy() || remotePortalUploading){remotePortalError(409,"BUSY","action","Storage operation is active");return;}
     const String action=wm.server->arg("action");uint32_t device=0,field=0,generation=0,id=0,code=0,type=0,hash=0;int32_t expected=0,value=0;

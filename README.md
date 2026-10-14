@@ -1065,7 +1065,7 @@ Values between the saved points are interpolated, and anything outside the saved
 
 ##### &#9193; Live ELRS controls and Radio devices
 
-Connect directly to the Remote's AP and open the ELRS/CRSF page; no AP password is required for live controls or CRSF settings file operations. The radio must be active to discover and control devices.
+Live controls are available through the Remote AP or over the network the Remote is connected to. CRSF settings file operations require connection through the Remote AP. Neither requires an AP password. The radio must be active to discover and control devices.
 
 Click **Discover devices**, select a transmitter or receiver, and choose a field. Labels, units, ranges, and choices come from the device's menu descriptors, so controls are not tied to a Ranger Micro. Read-only, hidden, or unsupported fields cannot be edited. A change is previewed, explicitly confirmed, and read back from the device; failures are reported rather than treated as a successful write. Supported commands have their own start, confirm, and cancel controls.
 
@@ -1135,7 +1135,7 @@ Review the generated inputs, routing, logical switches, mixes, display settings,
 
 [tools/radio_snapshot.py](tools/radio_snapshot.py) captures external TX/RX menu values in `.remote-radio.json` files. It records device identity and available persistent fields; missing or unsupported values are reported. Folders, commands, and transient information are never restored. RF band, RF rate, antenna, switch mode, and Model Match changes require explicit live UI actions.
 
-For example, from the repository root while connected to the Remote AP:
+For example, from the repository root while connected to the Remote AP or the same network as the Remote. Use an address or hostname reachable from your computer:
 
 ```sh
 python tools/radio_snapshot.py capture --host http://192.168.4.1 --out baseline.remote-radio.json
