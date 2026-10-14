@@ -139,7 +139,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/remote/devices":
             r = self.remote
-            self.send_json({"devices": r.devices, "localAP": r.local_ap, "protectedAP": False, "maintenance": r.maintenance,
+            self.send_json({"devices": r.devices, "localAP": r.local_ap, "maintenance": r.maintenance,
                             "radioReviewPending": False, "rfKnown": True, "connected": r.connected,
                             "armedKnown": True, "armed": r.armed, "statusAgeMs": r.status_age,
                             "modelId": r.model_id if r.model_id_known else None})

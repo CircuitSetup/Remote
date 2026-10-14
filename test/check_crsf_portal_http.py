@@ -51,16 +51,13 @@ class CRSFPortalHTTPTests(unittest.TestCase):
         self.assertIn('sendHeader("Content-Encoding","gzip")', setup)
         self.assertIn('"Content-Encoding","gzip"', setup)
 
-    def test_live_routes_allow_open_ap_but_file_routes_stay_protected(self):
-        gate = function(PORTAL, r"static bool remotePortalGate\(bool requireProtectedAP=true\)")
-        for check in ("remotePortalProtectedAP()", "remotePortalOrigin()", "remotePortalToken()"):
+    def test_all_remote_routes_require_ap_origin_nonce(self):
+        gate = function(PORTAL, r"static bool remotePortalGate\(\)")
+        for check in ("remotePortalLocalAP()", "remotePortalOrigin()", "remotePortalToken()"):
             self.assertIn(check, gate)
-        self.assertIn("password-protected Remote AP", gate)
-        self.assertIn("Connect through this Remote AP and use a current session", gate)
-        self.assertIn("strlen(settings.appw)>=8 && remotePortalLocalAP()", function(PORTAL, r"static bool remotePortalProtectedAP\(\)"))
-        for name in ("Operation", "Action"):
-            self.assertRegex(function(PORTAL, rf"static void remotePortal{name}\(\)"), r"if\(!remotePortalGate\(false\)\)return")
-        for name in ("Export", "Apply", "Review"):
+        self.assertNotIn("protectedAP", PORTAL)
+        self.assertNotIn("settings.appw", PORTAL)
+        for name in ("Operation", "Action", "Export", "Apply", "Review"):
             self.assertRegex(function(PORTAL, rf"static void remotePortal{name}\(\)"), r"if\(!remotePortalGate\(\)\)return")
         for check in ("remotePortalLocalAP()", "remotePortalOrigin()"):
             self.assertIn(check, function(PORTAL, r"static void remotePortalSession\(\)"))
@@ -109,10 +106,9 @@ class CRSFPortalHTTPTests(unittest.TestCase):
     def test_actual_origin_nonce_and_numeric_gates(self):
         signatures = (
             r"static bool remotePortalLocalAP\(\)",
-            r"static bool remotePortalProtectedAP\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
-            r"static bool remotePortalGate\(bool requireProtectedAP=true\)",
+            r"static bool remotePortalGate\(\)",
             r"static bool remotePortalUnsigned\(const char \*name,uint32_t max,uint32_t &value\)",
             r"static bool remotePortalSigned\(const char \*name,int32_t &value\)",
         )
@@ -137,7 +133,7 @@ class IPAddress{uint8_t a[4]{};public:IPAddress()=default;IPAddress(int x,int y,
 struct Client{IPAddress local{192,168,4,1},peer{192,168,4,22};IPAddress localIP()const{return local;}IPAddress remoteIP()const{return peer;}};
 constexpr int HTTP_GET=0;int requestMethod=HTTP_GET;
 struct Server{Client c;std::map<std::string,std::string>headers,args;Client&client(){return c;}String header(const char*n){return headers.count(n)?String(headers[n]):String();}String hostHeader(){return "192.168.4.1";}String arg(const char*n){return args.count(n)?String(args[n]):String();}int method()const{return requestMethod;}} server;
-struct Settings{char appw[64]="portalpass";char hostName[32]="remote";}settings;
+ struct Settings{char hostName[32]="remote";}settings;
 struct Wifi{IPAddress softAPIP()const{return {192,168,4,1};}}WiFi;
 struct Manager{Server*server=&::server;}wm;
 char remotePortalNonce[33]="0123456789abcdef0123456789abcdef";IPAddress remotePortalOwner{192,168,4,22};uint32_t remotePortalExpires=2000,now=1000;
@@ -147,10 +143,9 @@ unsigned long millis(){return now;}int gateError=0;void remotePortalError(int co
 int main(){
  uint32_t u=0;int32_t s=0;
  server.headers["Origin"]="http://192.168.4.1";server.headers["X-Remote-Nonce"]=remotePortalNonce;
- assert(remotePortalLocalAP()&&remotePortalProtectedAP()&&remotePortalOrigin()&&remotePortalToken()&&remotePortalGate());
- settings.appw[0]=0;assert(remotePortalLocalAP()&&!remotePortalProtectedAP()&&remotePortalOrigin()&&remotePortalToken()&&remotePortalGate(false));assert(!remotePortalGate());server.headers["Origin"]="http://192.168.4.1.evil";assert(!remotePortalGate(false)&&gateError==403);server.headers["Origin"]="http://192.168.4.1";settings.appw[0]='p';
+ assert(remotePortalLocalAP()&&remotePortalOrigin()&&remotePortalToken()&&remotePortalGate());
  server.headers["Origin"]="http://192.168.4.1.evil";assert(!remotePortalGate()&&gateError==403);
- server.headers["Origin"]="http://192.168.4.1";settings.appw[0]=0;server.c.peer={192,168,5,22};assert(!remotePortalLocalAP()&&!remotePortalProtectedAP()&&!remotePortalGate(false));server.c.peer={192,168,4,22};settings.appw[0]='p';
+ server.headers["Origin"]="http://192.168.4.1";server.c.peer={192,168,5,22};assert(!remotePortalLocalAP()&&!remotePortalGate());server.c.peer={192,168,4,22};
  server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalToken());server.headers["X-Remote-Nonce"]=remotePortalNonce;
  now=remotePortalExpires;assert(!remotePortalToken());now=1000;
  server.args["n"]="63";assert(remotePortalUnsigned("n",63,u)&&u==63);server.args["n"]="+1";assert(!remotePortalUnsigned("n",63,u));server.args["n"]="64";assert(!remotePortalUnsigned("n",63,u));

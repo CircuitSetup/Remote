@@ -1065,7 +1065,7 @@ Values between the saved points are interpolated, and anything outside the saved
 
 ##### &#9193; Live ELRS controls and Radio devices
 
-For live radio controls, connect directly to the Remote's AP and open the ELRS/CRSF page; no AP password is required. The radio must be active to discover and control devices. CRSF settings file export, upload, activation, and review still require an AP password of at least eight characters.
+Connect directly to the Remote's AP and open the ELRS/CRSF page; no AP password is required for live controls or CRSF settings file operations. The radio must be active to discover and control devices.
 
 Click **Discover devices**, select a transmitter or receiver, and choose a field. Labels, units, ranges, and choices come from the device's menu descriptors, so controls are not tied to a Ranger Micro. Read-only, hidden, or unsupported fields cannot be edited. A change is previewed, explicitly confirmed, and read back from the device; failures are reported rather than treated as a successful write. Supported commands have their own start, confirm, and cancel controls.
 
