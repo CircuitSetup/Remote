@@ -44,6 +44,7 @@ class FakeRemote:
     def __init__(self, devices, params):
         self.devices = devices
         self.params = params
+        self.local_ap = True
         self.maintenance = True
         self.connected = True
         self.armed = False
@@ -138,7 +139,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/remote/devices":
             r = self.remote
-            self.send_json({"devices": r.devices, "protectedAP": True, "maintenance": r.maintenance,
+            self.send_json({"devices": r.devices, "localAP": r.local_ap, "protectedAP": False, "maintenance": r.maintenance,
                             "radioReviewPending": False, "rfKnown": True, "connected": r.connected,
                             "armedKnown": True, "armed": r.armed, "statusAgeMs": r.status_age,
                             "modelId": r.model_id if r.model_id_known else None})
@@ -263,6 +264,12 @@ class RadioSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "never issue commands"):
             self.client.action(action="command", device=238, field=4)
         self.assertFalse(any(action["action"] == "command" for action in self.fake.actions))
+
+    def test_client_accepts_open_ap_session_but_checks_local_ap_flag(self):
+        self.assertEqual(self.client.devices()["localAP"], True)
+        self.fake.local_ap = False
+        with self.assertRaisesRegex(ValueError, "Remote AP's WiFi network"):
+            self.client.devices()
 
     def test_error_output_masks_credentials_and_file_bound_is_enforced(self):
         output = io.StringIO()

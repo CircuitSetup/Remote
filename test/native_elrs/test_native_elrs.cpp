@@ -81,12 +81,12 @@ class FakeHost : public ELRSCrsfHost {
                 for(size_t i = 0; i < len; i++) {
                     rx.push_back(data[i]);
                 }
-                if(!rxAppendAfterWrite.empty()) {
-                    for(size_t i = 0; i < rxAppendAfterWrite.size(); i++) {
-                        rx.push_back(rxAppendAfterWrite[i]);
-                    }
-                    rxAppendAfterWrite.clear();
+            }
+            if(!rxAppendAfterWrite.empty()) {
+                for(size_t i = 0; i < rxAppendAfterWrite.size(); i++) {
+                    rx.push_back(rxAppendAfterWrite[i]);
                 }
+                rxAppendAfterWrite.clear();
             }
             return len;
         }
@@ -3995,6 +3995,83 @@ static void test_service_probe_drain_preserves_following_module_reply_bytes()
     TEST_ASSERT_EQUAL_HEX8(0xEE, host.rx.front());
 }
 
+static void test_service_probe_drain_preserves_immediate_c8_link_stats_without_echo()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.transport.packetRateHz = 500;
+
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    host.rxAppendAfterWrite = makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0});
+
+    loopAt(core, host, 1020, 1020000);
+    loopAt(core, host, 1022, 1022000);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_TRUE(statusOf(core).telemetryActive);
+}
+
+static void test_service_probe_drain_preserves_immediate_c8_device_info_without_echo()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.transport.packetRateHz = 500;
+
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    host.rxAppendAfterWrite = makeDeviceInfoFrame("ELRS", 3);
+    host.rxAppendAfterWrite[0] = 0xC8;
+
+    loopAt(core, host, 1020, 1020000);
+    loopAt(core, host, 1022, 1022000);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_STRING("ELRS", statusOf(core).moduleName);
+}
+
+static void test_service_probe_drain_preserves_partial_shared_prefix_frame()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 500;
+    const std::vector<uint8_t> ping = makeExtendedFrame(0xC8, 0x28, 0x00, 0xEA, {});
+    const std::vector<uint8_t> reply = makeExtendedFrame(0xC8, 0x28, 0x00, 0xEE, {});
+
+    transport.begin(host, config, 0, 0);
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    host.rxAppendAfterWrite = reply;
+    transportAt(transport, host, 0, 0);
+    transportAt(transport, host, 2, 2000);
+    transportAt(transport, host, 4, 4000);
+
+    TEST_ASSERT_TRUE(transport.status().everReplied);
+}
+
+static void test_service_probe_drain_skips_when_rx_frame_is_already_partial()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 500;
+    const std::vector<uint8_t> ping = makeExtendedFrame(0xC8, 0x28, 0x00, 0xEA, {});
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0});
+
+    transport.begin(host, config, 0, 0);
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 3));
+    host.rxAppendAfterWrite.assign(reply.begin() + 3, reply.end());
+    transportAt(transport, host, 0, 0);
+    transportAt(transport, host, 2, 2000);
+
+    TEST_ASSERT_TRUE(transport.status().everReplied);
+}
+
 }
 
 void setUp(void)
@@ -5546,5 +5623,9 @@ int main(int argc, char **argv)
     RUN_TEST(test_module_ping_keeps_rc_running_while_waiting_for_settings);
     RUN_TEST(test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer);
     RUN_TEST(test_service_probe_drain_preserves_following_module_reply_bytes);
+    RUN_TEST(test_service_probe_drain_preserves_immediate_c8_link_stats_without_echo);
+    RUN_TEST(test_service_probe_drain_preserves_immediate_c8_device_info_without_echo);
+    RUN_TEST(test_service_probe_drain_preserves_partial_shared_prefix_frame);
+    RUN_TEST(test_service_probe_drain_skips_when_rx_frame_is_already_partial);
     return UNITY_END();
 }

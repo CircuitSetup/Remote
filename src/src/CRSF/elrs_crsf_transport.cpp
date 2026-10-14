@@ -284,7 +284,7 @@ size_t ELRSCrsfTransport::drainExactEchoFrame(ELRSCrsfTransportHal &hal, const u
 {
     size_t matched = 0;
 
-    if(!frame || !frameLen) {
+    if(!frame || !frameLen || _rxFrameLen) {
         return 0;
     }
 
@@ -295,15 +295,21 @@ size_t ELRSCrsfTransport::drainExactEchoFrame(ELRSCrsfTransportHal &hal, const u
         }
 
         if((uint8_t)ch != frame[matched]) {
-            _rxFrame[0] = (uint8_t)ch;
-            _rxFrameLen = 1;
-            return matched;
+            _rxFrame[matched++] = (uint8_t)ch;
+            _rxFrameLen = matched;
+            return 0;
         }
 
-        matched++;
+        _rxFrame[matched++] = (uint8_t)ch;
     }
 
-    return matched;
+    if(matched == frameLen) {
+        _rxFrameLen = 0;
+        return matched;
+    }
+
+    _rxFrameLen = matched;
+    return 0;
 }
 
 unsigned long ELRSCrsfTransport::effectiveReplyTimeoutMs(bool resetReplyWindow) const

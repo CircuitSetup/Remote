@@ -11,7 +11,7 @@
 <div class="ss">
  <div class="hl"><h3>Live ELRS controls</h3></div>
  <p id="access"><small>Loading connection status…</small></p>
- <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connect through the protected Remote AP to use controls.</div>
+ <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connect through the Remote AP over WiFi to use live controls.</div>
  <p><small>FakePower off does not disarm the receiver. Set final CH5 low, disarm and disconnect RF before changing TX RF settings or activating a model.</small></p>
  <button type="button" id="maintenance">Enter maintenance (5 minutes)</button>
  <button type="button" id="status">Refresh RF status</button>
@@ -32,12 +32,12 @@
 </div>
 <div class="ss">
  <div class="hl"><h3>CRSF settings files</h3></div>
- <p><small>CRSF backups include model settings and input calibration. Portable models keep this Remote’s input calibration.</small></p>
- <button type="button" id="backup">Download CRSF settings backup</button>
- <button type="button" id="model">Download portable model</button>
+ <p><small>CRSF backups include model settings and input calibration. Portable models keep this Remote’s input calibration. File operations require a password-protected AP.</small></p>
+ <button type="button" id="backup" disabled>Download CRSF settings backup</button>
+ <button type="button" id="model" disabled>Download portable model</button>
  <label>Native file <input id="file" type="file" accept=".json"></label>
  <label>File type <select id="kind"><option value="model">Portable model</option><option value="backup">CRSF settings backup</option></select></label>
- <button type="button" id="preview">Validate and preview file</button>
+ <button type="button" id="preview" disabled>Validate and preview file</button>
  <pre id="previewText">No preview.</pre>
  <button type="button" id="apply" disabled>Activate this preview and restart</button>
 </div>
@@ -45,5 +45,5 @@
  <div class="hl"><h3>External radio settings</h3></div>
  <p><small>TX/RX settings use a separate file. Live changes need their own preview and readback; rollback is best effort. Commands are never restored.</small></p>
  <p><small>The desktop radio helper captures and previews <code>.remote-radio.json</code> files. Use the project’s radio snapshot guide on your computer; device controls above can make individual changes.</small></p>
- <button type="button" id="review">Finish imported radio review after readback</button>
+ <button type="button" id="review" disabled>Finish imported radio review after readback</button>
 </div>

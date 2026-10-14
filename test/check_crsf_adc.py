@@ -247,6 +247,30 @@ static void test_500hz_rc_cadence_during_ads_scan() {
     int16_t axes[4]; assert(mode.readCurrentRawAxes(axes));
     puts("test_500hz_rc_cadence_during_ads_scan passed");
 }
+static bool test_overdue_rc_slots_do_not_starve_adc() {
+    for(uint16_t rate : {250,500}) {
+        resetFixture(); ELRSCrsfMode mode; beginMode(mode,rate); completeSweep(mode);
+        const unsigned sweeps = Wire.sweeps;
+        Wire.values[0] = 1800;
+        const uint64_t end = testClockUs + 400000;
+        while(testClockUs < end) {
+            mode.loop(0);
+            // Background work returns after the next RC deadline at these rates.
+            advanceTestTime(1000000 / rate + 100);
+        }
+        if(Wire.sweeps <= sweeps) {
+            fputs("ADC sampling starved while RC frames remained due\n",stderr);
+            return false;
+        }
+        int16_t axes[4];
+        assert(mode.readCurrentRawAxes(axes));
+        assert(axes[0] > 1400);
+        assert(!(mode.getStatus().faultFlags & ELRS_FAULT_ADC_STALE));
+        assert(txEvents.size() > 50 && maxDelayUs <= 150);
+    }
+    puts("Actual ADC adapter progresses after overdue RC slots at 250/500Hz without false stale faults");
+    return true;
+}
 static void test_axes_publish_only_complete_sweeps() {
     for(int failure = 1; failure <= 3; failure++) for(int channel = 0; channel < 4; channel++) {
         resetFixture(); ELRSCrsfMode mode; beginMode(mode); completeSweep(mode);
@@ -387,6 +411,7 @@ int main(int argc, char **argv) {
     if(argc > 1) { test_500hz_rc_cadence_during_ads_scan(); return 0; }
     test_ads_pending_conversion_does_not_block_rc_slots();
     test_500hz_rc_cadence_during_ads_scan();
+    if(!test_overdue_rc_slots_do_not_starve_adc()) return 1;
     test_axes_publish_only_complete_sweeps();
     test_cached_axes_do_not_refresh_input_age();
     test_identical_new_sweeps_remain_fresh();

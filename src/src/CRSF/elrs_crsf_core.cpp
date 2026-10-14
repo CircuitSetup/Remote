@@ -299,6 +299,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
         _calCapturePending = false;
         showOverlay("ADC", now, 1000);
     }
+    const bool sampleAfterTx = _transport.txTimeRemainingUs((uint32_t)host.microsNow()) == 0;
     const ELRSAxesResult axesResult = sampleAxes(host, now);
     now = host.millisNow();
     if(axesResult == ELRS_AXES_READY && _calCapturePending) finishCalibrationCapture(host, now);
@@ -331,6 +332,15 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     _deviceConfig.tick(_transport, configSafety((uint32_t)now), (uint32_t)now);
     _transport.loop(host, now, nowUs);
     now = host.millisNow();
+    // Overdue RC slots must release time for ADC work instead of starving every sweep.
+    if(sampleAfterTx && axesResult != ELRS_AXES_READY) {
+        const ELRSAxesResult result = sampleAxes(host, now);
+        now = host.millisNow();
+        if(result == ELRS_AXES_READY && _calCapturePending) finishCalibrationCapture(host, now);
+        updateInputFaults(host, now);
+        updateChannels(now, fakePower, stopOn, buttonAOn, buttonBOn, packStates);
+        _transport.setChannels(_channels);
+    }
     if(!_config.propControls) {
         updateLocalSwitches(host, (packStates << 4) | (buttonBOn << 3) |
                            (buttonAOn << 2) | (fakePower << 1) | stopOn);

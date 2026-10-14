@@ -51,14 +51,20 @@ class CRSFPortalHTTPTests(unittest.TestCase):
         self.assertIn('sendHeader("Content-Encoding","gzip")', setup)
         self.assertIn('"Content-Encoding","gzip"', setup)
 
-    def test_session_and_mutating_routes_require_protected_origin_nonce(self):
-        gate = function(PORTAL, r"static bool remotePortalGate\(\)")
+    def test_live_routes_allow_open_ap_but_file_routes_stay_protected(self):
+        gate = function(PORTAL, r"static bool remotePortalGate\(bool requireProtectedAP=true\)")
         for check in ("remotePortalProtectedAP()", "remotePortalOrigin()", "remotePortalToken()"):
             self.assertIn(check, gate)
-        for name in ("Operation", "Action", "Export", "Apply", "Review"):
+        self.assertIn("password-protected Remote AP", gate)
+        self.assertIn("Connect through this Remote AP and use a current session", gate)
+        self.assertIn("strlen(settings.appw)>=8 && remotePortalLocalAP()", function(PORTAL, r"static bool remotePortalProtectedAP\(\)"))
+        for name in ("Operation", "Action"):
+            self.assertRegex(function(PORTAL, rf"static void remotePortal{name}\(\)"), r"if\(!remotePortalGate\(false\)\)return")
+        for name in ("Export", "Apply", "Review"):
             self.assertRegex(function(PORTAL, rf"static void remotePortal{name}\(\)"), r"if\(!remotePortalGate\(\)\)return")
-        session = function(PORTAL, r"static void remotePortalSession\(\)")
-        self.assertIn("!remotePortalProtectedAP() || !remotePortalOrigin()", session)
+        for check in ("remotePortalLocalAP()", "remotePortalOrigin()"):
+            self.assertIn(check, function(PORTAL, r"static void remotePortalSession\(\)"))
+        self.assertIn('doc["localAP"]=remotePortalLocalAP()', function(PORTAL, r"static void remotePortalDevices\(\)"))
         upload = function(PORTAL, r"static void remotePortalUpload\(\)")
         self.assertIn("if(!remotePortalGate())return", upload)
         upload_done = function(PORTAL, r"static void remotePortalUploadDone\(\)")
@@ -102,10 +108,11 @@ class CRSFPortalHTTPTests(unittest.TestCase):
 
     def test_actual_origin_nonce_and_numeric_gates(self):
         signatures = (
+            r"static bool remotePortalLocalAP\(\)",
             r"static bool remotePortalProtectedAP\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
-            r"static bool remotePortalGate\(\)",
+            r"static bool remotePortalGate\(bool requireProtectedAP=true\)",
             r"static bool remotePortalUnsigned\(const char \*name,uint32_t max,uint32_t &value\)",
             r"static bool remotePortalSigned\(const char \*name,int32_t &value\)",
         )
@@ -140,9 +147,10 @@ unsigned long millis(){return now;}int gateError=0;void remotePortalError(int co
 int main(){
  uint32_t u=0;int32_t s=0;
  server.headers["Origin"]="http://192.168.4.1";server.headers["X-Remote-Nonce"]=remotePortalNonce;
- assert(remotePortalProtectedAP()&&remotePortalOrigin()&&remotePortalToken()&&remotePortalGate());
+ assert(remotePortalLocalAP()&&remotePortalProtectedAP()&&remotePortalOrigin()&&remotePortalToken()&&remotePortalGate());
+ settings.appw[0]=0;assert(remotePortalLocalAP()&&!remotePortalProtectedAP()&&remotePortalOrigin()&&remotePortalToken()&&remotePortalGate(false));assert(!remotePortalGate());server.headers["Origin"]="http://192.168.4.1.evil";assert(!remotePortalGate(false)&&gateError==403);server.headers["Origin"]="http://192.168.4.1";settings.appw[0]='p';
  server.headers["Origin"]="http://192.168.4.1.evil";assert(!remotePortalGate()&&gateError==403);
- server.headers["Origin"]="http://192.168.4.1";server.c.peer={192,168,5,22};assert(!remotePortalProtectedAP()&&!remotePortalGate());server.c.peer={192,168,4,22};
+ server.headers["Origin"]="http://192.168.4.1";settings.appw[0]=0;server.c.peer={192,168,5,22};assert(!remotePortalLocalAP()&&!remotePortalProtectedAP()&&!remotePortalGate(false));server.c.peer={192,168,4,22};settings.appw[0]='p';
  server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalToken());server.headers["X-Remote-Nonce"]=remotePortalNonce;
  now=remotePortalExpires;assert(!remotePortalToken());now=1000;
  server.args["n"]="63";assert(remotePortalUnsigned("n",63,u)&&u==63);server.args["n"]="+1";assert(!remotePortalUnsigned("n",63,u));server.args["n"]="64";assert(!remotePortalUnsigned("n",63,u));
