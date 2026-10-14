@@ -58,13 +58,15 @@ function fixture(crsfActive,formAction='/param3save',localAP=true){
 }
 const settle=()=>new Promise(setImmediate);
 async function settingsSaveAtPageEnd(){
- const f=fixture(true);await settle();
+ for(const action of ['param3save','/param3save']){
+ const f=fixture(true,action);await settle();
  assert.equal(f.rootNode.parentNode,f.body,'live/file/review panel follows the settings form');
  assert.equal(f.form.id,'elrs-settings');
  assert.equal(f.save.parentNode,f.body,'the native Save button follows the complete CRSF panel');
  assert.equal(f.save.getAttribute('form'),'elrs-settings','external Save remains associated with CRSF settings');
  assert(f.body.children.indexOf(f.save)>f.body.children.indexOf(f.rootNode));
  assert(f.rootNode.innerHTML.indexOf('id="review"')>f.rootNode.innerHTML.indexOf('CRSF settings files'));
+ }
  const general=fixture(false,'/paramsave');await settle();
  assert.equal(general.save.parentNode,general.form,'General Settings Save stays with its original form');
  assert.equal(general.save.getAttribute('form'),null);

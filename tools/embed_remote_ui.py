@@ -9,7 +9,7 @@ def embed(root):
     script=(root/'src/src/CRSF/crsf_config.js').read_text(encoding='utf-8')
     source=('const remoteControls=document.getElementById("remote-controls");\n'
             'const settingsForm=remoteControls.closest("form");\n'
-            'if(settingsForm){settingsForm.after(remoteControls);if(settingsForm.getAttribute("action")==="/param3save"){'
+            'if(settingsForm){settingsForm.after(remoteControls);if(["/param3save","param3save"].includes(settingsForm.getAttribute("action"))){'
             'const save=settingsForm.querySelector("button[type=submit]");if(save){'
             'if(!settingsForm.id)settingsForm.id="elrs-settings";save.setAttribute("form",settingsForm.id);remoteControls.after(save);}}}\n'
             'remoteControls.innerHTML='+json.dumps(html,ensure_ascii=False)+';\n'+script).encode('utf-8')
