@@ -359,11 +359,15 @@ void ELRSCrsfTransport::sendChannels(ELRSCrsfTransportHal &hal, unsigned long no
 
 void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
 {
-    while(hal.serialAvailable()) {
+    size_t bytesRead = 0;
+
+    // Cap parser work before the scheduler gets a chance to transmit.
+    while(bytesRead < sizeof(_rxFrame) && hal.serialAvailable()) {
         int ch = hal.serialRead();
         if(ch < 0) {
             break;
         }
+        bytesRead++;
         now = hal.millisNow();
 
         if(_rxFrameLen == 0) {
@@ -382,83 +386,114 @@ void ELRSCrsfTransport::pollFrames(ELRSCrsfTransportHal &hal, unsigned long now)
         }
 
         _rxFrame[_rxFrameLen++] = (uint8_t)ch;
+        processRxBuffer(hal, now);
+    }
+}
 
-        if(_rxFrameLen == 2) {
-            if(_rxFrame[1] < 2 || _rxFrame[1] > 62) {
-                noteFrameError(hal, now);
-                resyncRxBuffer();
-            }
+void ELRSCrsfTransport::processRxBuffer(ELRSCrsfTransportHal &hal, unsigned long now)
+{
+    while(_rxFrameLen) {
+        if(!isLikelySyncByte(_rxFrame[0])) {
+            resyncRxBuffer();
+            continue;
+        }
+        if(_rxFrameLen < 2) return;
+        if(_rxFrame[1] < 2 || _rxFrame[1] > 62) {
+            noteFrameError(hal, now);
+            resyncRxBuffer();
             continue;
         }
 
-        if(_rxFrameLen >= 2) {
-            size_t expectLen = _rxFrame[1] + 2;
-            if(expectLen > sizeof(_rxFrame)) {
-                noteFrameError(hal, now);
-                resyncRxBuffer();
-                continue;
-            }
-            if(_rxFrameLen == expectLen) {
-                bool crcValid = (crc8D5(_rxFrame + 2, expectLen - 3) == _rxFrame[expectLen - 1]);
+        size_t expectLen = _rxFrame[1] + 2;
+        if(expectLen > sizeof(_rxFrame)) {
+            noteFrameError(hal, now);
+            resyncRxBuffer();
+            continue;
+        }
+        if(_rxFrameLen < expectLen) return;
 
-                _status.lastRawFrame.syncByte = _rxFrame[0];
-                _status.lastRawFrame.type = _rxFrame[2];
-                _status.lastRawFrame.length = (uint8_t)expectLen;
-                _status.lastRawFrame.crcValid = crcValid;
+        bool crcValid = (crc8D5(_rxFrame + 2, expectLen - 3) == _rxFrame[expectLen - 1]);
+
+        _status.lastRawFrame.syncByte = _rxFrame[0];
+        _status.lastRawFrame.type = _rxFrame[2];
+        _status.lastRawFrame.length = (uint8_t)expectLen;
+        _status.lastRawFrame.crcValid = crcValid;
 
 #ifndef REMOTE_CRSF_NO_RAW_DUMPS
-                if(shouldLogRawFrame(_rxFrame, expectLen, false)) {
-                    logFrame(hal, "ELRS/CRSF RX", _rxFrame, expectLen, crcValid);
-                }
+        if(shouldLogRawFrame(_rxFrame, expectLen, false)) {
+            logFrame(hal, "ELRS/CRSF RX", _rxFrame, expectLen, crcValid);
+        }
 #endif
 
-                if(crcValid) {
-                    // These are handset-to-module frames, including delayed
-                    // local echo from an earlier TX slot, not module replies.
-                    if(_rxFrame[2] == CRSF_FRAME_RC_CHANNELS_PACKED ||
-                       (_rxFrame[2] >= 0x28 && expectLen >= 6 &&
-                        (_rxFrame[4] == CRSF_ADDR_RADIO_TRANSMITTER || _rxFrame[4] == CRSF_ADDR_HANDSET))) {
-                        _rxFrameLen = 0;
-                        continue;
-                    }
-                    if(_lastTxFrameLen == expectLen &&
-                       (int32_t)(now - _echoSuppressUntil) <= 0 &&
-                       !memcmp(_lastTxFrame, _rxFrame, expectLen)) {
-                        _rxFrameLen = 0;
-                        continue;
-                    }
+        if(crcValid) {
+            // These are handset-to-module frames, including delayed
+            // local echo from an earlier TX slot, not module replies.
+            if(_rxFrame[2] != CRSF_FRAME_RC_CHANNELS_PACKED &&
+               !(_rxFrame[2] >= 0x28 && expectLen >= 6 &&
+                 (_rxFrame[4] == CRSF_ADDR_RADIO_TRANSMITTER || _rxFrame[4] == CRSF_ADDR_HANDSET)) &&
+               !(_lastTxFrameLen == expectLen &&
+                 (int32_t)(now - _echoSuppressUntil) <= 0 &&
+                 !memcmp(_lastTxFrame, _rxFrame, expectLen))) {
+                bool supportedTelemetry = false;
 
-                    bool supportedTelemetry = false;
+                _status.lastReplyAt = now;
+                _status.lastRxAt = now;
+                _lastReplyAt = now;
+                _status.replyActive = true;
+                _status.synced = true;
+                _status.everReplied = true;
+                _status.everSynced = true;
+                _replySeenForTx = true;
+                clearCommCode();
 
-                    _status.lastReplyAt = now;
-                    _status.lastRxAt = now;
-                    _lastReplyAt = now;
-                    _status.replyActive = true;
-                    _status.synced = true;
-                    _status.everReplied = true;
-                    _status.everSynced = true;
-                    _replySeenForTx = true;
-                    clearCommCode();
-
-                    if(_sink) {
-                        const uint8_t *payload = _rxFrame + 3;
-                        size_t payloadLen = expectLen - 4;
-                        supportedTelemetry = _sink->onCrsfFrame(_rxFrame[0], _rxFrame[2], payload, payloadLen, now);
-                    }
-
-                    if(supportedTelemetry) {
-                        _lastTelemetryAt = now;
-                        _haveTelemetry = true;
-                        _status.telemetryActive = true;
-                    }
-                    _rxFrameLen = 0;
-                } else {
-                    noteBadCrc(hal, now);
-                    _rxFrameLen = 0;
+                if(_sink) {
+                    const uint8_t *payload = _rxFrame + 3;
+                    size_t payloadLen = expectLen - 4;
+                    supportedTelemetry = _sink->onCrsfFrame(_rxFrame[0], _rxFrame[2], payload, payloadLen, now);
                 }
+
+                if(supportedTelemetry) {
+                    _lastTelemetryAt = now;
+                    _haveTelemetry = true;
+                    _status.telemetryActive = true;
+                }
+            }
+
+            if(expectLen < _rxFrameLen) {
+                memmove(_rxFrame, _rxFrame + expectLen, _rxFrameLen - expectLen);
+                _rxFrameLen -= expectLen;
+            } else {
+                _rxFrameLen = 0;
+            }
+        } else {
+            noteBadCrc(hal, now);
+            // Recover only a later candidate whose complete frame and CRC
+            // are already present in the rejected bytes.
+            if(!resyncToValidFrame()) {
+                _rxFrameLen = 0;
             }
         }
     }
+}
+
+bool ELRSCrsfTransport::resyncToValidFrame(size_t startIndex)
+{
+    for(size_t i = startIndex; i + 3 < _rxFrameLen; i++) {
+        if(!isLikelySyncByte(_rxFrame[i])) continue;
+
+        const uint8_t length = _rxFrame[i + 1];
+        if(length < 2 || length > 62) continue;
+        const size_t candidateLen = (size_t)length + 2;
+        const size_t available = _rxFrameLen - i;
+        if(available < candidateLen) continue;
+        if(crc8D5(_rxFrame + i + 2, candidateLen - 3) != _rxFrame[i + candidateLen - 1]) continue;
+
+        memmove(_rxFrame, _rxFrame + i, available);
+        _rxFrameLen = available;
+        return true;
+    }
+
+    return false;
 }
 
 void ELRSCrsfTransport::resyncRxBuffer(size_t startIndex)

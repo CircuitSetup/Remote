@@ -2154,6 +2154,120 @@ static void test_parser_recovers_after_bad_crc_followed_by_valid_frame()
     TEST_ASSERT_EQUAL_UINT8(91, core.linkQuality());
 }
 
+static void test_parser_resyncs_link_stats_inside_bad_crc_candidate()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 92, 0, 0, 0, 0, 0, 0, 0});
+
+    candidate.insert(candidate.end(), reply.begin(), reply.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_UINT8(92, core.linkQuality());
+}
+
+static void test_parser_resyncs_device_info_inside_bad_crc_candidate()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    std::vector<uint8_t> reply = makeDeviceInfoFrame("ELRS", 3);
+
+    reply[0] = 0xC8;
+    candidate.insert(candidate.end(), reply.begin(), reply.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_STRING("ELRS", statusOf(core).moduleName);
+}
+
+static void test_parser_rejects_unsupported_sync_in_recovered_suffix()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 92, 0, 0, 0, 0, 0, 0, 0});
+    std::vector<uint8_t> unsupported = makeFrame(0x14, {0, 0, 11, 0, 0, 0, 0, 0, 0, 0});
+    unsupported[0] = 0x55;
+
+    candidate.insert(candidate.end(), reply.begin(), reply.end());
+    candidate.insert(candidate.end(), unsupported.begin(), unsupported.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_EQUAL_UINT8(92, core.linkQuality());
+}
+
+static void test_parser_keeps_multiple_valid_embedded_frames()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    const std::vector<uint8_t> first = makeFrame(0x14, {0, 0, 92, 0, 0, 0, 0, 0, 0, 0});
+    const std::vector<uint8_t> second = makeFrame(0x14, {0, 0, 95, 0, 0, 0, 0, 0, 0, 0});
+
+    candidate.insert(candidate.end(), first.begin(), first.end());
+    candidate.insert(candidate.end(), second.begin(), second.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_EQUAL_UINT8(95, core.linkQuality());
+}
+
+static void test_parser_keeps_delayed_uart_remainder_of_valid_frame()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 94, 0, 0, 0, 0, 0, 0, 0});
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, std::vector<uint8_t>(reply.begin(), reply.begin() + 3));
+    loopAtMs(core, host, 100, 0);
+
+    queueBytes(host, std::vector<uint8_t>(reply.begin() + 3, reply.end()));
+    loopAtMs(core, host, 110, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_UINT8(94, core.linkQuality());
+}
+
+static void test_parser_bounds_rx_bytes_per_loop()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, std::vector<uint8_t>(128, 0xFF));
+
+    loopAtMs(core, host, 100, 0);
+    TEST_ASSERT_EQUAL_INT(64, host.serialReadCount);
+    TEST_ASSERT_EQUAL_INT(64, host.serialAvailable());
+
+    loopAtMs(core, host, 101, 0);
+    TEST_ASSERT_EQUAL_INT(128, host.serialReadCount);
+    TEST_ASSERT_EQUAL_INT(0, host.serialAvailable());
+}
+
 static void test_comm_codes_show_no_sync_until_valid_frame()
 {
     FakeHost host;
@@ -5554,6 +5668,12 @@ int main(int argc, char **argv)
     RUN_TEST(test_non_c8_sync_frame_is_accepted);
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);
     RUN_TEST(test_parser_recovers_after_bad_crc_followed_by_valid_frame);
+    RUN_TEST(test_parser_resyncs_link_stats_inside_bad_crc_candidate);
+    RUN_TEST(test_parser_resyncs_device_info_inside_bad_crc_candidate);
+    RUN_TEST(test_parser_rejects_unsupported_sync_in_recovered_suffix);
+    RUN_TEST(test_parser_keeps_multiple_valid_embedded_frames);
+    RUN_TEST(test_parser_keeps_delayed_uart_remainder_of_valid_frame);
+    RUN_TEST(test_parser_bounds_rx_bytes_per_loop);
     RUN_TEST(test_comm_codes_show_no_sync_until_valid_frame);
     RUN_TEST(test_lost_telemetry_sets_los_until_valid_frame);
     RUN_TEST(test_crc_burst_sets_crc_comm_code);

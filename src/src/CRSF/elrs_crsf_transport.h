@@ -108,6 +108,8 @@ class ELRSCrsfTransport {
         void sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen, unsigned long now, unsigned long nowUs, const char *prefix, bool resetReplyWindow);
         void sendChannels(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs);
         void pollFrames(ELRSCrsfTransportHal &hal, unsigned long now);
+        void processRxBuffer(ELRSCrsfTransportHal &hal, unsigned long now);
+        bool resyncToValidFrame(size_t startIndex = 1);
         void resyncRxBuffer(size_t startIndex = 1);
         void noteBadCrc(ELRSCrsfTransportHal &hal, unsigned long now);
         void noteFrameError(ELRSCrsfTransportHal &hal, unsigned long now);
