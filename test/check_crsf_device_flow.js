@@ -8,7 +8,7 @@ const uiHeader=fs.readFileSync(path.join(root,'crsf_config_ui.h'),'utf8');
 const embedded=zlib.gunzipSync(Buffer.from([...uiHeader.matchAll(/0x([0-9a-f]{2})/gi)].map(m=>parseInt(m[1],16)))).toString('utf8');
 function portalLayout(source){
  let last=-1;
- for(const section of ['Live ELRS controls','Transmitter','Receiver outputs','Radio devices','CRSF settings files','External radio settings']){
+ for(const section of ['Live ELRS controls','Radio devices','Transmitter','Receiver outputs','CRSF settings files','External radio settings']){
   const at=source.indexOf('<h3>'+section+'</h3>');assert(at>last,section+' section is missing or out of order');last=at;
  }
  assert(source.indexOf('id="review"')>source.indexOf('<h3>External radio settings</h3>'));
@@ -112,6 +112,26 @@ function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX
  return {elements,calls,timers,document,rootNode,body,form,save,radio,params,confirmations,advanceTime:ms=>{clock+=ms;},elapsed:()=>clock,replaceRemoteSession:()=>{sessionNonce='b'.repeat(32);sessionExpires=clock+300000;}};
 }
 const settle=()=>new Promise(setImmediate);
+async function editorTargetsAndApply(){
+ const f=fixture();await settle();
+ assert.equal(f.elements.txDevice?.textContent,'Device: TX · 238','transmitter section identifies its own target');
+ assert.equal(f.elements.rxDevice?.textContent,'Device: RX · 236','receiver section identifies its own target');
+ await f.elements.txRefresh.onclick();
+ const apply=buttonFor(f,'txFields','Apply TX Power');assert(apply,'write button says Apply rather than Preview');
+ inputFor(f,'txFields','TX Power').value='2';
+ assert(!f.calls.some(c=>c.action==='write'),'choosing a value does not write to the radio');
+ f.radio.confirm=false;await apply.onclick();
+ assert(!f.calls.some(c=>c.action==='write'),'cancelling confirmation does not write to the radio');
+ assert.match(f.confirmations.at(-1),/Apply TX Power on TX · 238/,'confirmation names the target device');
+ f.elements.devices.value='236';await f.elements.devices.onchange();
+ assert.equal(f.elements.fieldDevice.textContent,'Device: RX · 236','generic editor follows the selected device');
+ assert.equal(f.elements.txDevice.textContent,'Device: TX · 238','generic selection does not relabel transmitter controls');
+ inputFor(f,'txFields','TX Power').value='2';
+ f.radio.confirm=true;await buttonFor(f,'txFields','Apply TX Power').onclick();
+ assert(f.calls.some(c=>c.action==='write'&&c.device==='238'&&c.field==='2'&&c.value==='2'),'Apply writes the named transmitter field');
+ const absent=fixture({absentTX:true});await settle();
+ assert.equal(absent.elements.txDevice.textContent,'Device: Not discovered','missing device identity is explicit');
+}
 async function transientReadsAndFreshStatus(){
  const retry=fixture({failGetOnce:'/remote/operation'});await settle();await retry.elements.txRefresh.onclick();
  assert(inputFor(retry,'txFields','TX Power'),'a transient operation GET failure recovers the readback');
@@ -122,7 +142,7 @@ async function transientReadsAndFreshStatus(){
  const readRetry=fixture();await settle();readRetry.radio.failReadOnce='238:2';await readRetry.elements.txRefresh.onclick();
  assert(inputFor(readRetry,'txFields','TX Power'),'a terminal failed field read is retried once after matching operation reconciliation');
  assert.equal(readRetry.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length,2,'only the matching failed read is retried');
- const staleTimeout=fixture();await settle();await staleTimeout.elements.txRefresh.onclick();const staleSave=buttonFor(staleTimeout,'txFields','Preview TX Power change');
+ const staleTimeout=fixture();await settle();await staleTimeout.elements.txRefresh.onclick();const staleSave=buttonFor(staleTimeout,'txFields','Apply TX Power');
  staleTimeout.radio.failRead='238:2';await staleSave.onclick();staleTimeout.radio.failRead=null;staleTimeout.radio.failPostAction='read';
  const priorReads=staleTimeout.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length;await staleSave.onclick();
  assert.equal(staleTimeout.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length-priorReads,1,'a prior same-field timeout cannot replay an ambiguous read POST');
@@ -131,7 +151,7 @@ async function transientReadsAndFreshStatus(){
  assert.equal(inputFor(ambiguousRead,'txFields','Telemetry Ratio'),undefined,'an unconfirmed ambiguous read remains unavailable');
  const ambiguous=fixture();await settle();await ambiguous.elements.txRefresh.onclick();
  assert.equal(ambiguous.calls.filter(c=>c.path==='/remote/action'&&c.action==='read').length,4);
- ambiguous.radio.failPostAction='write';inputFor(ambiguous,'txFields','TX Power').value='2';await buttonFor(ambiguous,'txFields','Preview TX Power change').onclick();
+ ambiguous.radio.failPostAction='write';inputFor(ambiguous,'txFields','TX Power').value='2';await buttonFor(ambiguous,'txFields','Apply TX Power').onclick();
  assert.equal(ambiguous.calls.filter(c=>c.path==='/remote/action'&&c.action==='write').length,1,'ambiguous write POST is never replayed');
  assert(!ambiguous.calls.some(c=>['command','upload','apply','review'].includes(c.action)||['/remote/upload','/remote/apply','/remote/review'].includes(c.path)),'read recovery never replays commands or file actions');
  assert.doesNotMatch(ambiguous.elements.message.textContent,/verified/i);
@@ -168,7 +188,7 @@ async function sessionRenewal(){
  assert(!replaced.calls.slice(start).some(c=>c.path==='/remote/devices'||c.path==='/remote/apply'),'replacement aborts stale apply instead of replaying it');
  assert.equal(replaced.elements.apply.disabled,true,'token replacement invalidates the local preview');
  const staleMutation=fixture();await settle();await staleMutation.elements.txRefresh.onclick();inputFor(staleMutation,'txFields','TX Power').value='2';
- staleMutation.replaceRemoteSession();const mutationStart=staleMutation.calls.length;await buttonFor(staleMutation,'txFields','Preview TX Power change').onclick();
+ staleMutation.replaceRemoteSession();const mutationStart=staleMutation.calls.length;await buttonFor(staleMutation,'txFields','Apply TX Power').onclick();
  assert(!staleMutation.calls.slice(mutationStart).some(c=>c.path==='/remote/action'),'replaced session aborts stale radio mutation without replay');
  assert.match(staleMutation.elements.message.textContent,/session changed/i);
 }
@@ -185,7 +205,7 @@ async function liveControls(){
  assert.match(textOf(f.elements.txFields),/maximum configured power/i);
  f.elements.devices.value='236';await f.elements.devices.onchange();
  const power=inputFor(f,'txFields','TX Power');power.value='2';const before=f.calls.length;
- await buttonFor(f,'txFields','Preview TX Power change').onclick();
+ await buttonFor(f,'txFields','Apply TX Power').onclick();
  const actions=f.calls.slice(before).filter(c=>['read','write'].includes(c.action));
  assert(actions.every(c=>c.device==='238'&&c.generation==='3'),'selected RX must not redirect TX or its generation');
  assert.equal(actions.find(c=>c.action==='write').confirmed,'1');
@@ -204,9 +224,9 @@ async function receiverContextAndCommands(){
  assert.equal(output.tag,'select');assert.equal(output.options[1].textContent,'Output 2');
  assert.equal(input.tag,'select');assert.equal(input.options[2].textContent,'CH3');
  assert.match(textOf(f.elements.rxFields),/all configured PWM outputs/i);
- const stale=buttonFor(f,'rxFields','Preview Incoming RC channel change');
+ const stale=buttonFor(f,'rxFields','Apply Incoming RC channel');
  output.value='2';const before=f.calls.length;
- await buttonFor(f,'rxFields','Preview Physical PWM output change').onclick();
+ await buttonFor(f,'rxFields','Apply Physical PWM output').onclick();
  const actions=f.calls.slice(before),write=actions.findIndex(c=>c.action==='write');
  assert(actions.slice(write+1).some(c=>c.action==='read'&&c.device==='236'&&c.field==='2'&&c.generation==='9'),'Output Ch rereads Input Ch at the new generation');
  assert.equal(inputFor(f,'rxFields','Incoming RC channel').value,8);assert.equal(inputFor(f,'txFields','TX Power'),undefined,'RX generation changes invalidate cached TX values too');
@@ -267,14 +287,14 @@ async function truthfulFailuresAndSupport(){
  const changedGeneration=fixture();await settle();await changedGeneration.elements.txRefresh.onclick();changedGeneration.radio.txGeneration=4;await changedGeneration.elements.status.onclick();
  assert.equal(inputFor(changedGeneration,'txFields','TX Power'),undefined,'public device generation mismatch clears verified TX labels');
  const f=fixture();await settle();await f.elements.txRefresh.onclick();f.radio.failWrite=true;inputFor(f,'txFields','TX Power').value='2';
- await buttonFor(f,'txFields','Preview TX Power change').onclick();
+ await buttonFor(f,'txFields','Apply TX Power').onclick();
  assert.match(f.elements.message.textContent,/unknown/i);
  assert.equal(inputFor(f,'txFields','TX Power'),undefined,'failed writes require refresh, not stale verified values');
  f.radio.failWrite=false;await f.elements.txRefresh.onclick();f.radio.changedPreview={type:0};
- await buttonFor(f,'txFields','Preview TX Power change').onclick();
+ await buttonFor(f,'txFields','Apply TX Power').onclick();
  assert(!f.calls.some(c=>c.action==='write'&&c.type==='0'),'descriptor type must match preview before mutation');
   const writable=fixture();await settle();await writable.elements.txRefresh.onclick();writable.radio.changedPreview={writable:false};
- await buttonFor(writable,'txFields','Preview TX Power change').onclick();
+ await buttonFor(writable,'txFields','Apply TX Power').onclick();
  assert(!writable.calls.some(c=>c.action==='write'),'a now read-only descriptor must not mutate');
  const partial=fixture();await settle();partial.radio.failRead='238:4';await partial.elements.txRefresh.onclick();
  assert(inputFor(partial,'txFields','TX Power'),'one unreadable descriptor must not hide other fresh fields');
@@ -283,7 +303,7 @@ async function truthfulFailuresAndSupport(){
  const missingReview=fixture({transform:params=>params.find(p=>p.role==='dynamic').role=''});await settle();await missingReview.elements.review.onclick();
  assert(!missingReview.calls.some(c=>c.path==='/remote/review'),'missing TX readback cannot claim imported review is verified');
  const rx=fixture();await settle();await rx.elements.rxRefresh.onclick();rx.radio.failRead='236:2';inputFor(rx,'rxFields','Physical PWM output').value='2';
- await buttonFor(rx,'rxFields','Preview Physical PWM output change').onclick();
+ await buttonFor(rx,'rxFields','Apply Physical PWM output').onclick();
  assert.equal(inputFor(rx,'rxFields','Incoming RC channel'),undefined,'timed out dependent read is unavailable');
  assert.doesNotMatch(rx.elements.message.textContent,/Readback verified/i);
 }
@@ -326,7 +346,7 @@ async function filesAndFooter(){
  assert.equal(general.save.parentNode,general.form);assert.equal(general.save.getAttribute('form'),null);
 }
 (async()=>{
- await sessionRenewal();await transientReadsAndFreshStatus();await liveControls();await receiverContextAndCommands();await commandOwnershipRecovery();await truthfulFailuresAndSupport();await genericTextReadback();await filesAndFooter();
+ await editorTargetsAndApply();await sessionRenewal();await transientReadsAndFreshStatus();await liveControls();await receiverContextAndCommands();await commandOwnershipRecovery();await truthfulFailuresAndSupport();await genericTextReadback();await filesAndFooter();
  portalLayout(html);assert(embedded.endsWith(script),'gzip JavaScript differs from source');
  assert([...uiHeader.matchAll(/0x([0-9a-f]{2})/gi)].length<=8192,'UI exceeds 8 KiB gzip budget');
  console.log('TX ownership/readback, RX output generations, failsafe confirmation/cancel, unavailable controls, AP/LAN files, footer and compressed parity PASS');

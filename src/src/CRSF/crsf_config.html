@@ -12,35 +12,39 @@
  <div class="hl"><h3>Live ELRS controls</h3></div>
  <p id="access"><small>Loading connection status…</small></p>
  <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connect through the Remote AP or connected network to use live controls.</div>
+ <p><small>Choose a value, then use Apply to confirm and send it to the named device. Changing a selection alone sends nothing.</small></p>
  <p><small>FakePower off does not disarm the receiver. Set final CH5 low and disarm before radio changes. Disconnect RF for Packet Rate, other critical TX settings, or model activation.</small></p>
  <button type="button" id="maintenance">Enter maintenance (5 minutes)</button>
  <button type="button" id="status">Refresh RF status</button>
  <small id="safety"></small>
 </div>
 <div class="ss">
- <div class="hl"><h3>Transmitter</h3></div>
- <p><small>Live values and choices come from the discovered transmitter menu. Enter maintenance and refresh disarmed RF status before changes. Packet Rate changes also require RF disconnected.</small></p>
- <button type="button" id="txRefresh">Refresh transmitter readback</button>
- <div id="txFields">Refresh to read transmitter settings.</div>
-</div>
-<div class="ss">
- <div class="hl"><h3>Receiver outputs</h3></div>
- <p><small>Receiver output changes and failsafe capture require RF connected and the receiver disarmed. Choose the physical output, then its incoming RC channel. Output changes refresh dependent settings before further edits.</small></p>
- <button type="button" id="rxRefresh">Refresh receiver readback</button>
- <div id="rxFields">Refresh to read receiver output settings.</div>
-</div>
-<div class="ss">
  <div class="hl"><h3>Radio devices</h3></div>
- <p><small>RF packet rate comes from the module menu. Remote’s CRSF channel cadence is separate and requires a restart.</small></p>
- <button type="button" id="discover">Discover devices</button>
+ <p><strong id="fieldDevice">Device: Not discovered</strong></p>
  <label>Device <select id="devices" aria-label="Radio device"></select></label>
  <label>Field <select id="fields" aria-label="Device field"></select></label>
+ <p><small>RF packet rate comes from the module menu. Remote’s CRSF channel cadence is separate and requires a restart.</small></p>
+ <button type="button" id="discover">Discover devices</button>
  <div id="field">Discover a device to read its menu.</div>
  <label>TX profile ID (0–63) <input id="modelId" type="number" min="0" max="63" value="0"></label>
  <button type="button" id="selectModel">Select and verify TX profile</button>
  <button type="button" id="assign">Assign connected receiver to this profile</button>
  <button type="button" id="confirm" hidden>Confirm device prompt</button>
  <button type="button" id="cancel" hidden>Cancel command</button>
+</div>
+<div class="ss">
+ <div class="hl"><h3>Transmitter</h3></div>
+ <p><strong id="txDevice">Device: Not discovered</strong></p>
+ <p><small>Live values and choices come from the discovered transmitter menu. Enter maintenance and refresh disarmed RF status before changes. Packet Rate changes also require RF disconnected.</small></p>
+ <button type="button" id="txRefresh">Refresh transmitter readback</button>
+ <div id="txFields">Refresh to read transmitter settings.</div>
+</div>
+<div class="ss">
+ <div class="hl"><h3>Receiver outputs</h3></div>
+ <p><strong id="rxDevice">Device: Not discovered</strong></p>
+ <p><small>Receiver output changes and failsafe capture require RF connected and the receiver disarmed. Choose the physical output, then its incoming RC channel. Output changes refresh dependent settings before further edits.</small></p>
+ <button type="button" id="rxRefresh">Refresh receiver readback</button>
+ <div id="rxFields">Refresh to read receiver output settings.</div>
 </div>
 <div class="ss">
  <div class="hl"><h3>CRSF settings files</h3></div>
