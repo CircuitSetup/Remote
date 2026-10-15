@@ -85,6 +85,13 @@ struct WiFiClient {
     virtual int connect(const char *, uint16_t, int32_t) { nativeConnects++; now += 5000; return 0; }
     virtual size_t write(const uint8_t *, size_t size) { nativeWrites++; now += 1000; return size; }
     virtual int available() { return 0; }
+    virtual int read(uint8_t *buffer, size_t size) {
+        now++;
+        if(now < 200 || !size) return -1;
+        buffer[0] = 42;
+        return 1;
+    }
+    virtual int read() { uint8_t byte = 0; return read(&byte, 1) > 0 ? byte : -1; }
     int fd() const { return descriptor; }
     void stop() { if(descriptor >= 0) closed++; descriptor = -1; }
 };
@@ -113,6 +120,12 @@ int main() {
     assert(closed == 1 && services >= 4999 && maxGap <= 1);
     reset(OK); mqtt.available();
     assert(services == 1 && audioCalls == 1);
+    reset(OK);
+    while(mqtt.read() < 0) {}
+    assert(now == 200 && services >= 200 && maxGap <= 1);
+    reset(OK); uint8_t incoming = 0;
+    while(mqtt.read(&incoming, 1) < 0) {}
+    assert(incoming == 42 && services >= 200 && maxGap <= 1);
     mqtt.setCooperative(false); reset(OK);
     assert(!mqtt.connect(IPAddress(), 1883, 5000) && nativeConnects == 1 && services == 0);
 }

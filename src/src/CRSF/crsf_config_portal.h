@@ -1,6 +1,7 @@
 #pragma once
 #include "crsf_model_files.h"
 #include "crsf_config_ui.h"
+#include "crsf_http.h"
 #include <memory>
 #include <cstring>
 #include <cstdio>
@@ -31,8 +32,8 @@ public:
 private:char data[256];size_t used=0;
 };
 static void remotePortalJson(JsonDocument &doc,int status=200) {
-    wm.server->sendHeader("Cache-Control","no-store");wm.server->setContentLength(CONTENT_LENGTH_UNKNOWN);wm.server->send(status,"application/json","");
-    RemotePortalWriter writer;serializeJson(doc,writer);writer.flush();wm.server->sendContent("",0);
+    wm.server->sendHeader("Cache-Control","no-store");wm.server->setContentLength(measureJson(doc));wm.server->send(status,"application/json","");
+    RemotePortalWriter writer;serializeJson(doc,writer);writer.flush();
 }
 static void remotePortalError(int status,const char *code,const char *path,const char *message) {
     StaticJsonDocument<512> doc;doc["code"]=code;doc["path"]=path;doc["message"]=message;remotePortalJson(doc,status);
@@ -95,17 +96,23 @@ static void remotePortalSession() {
     }
     StaticJsonDocument<128> doc;doc["nonce"]=remotePortalNonce;remotePortalJson(doc);
 }
-static void remotePortalDevices() {
-    StaticJsonDocument<1536> doc;auto devices=doc.createNestedArray("devices");doc["localAP"]=remotePortalLocalAP();doc["maintenance"]=remoteMaintenanceActive();doc["radioReviewPending"]=remoteRadioReviewPending();doc["importAvailable"]=remoteUploadAvailable()&&!crsfSettingsRecoveryBlocked;
+static void remotePortalRadioStatus(JsonObject doc) {
+    doc["crsfActive"]=false;doc["throttleReady"]=false;doc["rfKnown"]=false;doc["connected"]=false;doc["modelMatched"]=false;doc["armedKnown"]=false;doc["armed"]=false;doc["statusAgeMs"]=0;doc["ch5"]=0;
 #ifdef HAVE_CRSF
     doc["crsfActive"]=opModeCRSF;
     if(opModeCRSF) {
-        doc["throttleReady"]=elrsMode.throttleReady();
-        auto &config=elrsMode.deviceConfig();for(unsigned i=0;i<config.deviceCount();i++){const auto *d=config.deviceAt(i);auto x=devices.createNestedObject();x["address"]=d->address;x["name"]=d->name;x["fieldCount"]=d->fieldCount;x["generation"]=d->generation;x["serial"]=d->serial;x["hardwareVersion"]=d->hardwareVersion;x["softwareVersion"]=d->softwareVersion;x["parameterVersion"]=d->parameterVersion;}
-        auto s=config.radioStatus(millis());doc["rfKnown"]=s.rfConnectionKnown;doc["connected"]=s.rfConnected;doc["modelMatched"]=s.modelMatched;doc["armedKnown"]=s.armedKnown;doc["armed"]=s.armed;doc["statusAgeMs"]=s.statusAgeMs;doc["ch5"]=elrsMode.finalChannel5();if(config.modelIdKnown())doc["modelId"]=config.modelId();
+        auto safety=elrsMode.deviceConfig().radioStatus(millis());doc["throttleReady"]=elrsMode.throttleReady();doc["rfKnown"]=safety.rfConnectionKnown;doc["connected"]=safety.rfConnected;doc["modelMatched"]=safety.modelMatched;doc["armedKnown"]=safety.armedKnown;doc["armed"]=safety.armed;doc["statusAgeMs"]=safety.statusAgeMs;doc["ch5"]=elrsMode.finalChannel5();
     }
 #endif
-    if(!doc.containsKey("crsfActive"))doc["crsfActive"]=false;
+}
+static void remotePortalDevices() {
+    StaticJsonDocument<1536> doc;auto devices=doc.createNestedArray("devices");remotePortalRadioStatus(doc.as<JsonObject>());doc["localAP"]=remotePortalLocalAP();doc["maintenance"]=remoteMaintenanceActive();doc["radioReviewPending"]=remoteRadioReviewPending();doc["importAvailable"]=remoteUploadAvailable()&&!crsfSettingsRecoveryBlocked;
+#ifdef HAVE_CRSF
+    if(opModeCRSF) {
+        auto &config=elrsMode.deviceConfig();for(unsigned i=0;i<config.deviceCount();i++){const auto *d=config.deviceAt(i);auto x=devices.createNestedObject();x["address"]=d->address;x["name"]=d->name;x["fieldCount"]=d->fieldCount;x["generation"]=d->generation;x["serial"]=d->serial;x["hardwareVersion"]=d->hardwareVersion;x["softwareVersion"]=d->softwareVersion;x["parameterVersion"]=d->parameterVersion;}
+        if(config.modelIdKnown())doc["modelId"]=config.modelId();
+    }
+#endif
     remotePortalJson(doc);
 }
 static void remotePortalApplyPreferences() {
@@ -138,6 +145,7 @@ static void remotePortalOperation() {
         const char *states[]={"idle","queued","waiting","confirmation","running","complete","cancelled","failed","unknown"};
         const char *errors[]={"none","busy","stale","malformed","tooLarge","unsupported","timeout","unsafe","rejected","notConnected"};
         doc["id"]=s.id;doc["generation"]=s.generation;doc["state"]=states[(uint8_t)s.state];doc["error"]=errors[(uint8_t)s.error];doc["device"]=s.device;doc["field"]=s.field;doc["message"]=s.message;
+        if(s.state==ELRSOperationState::Complete && s.device==0xEE && s.field==0)remotePortalRadioStatus(doc.createNestedObject("radioStatus"));
         const auto *p=config.parameter();if(p && s.state==ELRSOperationState::Complete && s.device==p->device && s.field==p->field){remoteObserveRfChoice(*p,s.id);auto x=doc.createNestedObject("parameter");x["device"]=p->device;x["field"]=p->field;x["parent"]=p->parent;x["generation"]=p->generation;x["type"]=p->type;x["name"]=p->name();x["value"]=p->value.raw;x["minimum"]=p->minimum.raw;x["maximum"]=p->maximum.raw;x["options"]=p->options();x["unit"]=p->unit();x["info"]=p->info();x["precision"]=p->precision;x["hash"]=p->value.descriptorHash;x["hidden"]=p->hidden();x["writable"]=p->writable&&config.mutationSupported();x["commandAllowed"]=p->type==13&&config.mutationSupported();x["role"]=remoteParameterRole(*p);}
         if(remotePortalPreferenceFailed && s.id==remotePortalPreferenceFailed){doc["state"]="unknown";doc["error"]="writeFailed";doc["message"]="Radio changed; saving Remote preferences failed";}
     }else
@@ -246,6 +254,7 @@ static void remotePortalReview() {
     StaticJsonDocument<64> doc;doc["ok"]=true;remotePortalJson(doc);
 }
 static void remoteSetupPortal() {
+    if(opModeCRSF)wm.server.reset(new CRSFWebServer([](){gpCallback(WM_LP_NONE);}));
     const char *headers[]={"Origin","Referer","X-Remote-Nonce"};wm.server->collectHeaders(headers,3);
     wm.server->on("/remote-control",HTTP_GET,[](){
         const char *page="/param3#remote-controls";

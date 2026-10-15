@@ -2413,7 +2413,6 @@ static void allocUplArrays()
 
 static void setupWebServerCallback()
 {
-    wm.server->on(R_updateacdone, HTTP_POST, &handleUploadDone, &handleUploading);
     #ifdef HAVE_CRSF
     if(haveNewBoard)remoteSetupPortal();
     if(haveNewBoard && opModeCRSF) {
@@ -2421,6 +2420,7 @@ static void setupWebServerCallback()
         wm.server->on("/elrstelemetry", HTTP_GET, &handleELRSTelemetryRead);
     }
     #endif
+    wm.server->on(R_updateacdone, HTTP_POST, &handleUploadDone, &handleUploading);
 }
 
 static void doCloseACFile(int idx, bool doRemove)

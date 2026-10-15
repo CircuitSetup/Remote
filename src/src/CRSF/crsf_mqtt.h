@@ -120,6 +120,13 @@ public:
         return WiFiClient::available();
     }
 
+    using WiFiClient::read;
+    int read(uint8_t *data, size_t size) override
+    {
+        runLooper();
+        return WiFiClient::read(data, size);
+    }
+
     size_t write(const uint8_t *data, size_t size) override
     {
         if(!cooperative) return WiFiClient::write(data, size);

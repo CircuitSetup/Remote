@@ -8,6 +8,7 @@ from check_crsf_adc import compile_and_run
 ROOT = Path(__file__).resolve().parents[1]
 PORTAL = (ROOT / "src/src/CRSF/crsf_config_portal.h").read_text(encoding="utf-8")
 FILES = (ROOT / "src/src/CRSF/crsf_model_files.cpp").read_text(encoding="utf-8")
+ARDUINOJSON_INCLUDE = ROOT / ".pio/libdeps/esp32dev/ArduinoJson/src"
 
 
 def function(source, signature):
@@ -27,6 +28,29 @@ def function(source, signature):
 
 
 class CRSFPortalHTTPTests(unittest.TestCase):
+    def test_actual_radio_status_helper_emits_fresh_snapshot(self):
+        helper = function(PORTAL, r"static void remotePortalRadioStatus\(JsonObject doc\)")
+        harness = r'''#include <cassert>
+#include <cstdint>
+#include <ArduinoJson.h>
+struct ELRSConfigSafety {bool rfConnectionKnown,rfConnected,modelMatched,armedKnown,armed;uint32_t statusAgeMs;};
+struct Config {mutable uint32_t lastNow=0;mutable unsigned calls=0;ELRSConfigSafety radioStatus(uint32_t now)const{calls++;lastNow=now;return {true,true,false,true,false,now-9000};}};
+struct Mode {Config config;Config&deviceConfig(){return config;}bool throttleReady()const{return true;}uint8_t finalChannel5()const{return 172;}}elrsMode;
+bool opModeCRSF=true;uint32_t clockNow=12345;uint32_t millis(){return clockNow;}
+'''
+        harness += helper + r'''
+int main(){
+ StaticJsonDocument<256> doc;remotePortalRadioStatus(doc.to<JsonObject>());
+ assert(doc["crsfActive"]==true&&doc["throttleReady"]==true&&doc["rfKnown"]==true&&doc["connected"]==true);
+ assert(doc["modelMatched"]==false&&doc["armedKnown"]==true&&doc["armed"]==false&&doc["statusAgeMs"]==3345&&doc["ch5"]==172);
+ assert(elrsMode.config.calls==1&&elrsMode.config.lastNow==clockNow);
+ opModeCRSF=false;doc.clear();remotePortalRadioStatus(doc.to<JsonObject>());
+ assert(doc["crsfActive"]==false&&doc["throttleReady"]==false&&doc["rfKnown"]==false&&doc["statusAgeMs"]==0&&doc["ch5"]==0);
+ assert(elrsMode.config.calls==1);
+}
+'''
+        compile_and_run(harness, [], ['-I' + str(ARDUINOJSON_INCLUDE)])
+
     def test_routes_keep_expected_methods_and_callbacks(self):
         setup = function(PORTAL, r"static void remoteSetupPortal\(\)")
         routes = re.findall(r'->on\("([^\"]+)",\s*(HTTP_(?:GET|POST)),\s*', setup)
@@ -59,7 +83,7 @@ class CRSFPortalHTTPTests(unittest.TestCase):
         self.assertNotIn("settings.appw", PORTAL)
         for name in ("Export", "Apply", "Review", "Operation", "Action"):
             self.assertIn('if(!remotePortalGate())return', function(PORTAL, rf"static void remotePortal{name}\(\)"))
-        self.assertIn('doc["throttleReady"]=elrsMode.throttleReady()', function(PORTAL, r"static void remotePortalDevices\(\)"))
+        self.assertIn('remotePortalRadioStatus(doc.as<JsonObject>())', function(PORTAL, r"static void remotePortalDevices\(\)"))
         for check in ("remotePortalActiveNetwork()", "remotePortalOrigin()"):
             self.assertIn(check, function(PORTAL, r"static void remotePortalSession\(\)"))
         self.assertIn('doc["localAP"]=remotePortalLocalAP()', function(PORTAL, r"static void remotePortalDevices\(\)"))

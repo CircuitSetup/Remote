@@ -42,7 +42,7 @@ const buttonFor=(f,id,label)=>descendants(f.elements[id]).find(n=>n.tag==='butto
 function parameter(device,field,name,extra={}){
  return {device,field,name,generation:device===238?3:7,type:9,value:0,minimum:0,maximum:2,options:'First;Second;Third',unit:'',hash:field*17,hidden:false,writable:true,role:'',...extra};
 }
-function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX=false,transform=()=>{},fieldCount=4,operationAdvanceMs=0}={}){
+function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX=false,transform=()=>{},fieldCount=4,operationAdvanceMs=0,failGetOnce='',staleDeviceStatus=false,rejectStatus=false}={}){
  const elements={},calls=[],timers=[],confirmations=[];
  let clock=0,sessionNonce='',sessionExpires=0;
  const body=new Element('body'),form=new Element('form'),rootNode=new Element('div'),save=new Element('button');
@@ -51,7 +51,7 @@ function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX
  elements['remote-controls']=rootNode;
  for(const id of ['access','message','maintenance','status','discover','selectModel','assign','backup','model','preview','review','apply','kind','file','previewText','safety','devices','fields','field','modelId','confirm','cancel','txRefresh','txFields','rxRefresh','rxFields'])elements[id]=new Element(id==='file'?'input':id.endsWith('Fields')?'div':id==='devices'||id==='fields'?'select':'button');
  elements.modelId.value='0';
- const radio={txGeneration:3,rxGeneration:7,txPresent:!absentTX,failRead:null,failWrite:false,changedPreview:null,throttleReady:false,confirm:true};
+  const radio={txGeneration:3,rxGeneration:7,txPresent:!absentTX,failRead:null,failReadOnce:null,failWrite:false,failPostAction:null,loseCommandReplyStatus:null,failGetPath:null,mismatchOperationId:null,changedPreview:null,throttleReady:false,confirm:true};
  const params=[
   parameter(238,1,'Telem Ratio',{role:'telemetry',value:2,options:'Off;;1:64;1:128',maximum:3}),
   parameter(238,2,'Max Power',{role:'power',value:1,options:'25;100;250',unit:'mW'}),
@@ -69,6 +69,9 @@ function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX
  async function fetch(url,options={}){
   const pathname=url.split('?')[0],values=options.body instanceof URLSearchParams?Object.fromEntries(options.body):{};
   calls.push({path:pathname,url,method:options.method||'GET',headers:options.headers,...values});let data={},ok=true;
+   if((options.method||'GET')==='GET'&&failGetOnce===pathname){failGetOnce='';throw Error('transient GET failure');}
+   if((options.method||'GET')==='GET'&&radio.failGetPath===pathname)throw Error('operation status transport failure');
+   if(pathname==='/remote/action'&&values.action===radio.failPostAction){radio.failPostAction=null;throw Error('ambiguous POST failure');}
   const gated=['/remote/action','/remote/operation','/remote/export','/remote/upload','/remote/apply','/remote/review'].includes(pathname);
   if(pathname==='/remote/session'){
    const supplied=options.headers?.['X-Remote-Nonce'];
@@ -77,35 +80,74 @@ function fixture({crsfActive=true,localAP=true,formAction='/param3save',absentTX
   }else if(gated&&(options.headers?.['X-Remote-Nonce']!==sessionNonce||clock>=sessionExpires)){
    ok=false;data={code:'ACCESS_DENIED',path:'session',message:'Connect through Remote and use a current session'};
   }else if(gated)sessionExpires=clock+300000;
-  if(pathname==='/remote/devices')data={crsfActive,localAP,throttleReady:radio.throttleReady,rfKnown:true,connected:true,modelMatched:true,armedKnown:true,armed:false,ch5:172,statusAgeMs:10,devices:!crsfActive?[]:[...(radio.txPresent?[{address:238,name:'TX',fieldCount,generation:radio.txGeneration}]:[]),{address:236,name:'RX',fieldCount:5,generation:radio.rxGeneration}]};
+   if(pathname==='/remote/devices')data={crsfActive,localAP,throttleReady:radio.throttleReady,rfKnown:true,connected:true,modelMatched:true,armedKnown:true,armed:false,ch5:172,statusAgeMs:staleDeviceStatus?5147:10,devices:!crsfActive?[]:[...(radio.txPresent?[{address:238,name:'TX',fieldCount,generation:radio.txGeneration}]:[]),{address:236,name:'RX',fieldCount:5,generation:radio.rxGeneration}]};
   else if(pathname==='/remote/upload')data={fileHash:'b'.repeat(64),calibration:"Keep this Remote's calibration"};
   else if(pathname==='/remote/apply'||pathname==='/remote/review')data={ok:true};
+  else if(pathname==='/remote/action'&&values.action==='status'&&(rejectStatus||current.state==='confirmation')){ok=false;data={code:rejectStatus?'UNSUPPORTED_BEHAVIOR':'BUSY',path:'radio',message:rejectStatus?'RF status is unavailable for this transmitter':'Command confirmation is pending'};}
   else if(pathname==='/remote/action'){
    const device=Number(values.device),field=Number(values.field),p=params.find(p=>p.device===device&&p.field===field);
-   current={id:values.operationId?Number(values.operationId):++sequence,state:'complete',device,field,generation:generation(device)};
+    let loseCommandReply=false;
+    current={id:values.operationId?Number(values.operationId):++sequence,state:'complete',action:values.action,device,field,generation:generation(device)};
    if(values.action==='discover')radio.txPresent=true;
    if(['read','write','command'].includes(values.action)){
     if(Number(values.generation)!==generation(device)){current.state='failed';current.message='Stale generation';}
     else if(!p){current.state='failed';current.message='Missing field';}
-    else if(radio.failRead===device+':'+field&&values.action==='read'){current.state='failed';current.message='Read timeout';}
+     else if((radio.failRead===device+':'+field||radio.failReadOnce===device+':'+field)&&values.action==='read'){if(radio.failReadOnce===device+':'+field)radio.failReadOnce=null;current.state='failed';current.error='timeout';current.message='Read timeout';}
     else{
      if(values.action==='read'&&radio.changedPreview)Object.assign(p,radio.changedPreview);
      if(values.action==='write'){
       if(radio.failWrite){current.state='unknown';current.message='Write outcome unknown';}
       else{p.value=Number(values.value);if(p.name==='Output Ch'||p.role==='rfRate'){radio.txGeneration=radio.rxGeneration=9;params.find(p=>p.device===236&&p.name==='Input Ch').value=8;}if(p.role==='power')params.find(p=>p.role==='dynamic').options='Off;On;AUX5;AUX9';}
      }
-     if(values.action==='command')current.state=Number(values.status)===1?'confirmation':Number(values.status)===5?'cancelled':'complete';
+      if(values.action==='command'){current.state=Number(values.status)===1?'confirmation':Number(values.status)===5?'cancelled':'complete';if(radio.loseCommandReplyStatus===Number(values.status)){radio.loseCommandReplyStatus=null;loseCommandReply=true;}}
      current.generation=generation(device);current.parameter={...p,generation:generation(device)};if(values.action==='read'&&radio.advanceOnRead===device+':'+field)radio.txGeneration=4;
     }
    }
    data={id:current.id,state:'queued'};
-  }else if(pathname==='/remote/operation'){data=current;clock+=operationAdvanceMs;}
+    if(loseCommandReply)throw Error('ambiguous command POST');
+   }else if(pathname==='/remote/operation'){data={...current,...(current.action==='status'?{radioStatus:{crsfActive,rfKnown:true,connected:true,modelMatched:true,armedKnown:true,armed:false,statusAgeMs:12,ch5:172,throttleReady:radio.throttleReady}}:{})};if(radio.mismatchOperationId!==null){data.id=radio.mismatchOperationId;radio.mismatchOperationId=null;}clock+=operationAdvanceMs;}
   return {ok,json:async()=>structuredClone(data),blob:async()=>new Blob(['{}'])};
  }
  vm.runInNewContext(embedded,{document,module:{exports:{}},Option,fetch,URLSearchParams,FormData,confirm:message=>{confirmations.push(message);return radio.confirm;},URL:{createObjectURL:()=>'',revokeObjectURL:()=>{}},setTimeout:fn=>{timers.push(fn);return timers.length;}});
  return {elements,calls,timers,document,rootNode,body,form,save,radio,params,confirmations,advanceTime:ms=>{clock+=ms;},elapsed:()=>clock,replaceRemoteSession:()=>{sessionNonce='b'.repeat(32);sessionExpires=clock+300000;}};
 }
 const settle=()=>new Promise(setImmediate);
+async function transientReadsAndFreshStatus(){
+ const retry=fixture({failGetOnce:'/remote/operation'});await settle();await retry.elements.txRefresh.onclick();
+ assert(inputFor(retry,'txFields','TX Power'),'a transient operation GET failure recovers the readback');
+ assert.equal(retry.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length,1,'operation polling retries without reposting the read action');
+ assert(retry.calls.filter(c=>c.path==='/remote/operation').length>retry.calls.filter(c=>c.path==='/remote/action').length,'bounded GET retry repeats the operation poll');
+ const devicesRetry=fixture({failGetOnce:'/remote/devices'});await settle();await devicesRetry.elements.txRefresh.onclick();
+ assert(inputFor(devicesRetry,'txFields','TX Power'),'a transient devices GET failure recovers refresh');
+ const readRetry=fixture();await settle();readRetry.radio.failReadOnce='238:2';await readRetry.elements.txRefresh.onclick();
+ assert(inputFor(readRetry,'txFields','TX Power'),'a terminal failed field read is retried once after matching operation reconciliation');
+ assert.equal(readRetry.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length,2,'only the matching failed read is retried');
+ const staleTimeout=fixture();await settle();await staleTimeout.elements.txRefresh.onclick();const staleSave=buttonFor(staleTimeout,'txFields','Preview TX Power change');
+ staleTimeout.radio.failRead='238:2';await staleSave.onclick();staleTimeout.radio.failRead=null;staleTimeout.radio.failPostAction='read';
+ const priorReads=staleTimeout.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length;await staleSave.onclick();
+ assert.equal(staleTimeout.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='2').length-priorReads,1,'a prior same-field timeout cannot replay an ambiguous read POST');
+ const ambiguousRead=fixture();await settle();ambiguousRead.radio.failPostAction='read';await ambiguousRead.elements.txRefresh.onclick();
+ assert.equal(ambiguousRead.calls.filter(c=>c.path==='/remote/action'&&c.action==='read'&&c.field==='1').length,1,'ambiguous read POST is not replayed');
+ assert.equal(inputFor(ambiguousRead,'txFields','Telemetry Ratio'),undefined,'an unconfirmed ambiguous read remains unavailable');
+ const ambiguous=fixture();await settle();await ambiguous.elements.txRefresh.onclick();
+ assert.equal(ambiguous.calls.filter(c=>c.path==='/remote/action'&&c.action==='read').length,4);
+ ambiguous.radio.failPostAction='write';inputFor(ambiguous,'txFields','TX Power').value='2';await buttonFor(ambiguous,'txFields','Preview TX Power change').onclick();
+ assert.equal(ambiguous.calls.filter(c=>c.path==='/remote/action'&&c.action==='write').length,1,'ambiguous write POST is never replayed');
+ assert(!ambiguous.calls.some(c=>['command','upload','apply','review'].includes(c.action)||['/remote/upload','/remote/apply','/remote/review'].includes(c.path)),'read recovery never replays commands or file actions');
+ assert.doesNotMatch(ambiguous.elements.message.textContent,/verified/i);
+ const fresh=fixture({staleDeviceStatus:true});await settle();await fresh.elements.txRefresh.onclick();
+ assert.match(fresh.elements.safety.textContent,/status age 12 ms/,'TX refresh displays status returned by its status operation');
+ assert.doesNotMatch(fresh.elements.safety.textContent,/5147 ms/,'an older devices snapshot does not overwrite operation status');
+ const unsupported=fixture({rejectStatus:true});await settle();await unsupported.elements.txRefresh.onclick();
+ assert(inputFor(unsupported,'txFields','TX Power'),'status failure preserves verified field readback');
+ assert.equal(inputFor(unsupported,'txFields','TX Power').value,1);
+ assert.match(unsupported.elements.safety.textContent,/RF unknown.*arm state unknown.*Model Match unknown/i,'status failure clears stale safety values');
+ assert.match(unsupported.elements.message.textContent,/RF status is unavailable/i,'status failure remains visible');
+ assert(!unsupported.calls.some(c=>['write','command'].includes(c.action)),'status recovery does not mutate radio settings');
+ const incomplete=fixture({rejectStatus:true});await settle();incomplete.radio.failRead='238:4';await incomplete.elements.txRefresh.onclick();
+ assert.match(incomplete.elements.message.textContent,/Readback incomplete.*Field 4/i,'RF status failure preserves incomplete field errors');
+ assert.match(incomplete.elements.safety.textContent,/RF unknown.*arm state unknown.*Model Match unknown/i);
+}
 async function sessionRenewal(){
  const idle=fixture();await settle();assert.equal(idle.calls.filter(c=>c.path==='/remote/session').length,1);
  idle.advanceTime(300001);const before=idle.calls.length;await idle.elements.txRefresh.onclick();
@@ -181,6 +223,37 @@ async function receiverContextAndCommands(){
  await f.elements.rxRefresh.onclick();await buttonFor(f,'rxFields','Capture failsafe positions').onclick();await f.elements.confirm.onclick();
  assert(f.calls.some(c=>c.action==='command'&&c.status==='4'&&c.confirmed===undefined));
 }
+async function commandOwnershipRecovery(){
+ const busy=fixture();await settle();await busy.elements.rxRefresh.onclick();await buttonFor(busy,'rxFields','Capture failsafe positions').onclick();
+ assert.equal(busy.elements.confirm.hidden,false);await busy.elements.status.onclick();
+ assert.equal(busy.elements.confirm.hidden,false,'busy status rejection retains command confirmation');
+ await busy.elements.confirm.onclick();assert(busy.calls.some(c=>c.path==='/remote/action'&&c.action==='command'&&c.status==='4'),'confirmation still uses the owned operation after status rejection');
+ for(const status of [4,5]){
+  const f=fixture();await settle();await f.elements.rxRefresh.onclick();await buttonFor(f,'rxFields','Capture failsafe positions').onclick();
+  f.radio.loseCommandReplyStatus=status;const control=status===4?f.elements.confirm:f.elements.cancel;await control.onclick();
+  assert.equal(f.calls.filter(c=>c.path==='/remote/action'&&c.action==='command'&&c.status===String(status)).length,1,'ambiguous command POST is never replayed');
+  assert.equal(f.elements.confirm.hidden,true,'reconciled command state hides confirmation');
+  assert.equal(f.elements.cancel.hidden,true,'reconciled command state hides cancel control after completion');
+  assert(f.calls.filter(c=>c.path==='/remote/operation').length>=3,'ambiguous command POST is reconciled with operation GET');
+ }
+ const lostReply=fixture();await settle();await lostReply.elements.rxRefresh.onclick();await buttonFor(lostReply,'rxFields','Capture failsafe positions').onclick();
+ lostReply.radio.loseCommandReplyStatus=4;lostReply.radio.failGetPath='/remote/operation';await lostReply.elements.confirm.onclick();
+ assert.equal(lostReply.elements.confirm.hidden,true,'unreconciled ambiguous confirm hides confirmation control');
+ assert.equal(lostReply.elements.cancel.hidden,true,'unreconciled ambiguous confirm hides cancel control');
+ const queued=fixture();await settle();await queued.elements.rxRefresh.onclick();await buttonFor(queued,'rxFields','Capture failsafe positions').onclick();
+ queued.radio.failGetPath='/remote/operation';await queued.elements.confirm.onclick();
+ assert.equal(queued.elements.confirm.hidden,true,'accepted confirm with lost poll clears stale confirmation control');
+ assert.equal(queued.elements.cancel.hidden,true,'accepted confirm with lost poll clears stale cancel control');
+ const mismatch=fixture();await settle();await mismatch.elements.rxRefresh.onclick();await buttonFor(mismatch,'rxFields','Capture failsafe positions').onclick();
+ mismatch.radio.mismatchOperationId=999;await mismatch.elements.confirm.onclick();
+ assert.equal(mismatch.elements.confirm.hidden,true,'mismatched operation ID hides confirmation');
+ assert.equal(mismatch.elements.cancel.hidden,true,'mismatched operation ID hides cancel');
+ await mismatch.elements.confirm.onclick();assert.match(mismatch.elements.message.textContent,/ownership changed|refresh\/readback/i,'stale command handler is null-guarded');
+ const ambiguousMismatch=fixture();await settle();await ambiguousMismatch.elements.rxRefresh.onclick();await buttonFor(ambiguousMismatch,'rxFields','Capture failsafe positions').onclick();
+ ambiguousMismatch.radio.loseCommandReplyStatus=4;ambiguousMismatch.radio.mismatchOperationId=999;await ambiguousMismatch.elements.confirm.onclick();
+ assert.equal(ambiguousMismatch.elements.confirm.hidden,true,'ambiguous response with mismatched ID hides confirmation');
+ assert.equal(ambiguousMismatch.elements.cancel.hidden,true,'ambiguous response with mismatched ID hides cancel');
+}
 async function truthfulFailuresAndSupport(){
  for(const changed of [{hidden:true},{writable:false},{type:99}]){
   const f=fixture({transform:params=>Object.assign(params.find(p=>p.role==='power'),changed)});await settle();await f.elements.txRefresh.onclick();
@@ -253,7 +326,7 @@ async function filesAndFooter(){
  assert.equal(general.save.parentNode,general.form);assert.equal(general.save.getAttribute('form'),null);
 }
 (async()=>{
- await sessionRenewal();await liveControls();await receiverContextAndCommands();await truthfulFailuresAndSupport();await genericTextReadback();await filesAndFooter();
+ await sessionRenewal();await transientReadsAndFreshStatus();await liveControls();await receiverContextAndCommands();await commandOwnershipRecovery();await truthfulFailuresAndSupport();await genericTextReadback();await filesAndFooter();
  portalLayout(html);assert(embedded.endsWith(script),'gzip JavaScript differs from source');
  assert([...uiHeader.matchAll(/0x([0-9a-f]{2})/gi)].length<=8192,'UI exceeds 8 KiB gzip budget');
  console.log('TX ownership/readback, RX output generations, failsafe confirmation/cancel, unavailable controls, AP/LAN files, footer and compressed parity PASS');
