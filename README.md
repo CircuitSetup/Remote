@@ -1067,7 +1067,7 @@ Values between the saved points are interpolated, and anything outside the saved
 
 ##### &#9193; Live ELRS controls and Radio devices
 
-Live controls and CRSF settings file operations are available through the Remote AP or over the network the Remote is connected to, without a password. File operations still require a current portal session and an exact validated preview before activation. The radio must be active to discover and control devices.
+Open the Remote's configuration portal using its LAN address, hostname, or AP address to use live controls and CRSF settings files without a password. File operations still require a current portal session and an exact validated preview before activation. The radio must be active to discover and control devices.
 
 In **Transmitter**, click **Refresh transmitter readback** to discover/read **Telemetry Ratio**, **Packet Rate**, **TX Power**, and **Dynamic power**, independently of the selected generic device. Values, units, ranges, and choices come from the discovered transmitter descriptors; there are no module-specific field numbers or preset option lists. **TX Power** is the configured maximum power, not a measurement of current transmit power. **Dynamic power** retains advertised AUX choices. Packet Rate is the module's over-the-air RF rate; it is separate from Remote's CRSF channel cadence. See the [ExpressLRS transmitter menu guide](https://www.expresslrs.org/quick-start/transmitters/lua-howto/).
 

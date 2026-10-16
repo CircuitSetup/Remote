@@ -44,11 +44,6 @@ static bool remotePortalLocalAP() {
     return local==ap && peer[0]==ap[0] && peer[1]==ap[1] && peer[2]==ap[2];
 }
 
-static bool remotePortalActiveNetwork() {
-    return remotePortalLocalAP() ||
-        (WiFi.status()==WL_CONNECTED && wm.server->client().localIP()==WiFi.localIP());
-}
-
 static bool remotePortalOrigin() {
     const String origin=wm.server->header("Origin");String host=wm.server->hostHeader();
     if(host.endsWith(":80"))host.remove(host.length()-3);
@@ -63,7 +58,7 @@ static bool remotePortalToken(bool expiry=true) {
     return remotePortalNonce[0] && nonce.length()==32 && !strcmp(nonce.c_str(),remotePortalNonce) && wm.server->client().remoteIP()==remotePortalOwner && (!expiry || (int32_t)(millis()-remotePortalExpires)<0);
 }
 static bool remotePortalGate() {
-    if(!remotePortalActiveNetwork() || !remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP or connected network and use a current session");return false;}
+    if(!remotePortalOrigin() || !remotePortalToken()) {remotePortalError(403,"ACCESS_DENIED","session","Refresh this page and use a current portal session");return false;}
     remotePortalExpires=millis()+300000U;
     return true;
 }
@@ -84,7 +79,7 @@ static bool remotePortalSigned(const char *name,int32_t &value) {
     value=minus?-(int64_t)n:n;return true;
 }
 static void remotePortalSession() {
-    if(!remotePortalActiveNetwork() || !remotePortalOrigin()) {remotePortalError(403,"ACCESS_DENIED","session","Connect through this Remote AP or connected network to start a session");return;}
+    if(!remotePortalOrigin()) {remotePortalError(403,"ACCESS_DENIED","session","Use this Remote's configuration portal to start a session");return;}
     const bool sameOwnerToken=remotePortalToken(false);
     if(remoteSettingsBusy() || remotePortalUploading || (remotePortalRadioBusy() && !sameOwnerToken)) {remotePortalError(409,"BUSY","session","An operation owns the session");return;}
     if(sameOwnerToken) {

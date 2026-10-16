@@ -31,26 +31,32 @@ enum HTTPClientStatus{HC_NONE,HC_WAIT_READ,HC_WAIT_CLOSE};
 struct Socket{
  bool connected=true,first=true,idle=false,partial=false;
  uint32_t ready=200;
+ unsigned writes=0;
  std::string sent;
+};
+struct SocketHandle{
+ std::shared_ptr<Socket> state;
+ explicit SocketHandle(std::shared_ptr<Socket> peer):state(peer){}
+ ~SocketHandle(){state->connected=false;}
 };
 class WiFiClient{
 public:
- std::shared_ptr<Socket> socket;
+ std::shared_ptr<SocketHandle> handle;
  virtual ~WiFiClient(){}
- explicit operator bool()const{return socket&&socket->connected;}
+ explicit operator bool()const{return handle&&handle->state->connected;}
  bool connected(){return bool(*this);}
- virtual int available(){return connected()&&!socket->idle&&(socket->first||now>=socket->ready);}
+ virtual int available(){return connected()&&!handle->state->idle&&(handle->state->first||now>=handle->state->ready);}
  virtual int read(uint8_t*buffer,size_t size){
   now++;
   if(!connected()||!size)return -1;
-  if(socket->first){socket->first=false;buffer[0]='G';return 1;}
-  if(now<socket->ready)return -1;
+  if(handle->state->first){handle->state->first=false;buffer[0]='G';return 1;}
+  if(now<handle->state->ready)return -1;
   buffer[0]='*';return 1;
  }
  virtual int read(){uint8_t b=0;return read(&b,1)>0?b:-1;}
- virtual size_t write(const uint8_t*b,size_t n){now+=300;socket->sent.append((const char*)b,n);return n;}
+ virtual size_t write(const uint8_t*b,size_t n){now+=300;handle->state->sent.append((const char*)b,n);return n;}
  size_t write(const char*b,size_t n){return write((const uint8_t*)b,n);}
- void stop(){if(socket)socket->connected=false;}
+ void stop(){handle.reset();}
  void setTimeout(unsigned){}
  void setNoDelay(bool){}
 };
@@ -63,20 +69,22 @@ public:
  void setCooperative(bool){}
  int read(uint8_t*b,size_t n)override{if(looper)looper();return WiFiClient::read(b,n);}
  size_t write(const uint8_t*b,size_t n)override{
+  if(!*this)return 0;
+  handle->state->writes++;
   for(unsigned i=0;i<300;i++){if(looper)looper();now++;}
-  if(socket->partial){socket->sent.append((const char*)b,n/2);stop();return 0;}
-  socket->sent.append((const char*)b,n);return n;
+  if(handle->state->partial){handle->state->sent.append((const char*)b,n/2);stop();return 0;}
+  handle->state->sent.append((const char*)b,n);return n;
  }
 };
 struct Listener{
  std::shared_ptr<Socket> next;
- WiFiClient available(){WiFiClient c;c.socket=next;next.reset();return c;}
+ WiFiClient available(){WiFiClient c;if(next)c.handle=std::make_shared<SocketHandle>(next);next.reset();return c;}
 };
 class WebServer{
 public:
  Listener _server;
  std::map<std::string,std::function<void()>> routes;
- bool flash=false;
+ bool flash=false,followup=false;
  virtual ~WebServer(){}
  WebServer(int=80){}
  virtual void handleClient(){
@@ -94,7 +102,7 @@ protected:
  virtual size_t _currentClientWrite(const char*b,size_t n){return _currentClient.write(b,n);}
  virtual size_t _currentClientWrite_P(PGM_P b,size_t n){return _currentClientWrite(b,n);}
  bool _parseRequest(WiFiClient&c){while(c.connected()){int b=c.read();if(b=='*')return true;}return false;}
- void _handleRequest(){if(flash)_currentClientWrite_P("abcdef",6);else _currentClientWrite("abcdef",6);}
+ void _handleRequest(){if(flash)_currentClientWrite_P("abcdef",6);else _currentClientWrite("abcdef",6);if(followup)_currentClientWrite("ignored",7);}
  WiFiClient _currentClient;
  HTTPClientStatus _currentStatus=HC_NONE;
  uint32_t _statusChange=0;
@@ -132,7 +140,7 @@ int main(){
  wm.server->handleClient();wm.server->handleClient();
  assert(ready->sent=="abcdef"&&now<1000); // An idle speculative connection cannot hold the only server slot for five seconds.
  start();auto broken=std::make_shared<Socket>();broken->partial=true;wm.server->_server.next=broken;
- wm.server->handleClient();assert(!broken->connected&&broken->sent=="abc");
+ wm.server->followup=true;wm.server->handleClient();assert(!broken->connected&&broken->sent=="abc"&&broken->writes==1);
  start(false);auto legacy=std::make_shared<Socket>();legacy->ready=0;wm.server->_server.next=legacy;
  wm.server->handleClient();assert(legacy->sent=="abcdef"&&services==0);
 }

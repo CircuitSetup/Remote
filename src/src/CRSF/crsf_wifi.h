@@ -869,7 +869,7 @@ static const char crsfCalScript[] =
     "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
     "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
     "setStatus('Filtered ADC connected.');"
-    "}).catch(fail);}poll();setInterval(poll,500);})();</script></div>"
+    "}).catch(fail).then(function(){setTimeout(poll,500);});}poll();})();</script></div>"
 ;
 
 static const char *wmBuildCRSFCAL(const char *dest, int op)

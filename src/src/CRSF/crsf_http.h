@@ -39,7 +39,9 @@ protected:
     size_t _currentClientWrite(const char *data, size_t size) override
     {
         CRSFClient output = cooperativeClient();
-        return output.write((const uint8_t *)data, size);
+        const size_t written = output.write((const uint8_t *)data, size);
+        if(written != size) _currentClient.stop();
+        return written;
     }
     size_t _currentClientWrite_P(PGM_P data, size_t size) override
     {

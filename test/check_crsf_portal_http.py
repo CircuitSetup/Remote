@@ -75,17 +75,16 @@ int main(){
         self.assertIn('sendHeader("Content-Encoding","gzip")', setup)
         self.assertIn('"Content-Encoding","gzip"', setup)
 
-    def test_remote_routes_share_connected_network_gate(self):
+    def test_remote_routes_share_portal_session_gate(self):
         gate = function(PORTAL, r"static bool remotePortalGate\(\)")
-        for check in ("remotePortalActiveNetwork()", "remotePortalOrigin()", "remotePortalToken()"):
+        for check in ("remotePortalOrigin()", "remotePortalToken()"):
             self.assertIn(check, gate)
         self.assertNotIn("apOnly", gate)
         self.assertNotIn("settings.appw", PORTAL)
         for name in ("Export", "Apply", "Review", "Operation", "Action"):
             self.assertIn('if(!remotePortalGate())return', function(PORTAL, rf"static void remotePortal{name}\(\)"))
         self.assertIn('remotePortalRadioStatus(doc.as<JsonObject>())', function(PORTAL, r"static void remotePortalDevices\(\)"))
-        for check in ("remotePortalActiveNetwork()", "remotePortalOrigin()"):
-            self.assertIn(check, function(PORTAL, r"static void remotePortalSession\(\)"))
+        self.assertIn("remotePortalOrigin()", function(PORTAL, r"static void remotePortalSession\(\)"))
         self.assertIn('doc["localAP"]=remotePortalLocalAP()', function(PORTAL, r"static void remotePortalDevices\(\)"))
         upload = function(PORTAL, r"static void remotePortalUpload\(\)")
         self.assertIn("if(!remotePortalGate())return", upload)
@@ -131,7 +130,6 @@ int main(){
     def test_actual_origin_nonce_and_numeric_gates(self):
         signatures = (
             r"static bool remotePortalLocalAP\(\)",
-            r"static bool remotePortalActiveNetwork\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
             r"static bool remotePortalGate\(\)",
@@ -181,10 +179,9 @@ int main(){
 '''
         compile_and_run(harness, [], [])
 
-    def test_default_gate_accepts_connected_station_and_rejects_invalid_session(self):
+    def test_default_gate_accepts_lan_without_wifi_state_and_rejects_invalid_session(self):
         signatures = (
             r"static bool remotePortalLocalAP\(\)",
-            r"static bool remotePortalActiveNetwork\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
             r"static bool remotePortalGate\(\)",
@@ -222,18 +219,18 @@ unsigned long millis(){return now;}int gateError=0;void remotePortalError(int co
         harness += production + r'''
 int main(){
  server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8";server.headers["X-Remote-Nonce"]=remotePortalNonce;WiFi.connected=true;
- assert(!remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin());
+ assert(!remotePortalLocalAP()&&remotePortalOrigin());
  uint32_t priorExpiry=remotePortalExpires;assert(remotePortalToken()&&remotePortalGate());assert(remotePortalExpires==now+300000U&&remotePortalExpires!=priorExpiry);uint32_t activeExpiry=remotePortalExpires;
- server.c.local={10,0,0,9};assert(!remotePortalActiveNetwork()&&!remotePortalGate());server.c.local={10,0,0,8};
+ server.c.local={10,0,0,9};assert(!remotePortalOrigin()&&!remotePortalGate());server.c.local={10,0,0,8};
  server.host="10.0.0.8.evil";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin()&&!remotePortalGate());
  server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8.evil";assert(!remotePortalOrigin()&&!remotePortalGate());
- server.headers["Origin"]="http://10.0.0.8";WiFi.connected=false;assert(!remotePortalActiveNetwork()&&!remotePortalGate());WiFi.connected=true;
+ server.headers["Origin"]="http://10.0.0.8";WiFi.connected=false;assert(remotePortalOrigin()&&remotePortalGate());WiFi.connected=true;
  server.headers["X-Remote-Nonce"]="00000000000000000000000000000000";assert(!remotePortalGate());server.headers["X-Remote-Nonce"]=remotePortalNonce;server.headers.erase("X-Remote-Nonce");assert(!remotePortalGate());server.headers["X-Remote-Nonce"]=remotePortalNonce;
  server.c.peer={10,0,0,23};assert(!remotePortalToken()&&!remotePortalGate());server.c.peer={10,0,0,22};now=remotePortalExpires;assert(!remotePortalToken()&&!remotePortalGate());
  // The same default gate accepts a valid Remote AP connection.
  assert(remotePortalExpires==activeExpiry);
  now=1000;server.c.local={192,168,4,1};server.c.peer={192,168,4,22};server.host="remote.local";server.headers["Origin"]="http://remote.local";remotePortalOwner={192,168,4,22};
- assert(remotePortalLocalAP()&&remotePortalActiveNetwork()&&remotePortalOrigin()&&remotePortalGate());
+ assert(remotePortalLocalAP()&&remotePortalOrigin()&&remotePortalGate());
 }
 '''
         compile_and_run(harness, [], [])
@@ -241,7 +238,6 @@ int main(){
     def test_session_renewal_preserves_preview_only_for_same_owner_token(self):
         signatures = (
             r"static bool remotePortalLocalAP\(\)",
-            r"static bool remotePortalActiveNetwork\(\)",
             r"static bool remotePortalOrigin\(\)",
             r"static bool remotePortalToken\(bool expiry=true\)",
             r"static void remotePortalSession\(\)",
@@ -298,6 +294,9 @@ int main(){
  // A different owner starts a new token only when idle and invalidates the old preview.
  now=500;remotePortalPreview.valid=true;server.c.peer={192,168,4,23};server.headers.erase("X-Remote-Nonce");remotePortalSession();
  assert(strcmp(issued,remotePortalNonce)&&remotePortalOwner==server.c.peer&&!remotePortalPreview.valid);
+ // A reachable portal can start a session without an AP or station-state prerequisite.
+ server.c.local={10,0,0,8};server.c.peer={10,0,0,22};server.host="10.0.0.8";server.headers["Origin"]="http://10.0.0.8";
+ WiFi.connected=false;errorCode=0;remotePortalSession();assert(errorCode==0&&remotePortalNonce[0]&&remotePortalOwner==server.c.peer);
 }
 '''
         compile_and_run(harness, [], [])
