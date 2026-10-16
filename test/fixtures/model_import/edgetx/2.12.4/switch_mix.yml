@@ -1,0 +1,5 @@
+semver: 2.12.4
+header: {name: Constant on switch output, modelId: {0: {val: 12}, 1: {val: 42}}}
+mixData:
+  - {destCh: 4, srcRaw: MAX, weight: 50, mltpx: ADD}
+moduleData: {0: {type: TYPE_NONE}, 1: {type: TYPE_CROSSFIRE}}

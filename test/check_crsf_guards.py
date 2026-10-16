@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='crsf-guards-') as work:
     (work / 'Arduino.h').write_text('#include <cstdint>\n#include <cstddef>\n')
     (work / 'IPAddress.h').write_text('#pragma once\nclass IPAddress {};\n')
     (work / 'WiFiClient.h').write_text('#pragma once\nclass WiFiClient {};\n')
-    for header in ('crsf_input.h', 'crsf_main.h', 'crsf_mqtt.h'):
+    for header in ('crsf_input.h', 'crsf_main.h', 'crsf_mqtt.h', 'crsf_http.h'):
         source = f'#include "src/CRSF/{header}"\n' * 2
         result = subprocess.run([COMPILER, '-std=gnu++11', '-fmax-errors=1', '-I' + str(work), '-I' + str(ROOT / 'src'),
                                  '-x', 'c++', '-fsyntax-only', '-'], input=source, capture_output=True, text=True)

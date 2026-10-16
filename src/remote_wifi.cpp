@@ -997,6 +997,9 @@ static void setBool(char c, bool& b)
 void wifi_loop()
 {
     char oldCfgOnSD = 0;
+    #ifdef HAVE_CRSF
+    remotePortalApplyPreferences();
+    #endif
 
 #ifdef HAVE_MQTT
     if(useMQTT) {
@@ -1235,8 +1238,7 @@ void wifi_loop()
             // through getServerParam() must be handled in saveParamsCallback()
             
             #ifdef HAVE_CRSF
-            // Input settings were validated and saved before the HTTP response.
-            write_main_settings = true;
+            // CRSF settings were saved before the HTTP response.
             #endif
             
         }
@@ -1772,8 +1774,7 @@ static bool saveParamsCallback(int paramspage)
     case 3: {
         #ifdef HAVE_CRSF
         const auto previousSettings = settings;
-        crsf_wifi_saveParamsCallback();
-        if(!crsf_wifi_loop_settings()) {
+        if(!crsf_wifi_saveParamsCallback() || !crsf_wifi_loop_settings()) {
             const bool invalidLogicMix = !crsfLogicParamsValid || !crsfMixParamsValid;
             settings = previousSettings;
             syncCRSFPortalBuffers();
@@ -2412,13 +2413,14 @@ static void allocUplArrays()
 
 static void setupWebServerCallback()
 {
-    wm.server->on(R_updateacdone, HTTP_POST, &handleUploadDone, &handleUploading);
     #ifdef HAVE_CRSF
+    if(haveNewBoard)remoteSetupPortal();
     if(haveNewBoard && opModeCRSF) {
         wm.server->on("/elrsraw", HTTP_GET, &handleELRSRawRead);
         wm.server->on("/elrstelemetry", HTTP_GET, &handleELRSTelemetryRead);
     }
     #endif
+    wm.server->on(R_updateacdone, HTTP_POST, &handleUploadDone, &handleUploading);
 }
 
 static void doCloseACFile(int idx, bool doRemove)

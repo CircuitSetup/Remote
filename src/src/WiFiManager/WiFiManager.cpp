@@ -2972,7 +2972,8 @@ void WiFiManager::_handleParamSave(int aidx, const char *title)
 
     if(_saveparamscallback && !_saveparamscallback(aidx)) {
         server->send(_paramSaveError, "text/html", _paramSaveError == 400 ?
-            "<p>Invalid Logic or Mixes settings. Correct the fields and save again.</p><a href='/'>Return to portal</a>" :
+            "<p>Invalid ELRS settings. Correct the fields and save again.</p><a href='/'>Return to portal</a>" :
+            _paramSaveError == 409 ? "<p>Settings changed or are busy. Reload this page and use live ELRS controls for radio changes.</p><a href='/'>Return to portal</a>" :
             "<p>Settings could not be saved to storage. Please try again.</p><a href='/'>Return to portal</a>");
         return;
     }

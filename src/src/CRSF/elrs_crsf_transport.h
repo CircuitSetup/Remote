@@ -79,6 +79,7 @@ class ELRSCrsfTransportSink {
         virtual ~ELRSCrsfTransportSink() {}
 
         virtual bool onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now) = 0;
+        virtual void onCrsfBeforeTx(unsigned long now) {}
 };
 
 class ELRSCrsfTransport {
@@ -93,6 +94,9 @@ class ELRSCrsfTransport {
         void loop(ELRSCrsfTransportHal &hal, unsigned long now);
         bool queueServiceFrame(const uint8_t *frame, size_t frameLen);
         bool hasPendingServiceFrame() const;
+        bool cancelServiceFrame();
+        uint32_t serviceTxCount() const { return _serviceTxCount; }
+        uint32_t lastServiceTxAt() const { return (uint32_t)_lastServiceTxAt; }
         uint32_t txTimeRemainingUs(uint32_t nowUs) const;
 
         const ELRSCrsfTransportConfig &config() const;
@@ -105,6 +109,12 @@ class ELRSCrsfTransport {
         void sendFrame(ELRSCrsfTransportHal &hal, const uint8_t *frame, size_t frameLen, unsigned long now, unsigned long nowUs, const char *prefix, bool resetReplyWindow);
         void sendChannels(ELRSCrsfTransportHal &hal, unsigned long now, unsigned long nowUs);
         void pollFrames(ELRSCrsfTransportHal &hal, unsigned long now);
+        void processRxBuffer(ELRSCrsfTransportHal &hal, unsigned long now);
+        size_t rxEchoLength();
+        void rememberRxEcho();
+        int recoverRxFrame(size_t frameLen);
+        void shiftRxEchoOffsets(size_t consumed, size_t retained = 0);
+        bool resyncToValidFrame(size_t startIndex = 1);
         void resyncRxBuffer(size_t startIndex = 1);
         void noteBadCrc(ELRSCrsfTransportHal &hal, unsigned long now);
         void noteFrameError(ELRSCrsfTransportHal &hal, unsigned long now);
@@ -132,18 +142,27 @@ class ELRSCrsfTransport {
         ELRSCrsfTransportSink *_sink = NULL;
 
         uint16_t _channels[16];
-        uint8_t _rxFrame[64];
+        uint8_t _rxFrame[512];
         uint8_t _serviceFrame[64];
         uint8_t _lastTxFrame[64];
+        uint8_t _previousTxFrame[64];
         size_t _rxFrameLen = 0;
         size_t _serviceFrameLen = 0;
         size_t _lastTxFrameLen = 0;
+        size_t _previousTxFrameLen = 0;
+        size_t _rxEchoOffset = 0;
+        bool _rxEchoPending = false;
+        bool _rxCrcFailed = false;
+        size_t _rxEchoOffsets[7] = {};
+        uint8_t _rxEchoLengths[7] = {};
+        uint8_t _rxEchoCount = 0;
         unsigned long _startedAt = 0;
         unsigned long _lastReplyAt = 0;
         unsigned long _lastTelemetryAt = 0;
         unsigned long _replyDeadlineAt = 0;
         uint32_t _nextTxAtUs = 0;
         unsigned long _lastServiceTxAt = 0;
+        uint32_t _serviceTxCount = 0;
         unsigned long _echoSuppressUntil = 0;
         unsigned long _crcBurstAt = 0;
         unsigned long _frameBurstAt = 0;

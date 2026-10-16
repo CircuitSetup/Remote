@@ -394,6 +394,24 @@ bool elrsIsValidMixConfig(const ELRSMixConfig &config)
     return true;
 }
 
+bool elrsIsValidModelReferences(const ELRSLogicConfig &logic, const ELRSMixConfig &mixes)
+{
+    if(!elrsIsValidLogicConfig(logic) || !elrsIsValidMixConfig(mixes)) return false;
+    const auto exists = [&logic](uint8_t source) {
+        const uint8_t id = source & 0x7f;
+        if(id < 17 || id == 25) return true;
+        const uint8_t index = id - 17 - (id > 25);
+        return index < ELRS_LOGIC_COUNT && logic.rules[index].function != 0;
+    };
+    for(const auto &r : logic.rules) {
+        if(!exists(r.sourceA) || !exists(r.sourceB) || !exists(r.andSwitch)) return false;
+    }
+    for(const auto &r : mixes.lines) {
+        if(!exists(r.source) || !exists(r.switchSource)) return false;
+    }
+    return true;
+}
+
 ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInputs &inputs,
     const ELRSLogicResult &logic, const int16_t baseChannelsUs[16], uint16_t baseClaimedChannels)
 {

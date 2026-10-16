@@ -1,0 +1,41 @@
+semver: 2.12.4
+header:
+  name: Four axis linear fixture
+  modelId:
+    0:
+      val: 12
+    1:
+      val: 42
+expoData:
+  - srcRaw: Ail
+    scale: 0
+    mode: 3
+    chn: 0
+    swtch: NONE
+    flightModes: "000000000"
+    weight: 100
+    offset: 0
+    curve: {type: 0, value: 0}
+    trimSource: 0
+logicalSw: {}
+mixData:
+  - destCh: 0
+    srcRaw: I0
+    weight: 100
+    offset: 0
+    swtch: NONE
+    curve: {type: 0, value: 0}
+    delayPrec: 0
+    delayUp: 0
+    delayDown: 0
+    speedPrec: 0
+    speedUp: 0
+    speedDown: 0
+    carryTrim: 0
+    mltpx: ADD
+    mixWarn: 0
+    flightModes: "000000000"
+    name: Input row
+moduleData:
+  0: {type: TYPE_NONE}
+  1: {type: TYPE_CROSSFIRE}

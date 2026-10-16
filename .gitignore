@@ -11,3 +11,4 @@ remote.code-workspace
 /docs
 /docs/validation
 *.txt
+__pycache__/

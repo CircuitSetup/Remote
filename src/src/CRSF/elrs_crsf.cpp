@@ -24,7 +24,6 @@ constexpr uint8_t ADS_REG_CONFIG = 0x01;
 constexpr int16_t ADS_LOG_DELTA_THRESHOLD = 20;
 constexpr uint32_t ADS_LOG_INTERVAL_MS = 200;
 #endif
-constexpr uint8_t ADS_FILTER_SHIFT = 2;
 constexpr uint32_t ADS_CONVERSION_US = 500;
 constexpr uint32_t ADS_RETRY_MS = 20;
 // At 400kHz a config write takes 90us; a register read takes 113us.
@@ -102,6 +101,7 @@ bool ELRSCrsfMode::begin(
     _lastAdsProbeAt = 0;
     memset(_stagingAxes, 0, sizeof(_stagingAxes));
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        _adcFilters[i].reset();
         _rawAxes[i] = 1024;
         _filteredAxes[i] = 1024;
         #ifdef REMOTE_DBG
@@ -187,6 +187,11 @@ bool ELRSCrsfMode::isCalibrating() const
     return _core.isCalibrating();
 }
 
+bool ELRSCrsfMode::throttleReady() const
+{
+    return _core.throttleReady();
+}
+
 bool ELRSCrsfMode::fakePowerOn() const
 {
     return _core.fakePowerOn();
@@ -269,6 +274,7 @@ ELRSAxesResult ELRSCrsfMode::failAdsSweep()
     _adsChannel = 0;
     _haveAds = false;
     _haveFilteredAxes = false;
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) _adcFilters[i].reset();
     _adsRetryPending = true;
     _lastAdsProbeAt = (uint32_t)millis();
     return ELRS_AXES_ERROR;
@@ -397,10 +403,10 @@ ELRSAxesResult ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], ui
         return ELRS_AXES_PENDING;
     }
     _adsState = ADS_IDLE;
+    const uint32_t completedAtUs = (uint32_t)micros();
     completedAt = (uint32_t)millis();
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        _filteredAxes[i] = !_haveFilteredAxes ? _stagingAxes[i] :
-            elrsIirFilterStep(_filteredAxes[i], _stagingAxes[i], ADS_FILTER_SHIFT);
+        _filteredAxes[i] = _adcFilters[i].update(_stagingAxes[i], completedAtUs);
         _rawAxes[i] = axes[i] = _filteredAxes[i];
     }
     _haveFilteredAxes = true;
