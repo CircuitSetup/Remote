@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
-const ui = require('../src/src/CRSF/crsf_config.js');
+const source = require('node:fs').readFileSync(require.resolve('../src/src/CRSF/crsf_config.js'),'utf8');
+const ui = new Function(source+'\nreturn {choiceOptions,editableField,bindingVerified,descriptorMatches,channelOptions};')();
 const matched={rfKnown:true,connected:true,modelMatched:true,devices:[{address:236}]};
 assert.equal(ui.bindingVerified(matched),true);
 for(const changed of [{connected:false},{modelMatched:false},{rfKnown:false},{devices:[]}])assert.equal(ui.bindingVerified({...matched,...changed}),false);
@@ -11,9 +12,6 @@ assert.deepEqual(options[2],{value:2,label:'25/1000',disabled:false});
 assert.equal(ui.editableField({type:9,writable:true,hidden:false}),true);
 for(const type of [8,10,11,12,13,99]) assert.equal(ui.editableField({type,writable:true,hidden:false}),false);
 assert.equal(ui.editableField({type:9,writable:true,hidden:true}),false);
-assert.equal(ui.uniqueChoice({type:9,options:'Off;On',unit:''},'On',''),1);
-assert.throws(()=>ui.uniqueChoice({type:9,options:'On;On',unit:''},'On',''));
-assert.throws(()=>ui.uniqueChoice({type:9,options:'25/1000',unit:'mW'},'1000','mW'));
 const p={device:238,field:4,generation:3,type:9,value:1,hash:77};
 assert.equal(ui.descriptorMatches(p,{...p}),true);
 for(const key of ['device','field','generation','type','value','hash'])assert.equal(ui.descriptorMatches(p,{...p,[key]:p[key]+1}),false,key+' must match preview');

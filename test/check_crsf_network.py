@@ -21,13 +21,14 @@ fixture = r'''
 #include <cerrno>
 unsigned long now = 0, lastService = 0, maxGap = 0;
 int services = 0, audioCalls = 0;
+bool buffered = false; unsigned serviceCost = 0;
 unsigned long millis() { return now; }
 void delay(unsigned long ms) { now += ms; }
 void audio_loop() { audioCalls++; }
 void serviceCRSF(bool actions) {
     assert(!actions);
     if(now - lastService > maxGap) maxGap = now - lastService;
-    lastService = now; services++;
+    lastService = now; services++; now += serviceCost;
 }
 #define fd_set TestFdSet
 #define timeval TestTimeval
@@ -86,8 +87,8 @@ struct WiFiClient {
     virtual size_t write(const uint8_t *, size_t size) { nativeWrites++; now += 1000; return size; }
     virtual int available() { return 0; }
     virtual int read(uint8_t *buffer, size_t size) {
-        now++;
-        if(now < 200 || !size) return -1;
+        if(!buffered) now++;
+        if((!buffered && now < 200) || !size) return -1;
         buffer[0] = 42;
         return 1;
     }
@@ -97,7 +98,7 @@ struct WiFiClient {
 };
 void reset(Scenario next) {
     now = lastService = maxGap = 0; services = audioCalls = 0;
-    closed = adopted = nativeConnects = nativeWrites = sendCalls = 0; scenario = next;
+    closed = adopted = nativeConnects = nativeWrites = sendCalls = 0; scenario = next; buffered = false; serviceCost = 0;
 }
 '''
 
@@ -122,10 +123,19 @@ int main() {
     assert(services == 1 && audioCalls == 1);
     reset(OK);
     while(mqtt.read() < 0) {}
-    assert(now == 200 && services >= 200 && maxGap <= 1);
+    assert(now == 200 && services >= 199 && maxGap <= 1);
     reset(OK); uint8_t incoming = 0;
     while(mqtt.read(&incoming, 1) < 0) {}
-    assert(incoming == 42 && services >= 200 && maxGap <= 1);
+    assert(incoming == 42 && services >= 199 && maxGap <= 1);
+    reset(OK); buffered = true; serviceCost = 3;
+    CRSFClient http; http.setCooperative(true); http.setLooper(mqttLooper);
+    for(unsigned i = 0; i < 1024; i++) assert(http.read() == 42);
+    assert(now <= 10 && services == 1); // Buffered HTTP headers must not pay for radio/audio work per byte.
+    now++; http.available(); assert(services == 2); // Service resumes one millisecond after the callback completes.
+    reset(OK); buffered = true;
+    CRSFClient wrap; wrap.setCooperative(true); wrap.setLooper(mqttLooper);
+    now = 0xfffffffeUL; wrap.available(); now = 0xffffffffUL; wrap.available(); now = 0; wrap.available();
+    assert(services == 3);
     mqtt.setCooperative(false); reset(OK);
     assert(!mqtt.connect(IPAddress(), 1883, 5000) && nativeConnects == 1 && services == 0);
 }

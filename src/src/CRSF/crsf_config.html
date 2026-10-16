@@ -11,8 +11,8 @@
 <div class="ss">
  <div class="hl"><h3>Live ELRS controls</h3></div>
  <p id="access"><small>Loading connection status…</small></p>
- <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connecting...</div>
- <p><small>FakePower off does not disarm the receiver. Set final CH5 low and disarm before radio changes. Disconnect RF for Packet Rate, other critical TX settings, or model activation.</small></p>
+ <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite"></div>
+ <p><small>FakePower off does not disarm the receiver. Use maintenance, set final CH5 low and disarm before radio changes. Disconnect RF for Packet Rate, other critical TX settings, or model activation.</small></p>
  <button type="button" id="maintenance">Enter maintenance (5 minutes)</button>
  <button type="button" id="status">Refresh RF status</button>
  <small id="safety"></small>
@@ -22,9 +22,8 @@
 <div class="ss">
  <div class="hl"><h3>Transmitter</h3></div>
  <p><strong id="txDevice">Device: Not discovered</strong></p>
- <p><small>Changes require maintenance and disarmed RF status.</small></p>
  <button type="button" id="txRefresh">Refresh transmitter readback</button>
- <div id="txFields">Refresh to load settings.</div>
+ <div id="txFields">Not loaded.</div>
  <label>TX profile ID (0–63) <input id="modelId" type="number" min="0" max="63"></label>
  <button type="button" id="txSave" disabled>Save Transmitter Settings</button>
 </div>
@@ -33,23 +32,22 @@
  <p><strong id="rxDevice">Device: Not discovered</strong></p>
  <p><small>RF must be connected and disarmed.</small></p>
  <button type="button" id="rxRefresh">Refresh receiver readback</button>
- <div id="rxFields">Refresh to load settings.</div>
+ <div id="rxFields">Not loaded.</div>
  <button type="button" id="rxSave" disabled>Save Receiver Settings</button>
  <button type="button" id="assign">Assign connected receiver to saved TX profile</button>
 </div>
 <div class="ss">
  <div class="hl"><h3>CRSF settings files</h3></div>
  <p><small>Backups include calibration. Portable models keep this Remote’s calibration.</small></p>
- <button type="button" id="backup">Download CRSF settings backup</button>
- <button type="button" id="model">Download portable model</button>
+ <button type="button" id="backup">Download backup</button>
+ <button type="button" id="model">Download model</button>
  <label>Native file <input id="file" type="file" accept=".json"></label>
  <label>File type <select id="kind"><option value="model">Portable model</option><option value="backup">CRSF settings backup</option></select></label>
  <button type="button" id="preview">Validate and preview file</button>
  <pre id="previewText">No preview.</pre>
- <button type="button" id="apply" disabled>Activate this preview and restart</button>
+ <button type="button" id="apply" disabled>Activate and restart</button>
 </div>
 <div class="ss">
  <div class="hl"><h3>External radio settings</h3></div>
- <p><small>Use the desktop helper to preview radio snapshots.</small></p>
- <button type="button" id="review">Finish imported radio review after readback</button>
+ <button type="button" id="review">Finish radio review</button>
 </div>

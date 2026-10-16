@@ -138,7 +138,19 @@ int main(){
  wm.server->handleClient();now=150;
  auto ready=std::make_shared<Socket>();ready->ready=0;wm.server->_server.next=ready;
  wm.server->handleClient();wm.server->handleClient();
- assert(ready->sent=="abcdef"&&now<1000); // An idle speculative connection cannot hold the only server slot for five seconds.
+ assert(ready->sent=="abcdef"&&now<1000); // Idle preconnections must not block ready requests.
+ assert(idle->connected); // A browser may send its first request more than 100 ms after connecting.
+ idle->idle=false;idle->ready=now;wm.server->handleClient();
+ assert(idle->sent=="abcdef"&&!idle->connected);
+ start();auto expired=std::make_shared<Socket>();expired->idle=true;wm.server->_server.next=expired;
+ wm.server->handleClient();now=HTTP_MAX_DATA_WAIT+1;wm.server->handleClient();assert(!expired->connected);
+
+ start();auto first=std::make_shared<Socket>();auto second=std::make_shared<Socket>();
+ first->idle=second->idle=true;first->ready=second->ready=0;
+ wm.server->_server.next=first;wm.server->handleClient();wm.server->_server.next=second;wm.server->handleClient();
+ first->idle=second->idle=false;wm.server->handleClient();
+ auto newcomer=std::make_shared<Socket>();newcomer->ready=0;wm.server->_server.next=newcomer;wm.server->handleClient();
+ assert(second->sent=="abcdef"&&newcomer->sent.empty()); // New arrivals cannot starve a queued browser request.
  start();auto broken=std::make_shared<Socket>();broken->partial=true;wm.server->_server.next=broken;
  wm.server->followup=true;wm.server->handleClient();assert(!broken->connected&&broken->sent=="abc"&&broken->writes==1);
  start(false);auto legacy=std::make_shared<Socket>();legacy->ready=0;wm.server->_server.next=legacy;

@@ -9,30 +9,37 @@ public:
 
     void handleClient() override
     {
-        if(_currentStatus == HC_NONE) {
-            _currentClient = _server.available();
-            if(!_currentClient) return;
-            _currentStatus = HC_WAIT_READ;
-            _statusChange = millis();
-        }
-        if(_currentClient.connected() && !_currentClient.available()) {
-            // Empty browser preconnections must not occupy the only HTTP slot for five seconds.
-            if((uint32_t)(millis() - _statusChange) < 100) {
-                _looper();
-                return;
+        bool waiting = false;
+        for(unsigned offset = 0; offset < 4; offset++) {
+            const unsigned i = (_nextPending + offset) % 4;
+            if(!_pending[i]) {
+                _pending[i] = _server.available();
+                if(!_pending[i]) continue;
+                _pendingSince[i] = millis();
             }
-        } else if(_currentClient.connected()) {
-            CRSFClient input = cooperativeClient();
-            input.setTimeout(HTTP_MAX_DATA_WAIT / 1000);
-            if(_parseRequest(input)) {
-                _contentLength = CONTENT_LENGTH_NOT_SET;
-                _handleRequest();
+            if(!_pending[i].available()) {
+                if(!_pending[i].connected() || (uint32_t)(millis() - _pendingSince[i]) >= HTTP_MAX_DATA_WAIT)
+                    _pending[i].stop();
+                else waiting = true;
+                continue;
             }
+            _nextPending = (i + 1) % 4;
+            _currentClient = _pending[i];
+            _pending[i].stop();
+            {
+                CRSFClient input = cooperativeClient();
+                input.setTimeout(HTTP_MAX_DATA_WAIT / 1000);
+                if(_parseRequest(input)) {
+                    _contentLength = CONTENT_LENGTH_NOT_SET;
+                    _handleRequest();
+                }
+            }
+            _currentClient.stop();
+            _currentUpload.reset();
+            _currentRaw.reset();
+            return;
         }
-        _currentClient = WiFiClient();
-        _currentStatus = HC_NONE;
-        _currentUpload.reset();
-        _currentRaw.reset();
+        if(waiting) _looper();
     }
 
 protected:
@@ -57,6 +64,10 @@ private:
         client.setLooper(_looper);
         return client;
     }
+    // Keep speculative browser sockets while serving ready requests from the four-client backlog.
+    WiFiClient _pending[4];
+    uint32_t _pendingSince[4];
+    unsigned _nextPending = 0;
     void (*_looper)();
 };
 #endif

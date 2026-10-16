@@ -152,9 +152,15 @@ private:
     void runLooper()
     {
         if(!cooperative || !looper) return;
+        if(looped && (uint32_t)(millis() - lastLoopAt) < 1) return;
         looper();
+        lastLoopAt = (uint32_t)millis();
+        looped = true;
     }
 
+    // Buffered HTTP reads need service by elapsed time, not once for every byte.
+    uint32_t lastLoopAt = 0;
+    bool looped = false;
     bool cooperative = false;
     void (*looper)() = NULL;
 };

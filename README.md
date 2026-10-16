@@ -1097,8 +1097,8 @@ To restore or import a native file:
 
 1. Choose the JSON file and its **File type**: Portable model or CRSF settings backup. Each native file is limited to 16 KiB.
 2. Click **Validate and preview file** and review the proposed model and calibration changes.
-3. Enter maintenance, refresh the required radio status, then confirm **Activate this preview and restart**.
-4. After reboot, discover/read the radio and verify the imported profile and radio preferences. The review action refreshes the transmitter preferences. Complete **Finish imported radio review after readback** before normal preference application resumes.
+3. Enter maintenance, refresh the required radio status, then confirm **Activate and restart**.
+4. After reboot, discover/read the radio and verify the imported profile and radio preferences. The review action refreshes the transmitter preferences. Complete **Finish radio review** before normal preference application resumes.
 
 A preview expires after five minutes and must still match the uploaded file, local settings, and device capabilities. If any of those change, validate and preview again. File activation uses a checked CRSF settings save and restarts only after a successful save.
 
