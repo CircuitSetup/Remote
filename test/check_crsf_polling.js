@@ -5,11 +5,11 @@ const start=source.indexOf('static const char crsfCalScript[] =');
 const fragment=source.slice(start,source.indexOf('static const char *wmBuildCRSFCAL',start));
 const html=[...fragment.matchAll(/"(?:[^"\\]|\\.)*"/g)].map(m=>JSON.parse(m[0])).join('');
 const script=html.slice(html.indexOf('>')+1,html.lastIndexOf('</script>'));
-const elements={},timers=[];
+const elements={'remote-controls':{dataset:{}}},timers=[];
 let requests=0,resolve,reject;
 const schedule=(fn,delay)=>{timers.push({fn,delay});};
 vm.runInNewContext(script,{
- window:{},document:{getElementById:id=>elements[id]??={textContent:'--'}},
+ window:{},document:{getElementById:id=>elements[id]??={textContent:'--',dataset:{}}},
  fetch:()=>{requests++;return new Promise((yes,no)=>{resolve=yes;reject=no;});},
  setInterval:schedule,setTimeout:schedule
 });
@@ -21,7 +21,7 @@ const settle=()=>new Promise(setImmediate);
  resolve({json:async()=>({ok:true,roll:100,pitch:200,throttle:300,yaw:400})});await settle();
  assert.equal(elements.elrs_roll_live.textContent,100);
  assert.equal(timers.length,1);assert.equal(timers[0].delay,500);
- timers.shift().fn();assert.equal(requests,2);
+ elements['remote-controls'].dataset.busy='1';timers.shift().fn();assert.equal(requests,1,'radio loading pauses background calibration requests');elements['remote-controls'].dataset.busy='0';timers.shift().fn();assert.equal(requests,2);
  reject(Error('temporary HTTP failure'));await settle();
  assert.equal(elements.elrs_roll_live.textContent,'--');assert.equal(timers.length,1);
  timers.shift().fn();assert.equal(requests,3);

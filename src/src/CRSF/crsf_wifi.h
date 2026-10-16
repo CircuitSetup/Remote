@@ -865,7 +865,7 @@ static const char crsfCalScript[] =
     "if(live.textContent==='--')return;target.value=live.textContent;};"
     "function fail(){setStatus('Filtered ADC unavailable. Make sure the board is powered and the ADS1015 is reachable.');"
     "setLive('elrs_roll_live','--');setLive('elrs_pitch_live','--');setLive('elrs_throttle_live','--');setLive('elrs_yaw_live','--');}"
-    "function poll(){fetch('/elrsraw',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
+    "function poll(){if(ge('remote-controls')?.dataset.busy==='1'){setTimeout(poll,500);return;}fetch('/elrsraw',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
     "if(!d.ok){fail();return;}setLive('elrs_roll_live',d.roll);setLive('elrs_pitch_live',d.pitch);"
     "setLive('elrs_throttle_live',d.throttle);setLive('elrs_yaw_live',d.yaw);"
     "setStatus('Filtered ADC connected.');"
@@ -980,7 +980,7 @@ function add(id,text,disabled){var option=document.createElement('option');optio
 add(14,'None (normal display)');add(0,'Auto');add(13,'Off');rows.forEach(function(row){add(row.id,row.label+' ('+row.unit+')');});
 if(!Array.from(source.options).some(function(option){return option.value===wanted;}))add(wanted,label.replace(/ \(unavailable\)$/,'')+' (unavailable)',true);source.value=wanted;}
 function fail(message){options([]);preview.textContent='---';status.textContent=message;}
-function poll(){if(busy||source.dataset.live!=='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.available?': '+data.preview.value+(data.preview.unit?' '+data.preview.unit:''):' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
+function poll(){if(busy||source.dataset.live!=='1')return;if(byId('remote-controls')?.dataset.busy==='1')return;busy=true;var pending=query();fetch('/elrstelemetry?'+pending,{cache:'no-store'}).then(function(response){if(!response.ok)throw Error(response.status===400?'Invalid display settings':'Telemetry unavailable');return response.json();}).then(function(data){options(data.sources);if(pending===query()){preview.textContent=data.preview.text||'Blank';status.textContent=data.preview.source===14?'Normal gimbal-controlled speed/speedo':data.preview.source===13?'Normal readout off':data.preview.label+(data.preview.available?': '+data.preview.value+(data.preview.unit?' '+data.preview.unit:''):' — unavailable');}}).catch(function(error){if(pending===query())fail(error.message);}).then(function(){busy=false;});}
 source.addEventListener('change',function(){hidden.value=source.value;scaling();preview.textContent='…';poll();});
 ['cdmul','cdoff','cddec','cspdu','crpoles','crgear','crdiam','crscale','crrpmtype'].forEach(function(id){var input=byId(id);if(input)input.addEventListener('input',function(){scaling();preview.textContent='…';poll();});});
 scaling();poll();setInterval(poll,500);

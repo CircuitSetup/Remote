@@ -11,44 +11,35 @@
 <div class="ss">
  <div class="hl"><h3>Live ELRS controls</h3></div>
  <p id="access"><small>Loading connection status…</small></p>
- <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connecting to the Remote for live controls...</div>
- <p><small>Choose a value, then use Apply to confirm and send it to the named device. Changing a selection alone sends nothing.</small></p>
+ <div id="message" class="msg" role="status" tabindex="-1" aria-live="polite">Connecting...</div>
  <p><small>FakePower off does not disarm the receiver. Set final CH5 low and disarm before radio changes. Disconnect RF for Packet Rate, other critical TX settings, or model activation.</small></p>
  <button type="button" id="maintenance">Enter maintenance (5 minutes)</button>
  <button type="button" id="status">Refresh RF status</button>
  <small id="safety"></small>
-</div>
-<div class="ss">
- <div class="hl"><h3>Radio devices</h3></div>
- <p><strong id="fieldDevice">Device: Not discovered</strong></p>
- <label>Device <select id="devices" aria-label="Radio device"></select></label>
- <label>Field <select id="fields" aria-label="Device field"></select></label>
- <p><small>RF packet rate comes from the module menu. Remote’s CRSF channel cadence is separate and requires a restart.</small></p>
- <button type="button" id="discover">Discover devices</button>
- <div id="field">Discover a device to read its menu.</div>
- <label>TX profile ID (0–63) <input id="modelId" type="number" min="0" max="63" value="0"></label>
- <button type="button" id="selectModel">Select and verify TX profile</button>
- <button type="button" id="assign">Assign connected receiver to this profile</button>
  <button type="button" id="confirm" hidden>Confirm device prompt</button>
  <button type="button" id="cancel" hidden>Cancel command</button>
 </div>
 <div class="ss">
  <div class="hl"><h3>Transmitter</h3></div>
  <p><strong id="txDevice">Device: Not discovered</strong></p>
- <p><small>Live values and choices come from the discovered transmitter menu. Enter maintenance and refresh disarmed RF status before changes. Packet Rate changes also require RF disconnected.</small></p>
+ <p><small>Changes require maintenance and disarmed RF status.</small></p>
  <button type="button" id="txRefresh">Refresh transmitter readback</button>
- <div id="txFields">Refresh to read transmitter settings.</div>
+ <div id="txFields">Refresh to load settings.</div>
+ <label>TX profile ID (0–63) <input id="modelId" type="number" min="0" max="63"></label>
+ <button type="button" id="txSave" disabled>Save Transmitter Settings</button>
 </div>
 <div class="ss">
- <div class="hl"><h3>Receiver outputs</h3></div>
+ <div class="hl"><h3>Receiver</h3></div>
  <p><strong id="rxDevice">Device: Not discovered</strong></p>
- <p><small>Receiver output changes and failsafe capture require RF connected and the receiver disarmed. Choose the physical output, then its incoming RC channel. Output changes refresh dependent settings before further edits.</small></p>
+ <p><small>RF must be connected and disarmed.</small></p>
  <button type="button" id="rxRefresh">Refresh receiver readback</button>
- <div id="rxFields">Refresh to read receiver output settings.</div>
+ <div id="rxFields">Refresh to load settings.</div>
+ <button type="button" id="rxSave" disabled>Save Receiver Settings</button>
+ <button type="button" id="assign">Assign connected receiver to saved TX profile</button>
 </div>
 <div class="ss">
  <div class="hl"><h3>CRSF settings files</h3></div>
- <p><small>CRSF backups include model settings and input calibration. Portable models keep this Remote’s input calibration. File operations use the current configuration portal session without a password.</small></p>
+ <p><small>Backups include calibration. Portable models keep this Remote’s calibration.</small></p>
  <button type="button" id="backup">Download CRSF settings backup</button>
  <button type="button" id="model">Download portable model</button>
  <label>Native file <input id="file" type="file" accept=".json"></label>
@@ -59,7 +50,6 @@
 </div>
 <div class="ss">
  <div class="hl"><h3>External radio settings</h3></div>
- <p><small>TX/RX settings use a separate file. Live changes need their own preview and readback; rollback is best effort. Commands are never restored.</small></p>
- <p><small>The desktop radio helper captures and previews <code>.remote-radio.json</code> files. Use the project’s radio snapshot guide on your computer; device controls above can make individual changes.</small></p>
+ <p><small>Use the desktop helper to preview radio snapshots.</small></p>
  <button type="button" id="review">Finish imported radio review after readback</button>
 </div>

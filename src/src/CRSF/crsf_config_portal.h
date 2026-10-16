@@ -153,6 +153,8 @@ static void remotePortalAction() {
     remotePortalApplyPreferences();
     if(remoteSettingsBusy() || remotePortalUploading){remotePortalError(409,"BUSY","action","Storage operation is active");return;}
     const String action=wm.server->arg("action");uint32_t device=0,field=0,generation=0,id=0,code=0,type=0,hash=0;int32_t expected=0,value=0;
+    const bool wait=wm.server->hasArg("wait");
+    if(wait && (wm.server->arg("wait")!="1" || (action!="read" && action!="status"))){remotePortalError(400,"INVALID_VALUE","wait","Expected wait=1 for a read or status action");return;}
     if(action=="maintenance") {if(!remotePortalUnsigned("enabled",1,code)){remotePortalError(400,"INVALID_VALUE","enabled","Expected 0 or 1");return;}remoteSetMaintenance(code);StaticJsonDocument<64> doc;doc["ok"]=true;remotePortalJson(doc);return;}
 #ifdef HAVE_CRSF
     if(!opModeCRSF){remotePortalError(409,"UNSUPPORTED_BEHAVIOR","radio","CRSF mode must be active");return;}
@@ -177,6 +179,11 @@ static void remotePortalAction() {
     if(!ok){remotePortalError(409,"OPERATION_REJECTED","radio","Busy, stale, unsupported or unsafe operation");return;}
     if(action=="write" || action=="model" || action=="assign" || action=="command")elrsMode.pauseModulePreferenceApply();
     if(action=="write" || action=="model" || action=="assign"){remotePortalPreferenceId=id;remotePortalPreferenceModel=action!="write";}
+    if(wait){
+        const uint32_t started=millis();
+        while(config.status().id==id && config.busy() && (uint32_t)(millis()-started)<350){remotePortalService();delay(1);}
+        if(config.status().id==id && config.status().state==ELRSOperationState::Complete){remotePortalOperation();return;}
+    }
     {StaticJsonDocument<64> doc;doc["id"]=id;doc["state"]="queued";remotePortalJson(doc,202);return;}
 invalid:
 #endif

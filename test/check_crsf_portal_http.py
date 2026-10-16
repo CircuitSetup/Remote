@@ -28,6 +28,50 @@ def function(source, signature):
 
 
 class CRSFPortalHTTPTests(unittest.TestCase):
+    def test_actual_action_waits_only_for_requested_reads_and_keeps_timeout_pollable(self):
+        production = '\n'.join(function(PORTAL, pattern) for pattern in (
+            r'static void remotePortalService\(\)',
+            r'static bool remotePortalUnsigned\(const char \*name,uint32_t max,uint32_t &value\)',
+            r'static bool remotePortalSigned\(const char \*name,int32_t &value\)',
+            r'static void remotePortalAction\(\)',
+        ))
+        harness = r'''#include <cassert>
+#include <cstdint>
+#include <string>
+#include <map>
+#include <ArduinoJson.h>
+class String {std::string s;public:String(const char*v=""):s(v){}String(std::string v):s(v){}size_t length()const{return s.size();}char operator[](size_t i)const{return s[i];}friend bool operator==(const String&a,const char*b){return a.s==b;}friend bool operator!=(const String&a,const char*b){return !(a==b);}};
+struct Server{std::map<std::string,std::string>args;String arg(const char*k){return args[k];}bool hasArg(const char*k){return args.count(k);}}server;
+struct Manager{Server*server=&::server;}wm;
+enum class ELRSOperationState{Queued,Complete};
+struct Status{uint32_t id;ELRSOperationState state;};
+struct ELRSParameterValue{uint32_t descriptorHash=0;ELRSParameterValue(uint32_t,int32_t){}};
+uint32_t now=0,completeAt=0;unsigned serviceCalls=0,starts=0,pauses=0;int response=0;uint32_t responseId=0;
+struct Config{Status s;bool active=false;const Status&status(){return s;}bool busy(){return active;}bool start(uint32_t id){starts++;s={id,ELRSOperationState::Queued};active=true;return true;}bool discover(uint32_t id){return start(id);}bool readRadioStatus(uint32_t id){return start(id);}bool read(uint32_t,uint32_t,uint32_t,uint32_t id){return start(id);}bool write(uint32_t,uint32_t,uint32_t,ELRSParameterValue,ELRSParameterValue,uint32_t id){return start(id);}bool command(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t id){return start(id);}bool selectModel(uint32_t,uint32_t,uint32_t id){return start(id);}bool assignReceiver(uint32_t,uint32_t,uint32_t,uint32_t id){return start(id);}};
+struct Mode{Config c;Config&deviceConfig(){return c;}void pauseModulePreferenceApply(){pauses++;}}elrsMode;
+bool opModeCRSF=true,remotePortalUploading=false,remotePortalPreferenceModel=false;uint32_t remotePortalOperationId=1,remotePortalPreferenceId=0;
+uint32_t millis(){return now;}void delay(unsigned n){now+=n;}
+bool remotePortalGate(){return true;}bool remoteSettingsBusy(){return false;}void remotePortalApplyPreferences(){}void remoteSetMaintenance(uint32_t){}
+void remotePortalError(int code,const char*,const char*,const char*){response=code;}
+template<class T>void remotePortalJson(T&doc,int code=200){response=code;responseId=doc["id"].template as<uint32_t>();}
+void remotePortalOperation(){response=200;responseId=elrsMode.c.s.id;}
+void serviceCRSF(bool localActions){assert(!localActions);serviceCalls++;if(completeAt!=UINT32_MAX&&now>=completeAt){elrsMode.c.s.state=ELRSOperationState::Complete;elrsMode.c.active=false;}}
+'''
+        harness += production + r'''
+void reset(const char*action,const char*wait=nullptr){server.args={{"action",action},{"device","238"},{"field","1"},{"generation","1"},{"confirmed","1"},{"type","9"},{"hash","1"},{"expected","0"},{"value","1"}};if(wait)server.args["wait"]=wait;now=0;serviceCalls=starts=pauses=0;response=0;elrsMode.c=Config();}
+int main(){
+ for(uint32_t ready:{0U,220U}){reset("read","1");completeAt=ready;remotePortalAction();assert(response==200&&responseId==elrsMode.c.s.id&&!elrsMode.c.busy());assert(serviceCalls>0&&now<=350);}
+ reset("status","1");completeAt=10;remotePortalAction();assert(response==200&&serviceCalls>0);
+ reset("read","1");completeAt=UINT32_MAX;remotePortalAction();assert(response==202&&responseId==elrsMode.c.s.id&&elrsMode.c.busy()&&now==350&&serviceCalls>=350);auto id=responseId;completeAt=now;remotePortalService();remotePortalOperation();assert(response==200&&responseId==id&&!elrsMode.c.busy());
+ reset("read");completeAt=0;remotePortalAction();assert(response==202&&serviceCalls==0&&starts==1);
+ reset("write");remotePortalAction();assert(response==202&&serviceCalls==0&&starts==1&&pauses==1);
+ for(const char*bad:{"0","2","-1","","true"}){reset("read",bad);remotePortalAction();assert(response==400&&starts==0&&serviceCalls==0);}
+ for(const char*action:{"write","command","model","assign","discover","maintenance"}){reset(action,"1");remotePortalAction();assert(response==400&&starts==0&&pauses==0);}
+ now=UINT32_MAX-100;reset("read","1");now=UINT32_MAX-100;completeAt=UINT32_MAX;auto start=now;remotePortalAction();assert(response==202&&(uint32_t)(now-start)==350);
+}
+'''
+        compile_and_run(harness, [], ['-I' + str(ARDUINOJSON_INCLUDE)])
+
     def test_actual_radio_status_helper_emits_fresh_snapshot(self):
         helper = function(PORTAL, r"static void remotePortalRadioStatus\(JsonObject doc\)")
         harness = r'''#include <cassert>

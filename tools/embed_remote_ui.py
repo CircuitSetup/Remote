@@ -8,9 +8,9 @@ def embed(root):
     html=(root/'src/src/CRSF/crsf_config.html').read_text(encoding='utf-8')
     script=(root/'src/src/CRSF/crsf_config.js').read_text(encoding='utf-8')
     source=('const remoteControls=document.getElementById("remote-controls");\n'
-            'const settingsForm=remoteControls.closest("form");\n'
+            'const settingsForm=remoteControls.closest("form");let settingsSave=null;\n'
             'if(settingsForm){settingsForm.after(remoteControls);if(["/param3save","param3save"].includes(settingsForm.getAttribute("action"))){'
-            'const save=settingsForm.querySelector("button[type=submit]");if(save){'
+            'const save=settingsForm.querySelector("button[type=submit]");if(save){settingsSave=save;'
             'if(!settingsForm.id)settingsForm.id="elrs-settings";save.setAttribute("form",settingsForm.id);remoteControls.after(save);}}}\n'
             'remoteControls.innerHTML='+json.dumps(html,ensure_ascii=False)+';\n'+script).encode('utf-8')
     data=gzip.compress(source,compresslevel=9,mtime=0)
