@@ -1,6 +1,6 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://remote.out-a-ti.me) _really_ holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a speedo connected to it. Of course, the Remote can also be used stand-alone.
+This [repository](https://remote.out-a-ti.me) _really, really_ holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a speedo connected to it. Of course, the Remote can also be used stand-alone.
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
