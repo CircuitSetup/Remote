@@ -86,6 +86,10 @@ void      crsf_loop(int battWarn);
 extern bool opModePropCRSF;
 bool      crsfLocalActionsEnabled();
 void      serviceCRSF(bool withLocalActions = true);
+void queueCRSFTimeTravelSound(bool start);
+bool crsfTimeTravelSoundPending();
+bool crsfTimeTravelSoundPlaying();
+float crsfPropSpeed();
 void      queueCRSFLocalSwitches(uint16_t states, uint16_t validMask);
 
 void      csrf_query_status(bool &FPBUnitIsOn);

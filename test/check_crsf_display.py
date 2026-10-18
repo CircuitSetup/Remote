@@ -41,6 +41,7 @@ fixture += style[style.index('static const char HTTP_STYLE[]'):style.index('\n#i
 fixture += r'''
 FakeHost host;
 ELRSCrsfCore core;
+ELRSTimeTravelConfig crsfTimeTravelConfig = {};
 ELRSDisplayConfig crsfDisplayConfig = {1,1,0.5f,0};
 ELRSDisplayConfig loadELRSDisplayConfig() { return crsfDisplayConfig; }
 ELRSVehicleConfig crsfVehicleConfig = elrsDefaultVehicleConfig();
@@ -194,7 +195,11 @@ with tempfile.TemporaryDirectory(prefix='crsf-display-') as work:
             attrs = dict(attrs)
             if tag == 'input' and attrs.get('id') in ('crgear', 'crscale'):
                 assert float(attrs['min']) <= float(attrs['value']) <= float(attrs['max']), 'A valid saved boundary must remain submittable'
-    Bounds().feed(boundary.read_text())
+    markup = boundary.read_text()
+    Bounds().feed(markup)
+    assert "type='checkbox' id='cttenabled'" in markup
+    assert "id='cttch' name='cttch'" in markup
+    assert "<option value='16'>CH16</option>" in markup
     responses = [json.loads(line) for line in path.read_text().splitlines()]
     assert len(responses) == 30
     if os.environ.get('CRSF_DISPLAY_RESPONSES'):

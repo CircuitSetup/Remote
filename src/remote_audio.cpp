@@ -342,7 +342,7 @@ void play_file(const char *audio_file, uint32_t flags, float volumeFactor)
 
     curVolFact = volumeFactor;
     dynVol     = !!(flags & PA_DYNVOL);
-    playflags  = flags & (PA_KMASK | PA_THRUP | PA_NOINTR);
+    playflags  = flags & (PA_KMASK | PA_THRUP | PA_NOINTR | PA_TIMETRAVEL);
     
     out->SetGain(getVolume());
 
@@ -497,6 +497,11 @@ static float getVolume()
 bool check_file_SD(const char *audio_file)
 {
     return (haveSD && SD.exists(audio_file));
+}
+
+bool timeTravelAudioPlaying()
+{
+    return audioInitDone && (playflags & PA_TIMETRAVEL) && mp3->isRunning();
 }
 
 bool checkAudioDone()

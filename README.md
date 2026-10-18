@@ -994,6 +994,12 @@ Gimbal output limits apply after mixing. Missing/stale inputs remain unavailable
 
 If checked, the Remote will join the configured WiFi network while operating in ELRS/CRSF mode. If unchecked, it remains in AP mode during ELRS/CRSF operation.
 
+##### &#9193; 88 speed time travel
+
+Enable **Lights and time travel sound at 88**, choose the **Receiver lights channel**, then save and restart. The feature is off by default. It triggers once when the speed sent to the three-digit display rises from below 88 to 88 or higher, including the display's scaling and rounding. GPS/airspeed use the selected speed units and display scaling; RPM sources use actual or scaled mph. In Prop controls + ELRS/CRSF with None selected, it follows the normal prop speed and shares the existing time-travel sound sequence. Non-speed telemetry and unavailable readings cannot trigger it.
+
+The selected channel is high (2000 us) while `timetravel.mp3` is playing and low (1000 us) afterward, including if playback stops early. A missing or muted sound leaves the lights off. Speed must drop below 88 after playback before another trigger. While enabled, this takes over that channel from its physical switch; gimbal and mixer output channels are rejected. Connect the lights through a receiver-controlled switch and use an RF mode that transmits the selected channel. The checkbox and channel are included in model exports and backups; older settings load with the feature disabled.
+
 ##### &#9193; 3 digit display
 
 Choose GPS speed, airspeed, vehicle battery voltage/current/remaining charge/capacity, GPS altitude/heading/satellites, receiver uplink LQ/RSSI/SNR, or motor RPM speed. The list offers only valid values received within the last two seconds (six seconds for RPM). A saved or pending source stays selected when unavailable; its readout becomes `---` until fresh telemetry returns. Received zero is a valid value.

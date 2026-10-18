@@ -72,6 +72,7 @@
 #define PA_KMASK   0x1ff80
 #define PA_MUSIC   0x20000
 #define PA_DOID3TS 0x40000
+#define PA_TIMETRAVEL 0x80000
 
 void audio_setup();
 void audio_loop();
@@ -88,6 +89,7 @@ bool check_file_SD(const char *audio_file);
 bool checkAudioDone();
 bool checkAudioReallyDone();
 bool checkMP3Running();
+bool timeTravelAudioPlaying();
 void stopAudio();
 void stopAudioAtLoopEnd();
 void stop_key();

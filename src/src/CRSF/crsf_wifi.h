@@ -112,6 +112,7 @@ static const CRSFAxisSettings crsfAxisSettings[] = {
 static char crsfOutputMin[ELRS_GIMBAL_AXIS_COUNT][5] = {"1000", "1000", "1000", "1000"};
 static char crsfOutputMax[ELRS_GIMBAL_AXIS_COUNT][5] = {"2000", "2000", "2000", "2000"};
 static char crsfLocalActions[ELRS_SWITCH_INPUT_COUNT][2] = {};
+static ELRSTimeTravelConfig crsfTimeTravelConfig = {};
 static ELRSDisplayConfig crsfDisplayConfig = elrsDefaultDisplayConfig();
 static ELRSVehicleConfig crsfVehicleConfig = elrsDefaultVehicleConfig();
 static bool crsfDisplayParamsValid = true;
@@ -296,6 +297,7 @@ static void syncCRSFPortalBuffers()
     }
     crsfDisplayConfig = loadELRSDisplayConfig();
     crsfVehicleConfig = loadELRSVehicleConfig();
+    crsfTimeTravelConfig = snapshotELRSSettings().timeTravel;
     crsfDisplayParamsValid = true;
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &crsfLogicConfig, &crsfMixConfig);
     crsfLogicParamsValid = crsfMixParamsValid = true;
@@ -410,7 +412,10 @@ static bool buildCRSFPortalInputSettings(ELRSCrsfSettingsBlob &candidate, Remote
     candidate.adcHysteresis=adcHysteresis;candidate.throttleIdleDeadband=throttleIdleDeadband;
     memcpy(candidate.outputLimits,limits,sizeof(limits));memcpy(candidate.localActions,localActions,sizeof(localActions));
     candidate.displayConfig=crsfDisplayConfig;candidate.vehicleConfig=crsfVehicleConfig;
+    candidate.timeTravel=crsfTimeTravelConfig;
     candidate.logic=crsfLogicConfig;candidate.mixes=crsfMixConfig;
+    if(!elrsIsValidTimeTravelConfig(candidate.timeTravel,candidate.gimbalRouting,candidate.mixes))
+        return remoteTransferFail(error,RemoteTransferCode::InvalidValue,"timeTravel.channel","Select a channel without a gimbal or mixer");
     if(!elrsIsValidCrsfSettingsBlob(candidate))return remoteTransferFail(error,RemoteTransferCode::InvalidValue,"crsf","Invalid local input settings");
     return true;
 }
@@ -500,6 +505,16 @@ static void crsfReadDisplayParams()
     crsfDisplayConfig = loadELRSDisplayConfig();
     crsfVehicleConfig = loadELRSVehicleConfig();
     crsfDisplayParamsValid = crsfParseDisplayParams(crsfDisplayConfig) && crsfParseVehicleParams(crsfVehicleConfig);
+    crsfTimeTravelConfig = snapshotELRSSettings().timeTravel;
+    if(wm.server->hasArg("cttform")) {
+        const String channel = wm.server->arg("cttch");
+        const bool enabled = wm.server->hasArg("cttenabled");
+        if(wm.server->arg("cttform") != "1" || (enabled && wm.server->arg("cttenabled") != "1") ||
+           channel.length() < 1 || channel.length() > 2 ||
+           strspn(channel.c_str(), "0123456789") != channel.length() || atoi(channel.c_str()) > 16) {
+            crsfDisplayParamsValid = false;
+        } else crsfTimeTravelConfig = {(uint8_t)enabled,(uint8_t)atoi(channel.c_str())};
+    }
 }
 
 static void crsfReadExpoParams()
@@ -1033,6 +1048,15 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
     }
     html += "<datalist id='rpmgears'><option value='6.55'>TT-02R 68T/27T</option><option value='6.16'>TT-02R 64T/27T</option></datalist><p><small>Electrical RPM is divided by motor pole pairs; select Shaft RPM if the sensor already reports mechanical RPM. Actual mph uses total motor-to-wheel reduction and tire diameter. Scaled mph also applies the scale factor (10 for a 1:10 model). Use Multiplier for calibration (default 1) and Offset 0. Both RPM sources use mph. TT-02R/Firma defaults: Electrical RPM, 4 poles, 6.55:1, 64 mm tires.</small></p></fieldset>";
     html += "<p><small>Output = value × multiplier + offset. Speed units apply before scaling. Only fresh received sources are offered. HI/LO means the scaled value exceeds three digits; --- means unavailable. Auto uses GPS speed, airspeed, then uplink LQ with default scaling. Off blanks the normal readout. None keeps the gimbal speed/speedometer in Prop controls + ELRS/CRSF; in telemetry mode it uses Auto. Temporary display messages retain priority. Save and restart to apply; preview does not change the display.</small></p></fieldset>";
+    html += "<fieldset><legend>88 speed time travel</legend><input type='hidden' name='cttform' value='1'>";
+    snprintf(buf, sizeof(buf), "<label for='cttenabled'><input type='checkbox' id='cttenabled' name='cttenabled' value='1'%s> Lights and time travel sound at 88</label>", crsfTimeTravelConfig.enabled ? " checked" : "");
+    html += buf;
+    html += "<label for='cttch'>Receiver lights channel</label><select id='cttch' name='cttch'><option value='0'>None</option>";
+    for(unsigned channel = 1; channel <= 16; ++channel) {
+        snprintf(buf, sizeof(buf), "<option value='%u'%s>CH%u</option>", channel, channel == crsfTimeTravelConfig.channel ? " selected" : "", channel);
+        html += buf;
+    }
+    html += "</select><p><small>Lights follow timetravel.mp3 at displayed speed 88. Rearms below 88. Takes over this switch channel.</small></p></fieldset>";
     html += crsfDisplayScript;
     if(op == WM_CP_LEN) {
         wmLenBuf = html.length() + 1;

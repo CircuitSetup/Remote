@@ -64,6 +64,10 @@ class ELRSCrsfHost : public ELRSCrsfTransportHal {
         virtual bool readCalibrationButton() = 0;
         virtual bool samplePackStates(uint8_t &states) = 0;
         virtual void scanLocalSwitches(uint16_t states, uint16_t validMask) {}
+        virtual void requestTimeTravelSound(bool start) {}
+        virtual bool timeTravelSoundPending() const { return false; }
+        virtual bool timeTravelSoundPlaying() const { return false; }
+        virtual float propSpeed() const { return 0; }
 
         virtual void displayOn() = 0;
         virtual void displaySetText(const char *text) = 0;
@@ -100,6 +104,7 @@ struct ELRSCrsfCoreConfig {
     uint8_t localActions[ELRS_SWITCH_INPUT_COUNT] = {};
     ELRSLogicConfig logic = {};
     ELRSMixConfig mixes = {};
+    ELRSTimeTravelConfig timeTravel = {};
     ELRSCrsfTransportConfig transport;
 };
 
@@ -179,6 +184,9 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void requestCalibrationCapture(ELRSCrsfHost &host, unsigned long now);
         void finishCalibrationCapture(ELRSCrsfHost &host, unsigned long now);
         const char *getCalibrationPrompt() const;
+
+        void updateTimeTravel(ELRSCrsfHost &host, unsigned long now);
+        bool _timeTravelArmed = false, _timeTravelActive = false, _timeTravelLights = false;
 
         void updateChannels(unsigned long now, bool fakePowerOn, bool stopOn, bool buttonAOn, bool buttonBOn, uint8_t packStates);
         void updateLocalSwitches(ELRSCrsfHost &host, uint16_t states);

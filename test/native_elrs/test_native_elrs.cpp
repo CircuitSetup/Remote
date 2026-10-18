@@ -285,6 +285,14 @@ class FakeHost : public ELRSCrsfHost {
         uint16_t localStates = 0, localValidMask = 0;
         int localScanCount = 0;
 
+        bool soundPending = false, soundPlaying = false;
+        int soundRequests = 0;
+        float simulatedSpeed = 0;
+        void requestTimeTravelSound(bool start) override { soundPending = start; if(start) ++soundRequests; else soundPlaying = false; }
+        bool timeTravelSoundPending() const override { return soundPending; }
+        bool timeTravelSoundPlaying() const override { return soundPlaying; }
+        float propSpeed() const override { return simulatedSpeed; }
+
         bool driverEnabled = false;
         uint32_t fakeMicros = 0, fakeMillis = 0, subMillisUs = 0;
         uint32_t sampleCostUs = 0, extraFlushUs = 0;
@@ -5984,6 +5992,139 @@ static void test_throttle_self_test_keeps_direct_mixes_neutral_while_locked()
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(5)); // Unrelated switch output keeps self-test behavior.
 }
 
+
+static void timeTravelSpeed(ELRSCrsfCore &core, FakeHost &host, unsigned now, uint16_t kmh10)
+{
+    host.queueFrame(makeFrame(0x02, {0,0,0,0,0,0,0,0,(uint8_t)(kmh10 >> 8),(uint8_t)kmh10,0,0,3,232,0}));
+    loopAt(core, host, now, now * 1000);
+    loopAt(core, host, now + 1, (now + 1) * 1000);
+}
+
+static void test_time_travel_lights_follow_sound_and_rearm_below_88()
+{
+    ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+    config.timeTravel = {1,16}; config.displayConfig.source = ELRS_DISPLAY_GPS_SPEED;
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    host.packStates = 128;
+    timeTravelSpeed(core, host, 100, 879);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
+    TEST_ASSERT_EQUAL_INT(0, host.soundRequests);
+    timeTravelSpeed(core, host, 200, 880);
+    TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15)); // Wait for actual playback.
+    host.soundPending = false; host.soundPlaying = true;
+    loopAt(core, host, 210, 210000);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+    timeTravelSpeed(core, host, 220, 600); // Slowing down must not truncate playback.
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+    timeTravelSpeed(core, host, 230, 900);
+    TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+    host.soundPlaying = false;
+    loopAt(core, host, 240, 240000);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
+    timeTravelSpeed(core, host, 250, 900);
+    TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+    timeTravelSpeed(core, host, 260, 870);
+    timeTravelSpeed(core, host, 270, 900);
+    TEST_ASSERT_EQUAL_INT(2, host.soundRequests);
+    host.soundPending = false; // Missing file / failed start.
+    loopAt(core, host, 280, 280000);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
+}
+
+static void test_time_travel_disabled_and_unsafe_channels_leave_outputs_alone()
+{
+    for(int scenario = 0; scenario < 4; ++scenario) {
+        ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+        config.timeTravel = {(uint8_t)(scenario != 0),(uint8_t)(scenario == 1 ? 3 : 16)};
+        if(scenario == 2) config.mixes.lines[0] = {16,4,0,100,0,2};
+        if(scenario == 3) config.timeTravel.channel = 17;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        timeTravelSpeed(core, host, 100, 800); timeTravelSpeed(core, host, 200, 900);
+        TEST_ASSERT_EQUAL_INT(0, host.soundRequests);
+    }
+}
+
+static void test_time_travel_units_stale_and_non_speed_telemetry()
+{
+    ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+    config.timeTravel = {1,16}; config.speedDisplayUnits = ELRS_SPEED_UNITS_MPH;
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    timeTravelSpeed(core, host, 100, 1400);
+    TEST_ASSERT_EQUAL_INT(0, host.soundRequests);
+    timeTravelSpeed(core, host, 200, 1420);
+    TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+    host.soundPending = false;
+    loopAt(core, host, 2300, 2300000);
+    timeTravelSpeed(core, host, 2400, 1420);
+    TEST_ASSERT_EQUAL_INT(1, host.soundRequests); // Stale data does not rearm.
+    FakeHost link; ELRSCrsfCore linkCore;
+    TEST_ASSERT_TRUE(linkCore.begin(link, config, 0));
+    link.queueFrame(makeFrame(0x14, {0,0,99,0,0,0,0,0,0,0}));
+    loopAt(linkCore, link, 100, 100000); loopAt(linkCore, link, 200, 200000);
+    TEST_ASSERT_EQUAL_INT(0, link.soundRequests);
+}
+
+static void test_time_travel_prop_speed_and_self_test_cancel()
+{
+    ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+    config.propControls = true; config.timeTravel = {1,16};
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    host.simulatedSpeed = 87; loopAt(core, host, 100, 100000);
+    host.simulatedSpeed = 88; loopAt(core, host, 200, 200000);
+    TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+    host.soundPending = false; host.soundPlaying = true;
+    loopAt(core, host, 210, 210000);
+    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+    core.startSelfTest(220); loopAt(core, host, 220, 220000);
+    TEST_ASSERT_FALSE(host.soundPlaying);
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
+}
+
+
+static void test_time_travel_rpm_scaled_speed_and_reserved_stop_channel()
+{
+    ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+    config.timeTravel = {1,5}; config.displayConfig = {ELRS_DISPLAY_RPM_SCALED_MPH,255,1,0};
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    host.queueFrame(makeFrame(0x0C, {0,0,0x27,0x10})); // 57.2 scaled mph.
+    loopAt(core,host,100,100000); loopAt(core,host,101,101000);
+    host.queueFrame(makeFrame(0x0C, {0,0,0x3E,0x80})); // 91.6 scaled mph: skip straight past 88.
+    loopAt(core,host,200,200000); loopAt(core,host,201,201000);
+    TEST_ASSERT_EQUAL_INT(1,host.soundRequests);
+    host.soundPending=false; host.soundPlaying=true;
+    loopAt(core,host,210,210000); TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(4));
+    core.startSelfTest(220); loopAt(core,host,220,220000);
+    TEST_ASSERT_FALSE(host.soundPlaying);
+    TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(4));
+}
+
+static void test_time_travel_startup_above_88_and_maintenance_do_not_trigger()
+{
+    ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+    config.timeTravel = {1,16}; config.displayConfig = {ELRS_DISPLAY_GPS_SPEED,1,2,0};
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    timeTravelSpeed(core,host,100,450); TEST_ASSERT_EQUAL_INT(0,host.soundRequests);
+    timeTravelSpeed(core,host,200,430); timeTravelSpeed(core,host,300,440);
+    TEST_ASSERT_EQUAL_INT(1,host.soundRequests);
+    host.soundPending=false; host.soundPlaying=true;
+    core.setDeviceConfigAccess(true,false); loopAt(core,host,310,310000);
+    TEST_ASSERT_FALSE(host.soundPlaying); TEST_ASSERT_EQUAL_UINT16(172,core.channelAt(15));
+    timeTravelSpeed(core,host,320,430); timeTravelSpeed(core,host,330,450);
+    TEST_ASSERT_EQUAL_INT(1,host.soundRequests);
+}
+
+static void test_time_travel_uses_rounded_segment_display_value()
+{
+    ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+    config.timeTravel = {1,16}; config.displayConfig = {ELRS_DISPLAY_GPS_SPEED,1,1,0.06f};
+    TEST_ASSERT_TRUE(core.begin(host, config, 0));
+    timeTravelSpeed(core,host,100,878); // 87.86 displays 87.9.
+    TEST_ASSERT_EQUAL_INT(0,host.soundRequests);
+    timeTravelSpeed(core,host,200,879); // 87.96 displays 88.0.
+    TEST_ASSERT_EQUAL_INT(1,host.soundRequests);
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -5991,6 +6132,13 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_time_travel_uses_rounded_segment_display_value);
+    RUN_TEST(test_time_travel_rpm_scaled_speed_and_reserved_stop_channel);
+    RUN_TEST(test_time_travel_startup_above_88_and_maintenance_do_not_trigger);
+    RUN_TEST(test_time_travel_lights_follow_sound_and_rearm_below_88);
+    RUN_TEST(test_time_travel_disabled_and_unsafe_channels_leave_outputs_alone);
+    RUN_TEST(test_time_travel_units_stale_and_non_speed_telemetry);
+    RUN_TEST(test_time_travel_prop_speed_and_self_test_cancel);
     RUN_TEST(test_logic_mix_core_chain_and_post_mix_limits);
     RUN_TEST(test_mix_core_stale_inputs_selftest_and_corrupt_config);
     RUN_TEST(test_mix_core_none_sources_calibration_and_prop_mode);

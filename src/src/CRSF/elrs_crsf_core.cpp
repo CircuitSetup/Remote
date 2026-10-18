@@ -6,6 +6,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace {
@@ -120,6 +121,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
 bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, unsigned long now, unsigned long nowUs)
 {
     _config = config;
+    _timeTravelArmed = _timeTravelActive = _timeTravelLights = false;
     if(!elrsIsValidLogicConfig(_config.logic) || !elrsIsValidMixConfig(_config.mixes)) {
         _config.logic = {};
         _config.mixes = {};
@@ -127,6 +129,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     if(!elrsIsValidDisplayConfig(_config.displayConfig)) _config.displayConfig = elrsDefaultDisplayConfig();
     if(!elrsIsValidVehicleConfig(_config.vehicleConfig)) _config.vehicleConfig = elrsDefaultVehicleConfig();
     elrsSanitizeInputRouting(_config.inputRouting, _config.switchRouting);
+    if(!elrsIsValidTimeTravelConfig(_config.timeTravel, _config.inputRouting, _config.mixes)) _config.timeTravel = {};
     for(uint8_t &action : _config.localActions) {
         if(action > 1) action = 0;
     }
@@ -314,6 +317,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
         updateCalibrationButton(host, now, battWarn);
     }
 
+    updateTimeTravel(host, now);
     updateChannels(now, fakePower, stopOn, buttonAOn, buttonBOn, packStates);
 #ifdef REMOTE_DBG
     static unsigned long lastMapLogAt = 0;
@@ -963,12 +967,49 @@ const char *ELRSCrsfCore::getCalibrationPrompt() const
     }
 }
 
+void ELRSCrsfCore::updateTimeTravel(ELRSCrsfHost &host, unsigned long now)
+{
+    _timeTravelLights = false;
+    if(!_config.timeTravel.enabled || _selfTestActive || isCalibrating() || _configMaintenance || _radioReviewPending) {
+        if(_timeTravelActive) host.requestTimeTravelSound(false);
+        _timeTravelArmed = _timeTravelActive = false;
+        return;
+    }
+    if(_timeTravelActive) {
+        _timeTravelLights = host.timeTravelSoundPlaying();
+        if(host.timeTravelSoundPending() || _timeTravelLights) return;
+        _timeTravelActive = false;
+    }
+    const ELRSDisplayConfig display = elrsEffectiveDisplayConfig(_config.displayConfig, _config.propControls);
+    float speed;
+    if(display.source == ELRS_DISPLAY_NONE && _config.propControls) {
+        speed = host.propSpeed();
+    } else {
+        const ELRSTelemetrySample sample = telemetrySample(display.source, now);
+        if(!sample.available) return;
+        if(sample.source != ELRS_DISPLAY_GPS_SPEED && sample.source != ELRS_DISPLAY_AIRSPEED &&
+           sample.source != ELRS_DISPLAY_RPM_ACTUAL_MPH && sample.source != ELRS_DISPLAY_RPM_SCALED_MPH) return;
+        char text[8], *end;
+        elrsFormatTelemetry(display, sample, _config.speedDisplayUnits, text);
+        speed = strtol(text, &end, 10);
+        if(end == text) return;
+    }
+    if(!std::isfinite(speed)) return;
+    if(speed < 88.0f) _timeTravelArmed = true;
+    else if(_timeTravelArmed) {
+        _timeTravelArmed = false;
+        _timeTravelActive = true;
+        host.requestTimeTravelSound(true);
+    }
+}
+
 void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stopOn, bool buttonAOn, bool buttonBOn, uint8_t packStates)
 {
     resetChannels(CRSF_CHANNEL_MIN);
     if(_selfTestActive) {
         writeGimbalChannels(true);
         writeFixedChannelIfUnclaimed(_config.switchRouting.channels[0], CRSF_CHANNEL_MAX);
+        if(_config.timeTravel.enabled) _channels[_config.timeTravel.channel - 1] = CRSF_CHANNEL_MIN;
         clampLockedThrottleOutputs();
         return;
     }
@@ -989,6 +1030,9 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     }
     applyMixes(now, (uint16_t)(stopOn | (fakePowerOn << 1) | (buttonAOn << 2) |
                                (buttonBOn << 3) | ((uint16_t)packStates << 4)));
+    if(_config.timeTravel.enabled) {
+        _channels[_config.timeTravel.channel - 1] = _timeTravelLights ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN;
+    }
     clampLockedThrottleOutputs();
 }
 

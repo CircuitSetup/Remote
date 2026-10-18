@@ -180,6 +180,10 @@ bool saveELRSCalibration(const ELRSAxisCalibrationData *cal, int count) {
 }
 int localScans = 0;
 void queueCRSFLocalSwitches(uint16_t, uint16_t) { localScans++; }
+void queueCRSFTimeTravelSound(bool) {}
+bool crsfTimeTravelSoundPending() { return false; }
+bool crsfTimeTravelSoundPlaying() { return false; }
+float crsfPropSpeed() { return 0; }
 ELRSInputAxisProfile profiles[4];
 static void resetFixture(uint32_t ms = 0, uint32_t us = 0) {
     testClockUs = 0; testMillisOrigin = ms; testMicrosOrigin = us; maxDelayUs = 0;

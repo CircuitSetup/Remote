@@ -95,6 +95,10 @@ ELRSMixConfig elrsDefaultMixConfig();
 bool elrsIsValidMixConfig(const ELRSMixConfig &config);
 bool elrsIsValidModelReferences(const ELRSLogicConfig &logic, const ELRSMixConfig &mixes);
 
+struct ELRSTimeTravelConfig { uint8_t enabled, channel; };
+bool elrsIsValidTimeTravelConfig(const ELRSTimeTravelConfig &config,
+    const ELRSGimbalRouting &gimbals, const ELRSMixConfig &mixes);
+
 struct [[gnu::packed]] ELRSCrsfSettingsBlob {
     ELRSInputAxisProfile axisProfile[ELRS_GIMBAL_AXIS_COUNT];
     ELRSGimbalRouting gimbalRouting;
@@ -107,6 +111,7 @@ struct [[gnu::packed]] ELRSCrsfSettingsBlob {
     uint8_t logicVersion;
     ELRSLogicConfig logic;
     ELRSMixConfig mixes;
+    ELRSTimeTravelConfig timeTravel;
 };
 ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInputs &inputs,
     const ELRSLogicResult &logic, const int16_t baseChannelsUs[16], uint16_t baseClaimedChannels);

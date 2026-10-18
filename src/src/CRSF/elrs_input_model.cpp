@@ -471,4 +471,16 @@ ELRSMixResult elrsEvaluateMixes(const ELRSMixConfig &config, const ELRSLogicInpu
     return result;
 }
 
+bool elrsIsValidTimeTravelConfig(const ELRSTimeTravelConfig &config,
+    const ELRSGimbalRouting &gimbals, const ELRSMixConfig &mixes)
+{
+    if(config.enabled > 1 || config.channel > 16) return false;
+    if(!config.enabled) return true;
+    if(!config.channel || config.channel == gimbals.aileronChannel ||
+       config.channel == gimbals.elevatorChannel || config.channel == gimbals.throttleChannel ||
+       config.channel == gimbals.rudderChannel) return false;
+    for(const auto &line : mixes.lines) if(line.channel == config.channel) return false;
+    return true;
+}
+
 #endif // HAVE_CRSF
