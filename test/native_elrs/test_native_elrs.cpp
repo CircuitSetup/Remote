@@ -6005,7 +6005,6 @@ static void test_time_travel_lights_follow_sound_and_rearm_below_88()
     ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
     config.timeTravel = {1,16}; config.displayConfig.source = ELRS_DISPLAY_GPS_SPEED;
     TEST_ASSERT_TRUE(core.begin(host, config, 0));
-    host.packStates = 128;
     timeTravelSpeed(core, host, 100, 879);
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
     TEST_ASSERT_EQUAL_INT(0, host.soundRequests);
@@ -6030,6 +6029,37 @@ static void test_time_travel_lights_follow_sound_and_rearm_below_88()
     host.soundPending = false; // Missing file / failed start.
     loopAt(core, host, 280, 280000);
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
+}
+
+static void test_time_travel_preserves_each_manual_switch_before_and_after_sound()
+{
+    for(int input = 0; input < ELRS_SWITCH_INPUT_COUNT; ++input) {
+        ELRSCrsfCore core; FakeHost host; auto config = defaultConfig();
+        config.timeTravel = {1,16}; config.displayConfig.source = ELRS_DISPLAY_GPS_SPEED;
+        config.switchRouting = {};
+        config.switchRouting.channels[input] = 16;
+        TEST_ASSERT_TRUE(core.begin(host, config, 0));
+        host.stop = input == 0; host.fakePower = input == 1;
+        host.buttonA = input == 2; host.buttonB = input == 3;
+        host.packStates = input >= 4 ? 1 << (input - 4) : 0;
+        timeTravelSpeed(core, host, 100, 870);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+        TEST_ASSERT_EQUAL_INT(0, host.soundRequests);
+        timeTravelSpeed(core, host, 200, 880);
+        TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+        host.soundPending = false; host.soundPlaying = true;
+        loopAt(core, host, 220, 220000);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+        host.soundPlaying = false;
+        loopAt(core, host, 240, 240000);
+        TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(15));
+        TEST_ASSERT_EQUAL_INT(1, host.soundRequests);
+        host.stop = host.fakePower = host.buttonA = host.buttonB = false;
+        host.packStates = 0;
+        loopAt(core, host, 260, 260000);
+        TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(15));
+    }
 }
 
 static void test_time_travel_disabled_and_unsafe_channels_leave_outputs_alone()
@@ -6132,6 +6162,7 @@ int main(int argc, char **argv)
     (void)argv;
 
     UNITY_BEGIN();
+    RUN_TEST(test_time_travel_preserves_each_manual_switch_before_and_after_sound);
     RUN_TEST(test_time_travel_uses_rounded_segment_display_value);
     RUN_TEST(test_time_travel_rpm_scaled_speed_and_reserved_stop_channel);
     RUN_TEST(test_time_travel_startup_above_88_and_maintenance_do_not_trigger);

@@ -1030,8 +1030,8 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     }
     applyMixes(now, (uint16_t)(stopOn | (fakePowerOn << 1) | (buttonAOn << 2) |
                                (buttonBOn << 3) | ((uint16_t)packStates << 4)));
-    if(_config.timeTravel.enabled) {
-        _channels[_config.timeTravel.channel - 1] = _timeTravelLights ? CRSF_CHANNEL_MAX : CRSF_CHANNEL_MIN;
+    if(_config.timeTravel.enabled && _timeTravelLights) {
+        _channels[_config.timeTravel.channel - 1] = CRSF_CHANNEL_MAX;
     }
     clampLockedThrottleOutputs();
 }

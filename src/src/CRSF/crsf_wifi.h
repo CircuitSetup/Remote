@@ -1056,7 +1056,7 @@ static const char *wmBuildCRSFDisplay(const char *dest, int op)
         snprintf(buf, sizeof(buf), "<option value='%u'%s>CH%u</option>", channel, channel == crsfTimeTravelConfig.channel ? " selected" : "", channel);
         html += buf;
     }
-    html += "</select><p><small>Lights follow timetravel.mp3 at displayed speed 88. Rearms below 88. Takes over this switch channel.</small></p></fieldset>";
+    html += "</select><p><small>Lights follow timetravel.mp3 at displayed speed 88. Rearms below 88. Keeps manual switches on.</small></p></fieldset>";
     html += crsfDisplayScript;
     if(op == WM_CP_LEN) {
         wmLenBuf = html.length() + 1;
