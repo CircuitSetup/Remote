@@ -1,6 +1,6 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://github.com/CircuitSetup/Remote) holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a connected speedo. Of course, the Remote can also be used stand-alone.
+This [repository](https://remote.out-a-ti.me) _really_ holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a speedo connected to it. Of course, the Remote can also be used stand-alone.
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
@@ -33,15 +33,12 @@ Firmware features:
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the _O.O_/_RESET_ buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local)
-- Optional [ELRS/CRSF operation](#elrscrsf-settings), with gimbal/switch routing, calibration, curves, travel limits, logical switches, mixes, and telemetry display
-- Live ELRS transmitter/receiver controls, verified profile selection, and receiver assignment on the ELRS/CRSF page
-- CRSF settings backup/restore, portable model files, and desktop conversion of supported transmitter model exports
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
-- Built-in OTA installer for firmware updates and audio files
+- Built-in OTA installer for firmware updates and custom audio files
 - &#128007; &#129370;
 
->This CircuitSetup version includes optional [ELRS/CRSF support](#elrscrsf-settings) alongside the movie-prop functions. ELRS/CRSF requires a compatible control board and a firmware build with CRSF support enabled. The original movie-prop firmware is available from [upstream](https://remote.out-a-ti.me).
+>The firmware in [this repository](https://remote.out-a-ti.me) is the upstream source of all forks, but is a __pure movie-prop firmware__ and does not support ExpressLRS/CRSF. For ELRS/CRSF support, please see CircuitSetup's fork.
 
 For information on updating the firmware of your Remote, see [here](#firmware-installation--firmware-update).
 
@@ -694,10 +691,6 @@ This leads to the [WiFi configuration page](#wifi-configuration)
 
 This leads to the [Settings page](#settings).
 
-##### &#9193; ELRS/CRSF Settings
-
-This leads to the [ELRS/CRSF Settings page](#elrscrsf-settings), including live radio controls and CRSF settings files. It is available on compatible hardware with a CRSF-enabled build.
-
 ##### &#9193; HA/MQTT Settings
 
 This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
@@ -963,7 +956,7 @@ The battery CircuitSetup supplies as part of their kit is a dual-cell 5000mAh Li
 
 ### ELRS/CRSF Settings
 
-This page is available on compatible control boards when the firmware is built with ELRS/CRSF support. Local input/model settings, live radio controls, and file backup/import are on the same page, using the existing Config Portal layout.
+In CircuitSetup's fork, this page is available on compatible control boards when the firmware is built with ELRS/CRSF support. Local input/model settings, live radio controls, and file backup/import are on the same page, using the existing Config Portal layout.
 
 The four gimbals are calibrated and shaped before CRSF transmission: low is `1000`, center is `1500`, and high is `2000` in RC-equivalent microseconds before conversion to CRSF wire ticks. The portal shows filtered ADC readings and lets you capture low, center, and high calibration points. Gimbals and switches can each use CH1-CH16 or None; the available receiver channels depend on the module's RF mode.
 
@@ -982,9 +975,9 @@ To use the gimbal as a prop speed control with optional radio output, choose **P
 Prop throttle calibration and CRSF gimbal calibration serve different purposes. Use the normal [Calibration button procedure](#calibration) to set prop throttle neutral and endpoints, and the portal's **Gimbal Calibration** captures, reversal, curves, and travel limits for the transmitted radio channel. Calibrating one does not replace the other. Select the switch/gimbal channels as usual, ensure they are unique, and configure the module RF packet rate/mode through its live device menu. Save and restart to apply mode and mapping changes.
 
 
-##### Logical Switches and Mixes
+##### &#9193; Logical Switches and Mixes
 
-The ELRS page provides 16 logical switches (L01-L16) and 16 additional mix lines, using an EdgeTX-style setup. Use **Add logical switch** or **Add mix** to create rows as needed, up to 16 of each. Only populated rows are listed. Select **Edit** to change a row. Changes apply after saving and restarting. Existing eight-row settings retain their sources and order; the new rows start disabled.
+The ELRS page provides 16 logical switches (L01-L16) and 16 additional mix lines, using an EdgeTX-style setup. Use **Add logical switch** or **Add mix** to create rows as needed, up to 16 of each. Only populated rows are listed. Select **Edit** to change a row. Changes apply after saving and restarting.
 
 Logical switches support `a>x`, `a<x`, AND, OR, XOR, and an optional **AND switch**. Comparisons use the calibrated, reversed, expo-shaped gimbal value: -100% is 1000, 0% is 1500, and +100% is 2000. Boolean sources include the physical switches and earlier logical switches. `!` means Not. **Delete** removes an unused logical switch; change references in other logical switches and mixes before deleting a switch they use. Source and gate lists offer only populated logical switches. Existing unavailable references remain intact and must be corrected before applying an edited row. Logical IDs stay fixed when rows are added or deleted. Timers and latches are not included in this version.
 
@@ -992,7 +985,7 @@ In **Mixes**, existing channel mappings provide the base assignments. Additional
 
 For example, configure L01 as `a<x`, V1=Throttle, V2=-90%; L02 as AND, V1=ButtonPack 1, V2=L01; and an additional CH9 mix with Source=L02, Weight=100%, Offset=0%, Switch=---, Replace. CH9 goes high only when the button is on and throttle is below the threshold. A second mix can reuse the same logical condition.
 
-Gimbal output limits apply after mixing. Missing/stale inputs remain unavailable even when inverted; affected gimbal channels use neutral and other affected channels use low. Calibration and self-test suppress additional mixes. With no additional mixes, existing channel behavior is retained. Older settings load with both sections disabled, and saving calibration preserves the new configuration. ELRS RF mode still determines which channels reach the receiver.
+Gimbal output limits apply after mixing. Missing/stale inputs remain unavailable even when inverted; affected gimbal channels use neutral and other affected channels use low. Calibration and self-test suppress additional mixes. With no additional mixes, existing channel behavior is retained. Saving calibration preserves the logical switches and mixes. ELRS RF mode still determines which channels reach the receiver.
 
 ##### &#9193; Connect to WiFi in ELRS/CRSF mode
 
@@ -1037,7 +1030,7 @@ Choose **CH1** through **CH16**, or **None**, for each gimbal and switch. Assign
 
 ##### &#9193; Switch Local Actions
 
-In **ELRS/CRSF** mode, check **Also trigger Settings action** beside a switch channel to also run that switch's existing behavior from the Settings page. In **Prop controls + ELRS/CRSF**, all normal prop controls are already active regardless of these checkboxes. This reuses the Stop, FakePower, O.O/RESET, and User Buttons behavior, including the configured momentary/maintained switch handling, short/long presses, and maintained-switch audio options. CRSF channel output continues independently. A checked switch also runs its local Settings action when its channel is **None**. In **Prop controls + ELRS/CRSF**, all prop functions remain active even for inputs assigned **None**. All checkboxes default to unchecked, including after loading older settings. Save the ELRS/CRSF page and restart to apply changes.
+In **ELRS/CRSF** mode, check **Also trigger Settings action** beside a switch channel to also run that switch's existing behavior from the Settings page. In **Prop controls + ELRS/CRSF**, all normal prop controls are already active regardless of these checkboxes. This reuses the Stop, FakePower, O.O/RESET, and User Buttons behavior, including the configured momentary/maintained switch handling, short/long presses, and maintained-switch audio options. CRSF channel output continues independently. A checked switch also runs its local Settings action when its channel is **None**. In **Prop controls + ELRS/CRSF**, all prop functions remain active even for inputs assigned **None**. All checkboxes default to unchecked. Save the ELRS/CRSF page and restart to apply changes.
 
 In telemetry mode, the **FakePower** checkbox enables TCD power/speed control, including O.O/RESET's configured TCD power-master actions. TCD braking also requires the **Stop** checkbox. With FakePower unchecked, BTTFN uses state-free keepalives; enabled O.O Time Travel and User Button refill requests still work independently. The physical FakePower position still selects the on/off behavior of enabled O.O/RESET and User Button actions.
 
@@ -1049,7 +1042,7 @@ Reverses the selected gimbal inside the ELRS/CRSF input model before the CRSF fr
 
 Each gimbal has a **Lower limit** (`1000` through `1500`) and an **Upper limit** (`1500` through `2000`), in the existing RC-equivalent microsecond convention. Center stays at `1500`. Defaults of `1000`/`2000` preserve full travel. The firmware scales each half of the stick movement to the selected limits, then clamps the output before conversion to CRSF ticks; `1200`/`1800`, for example, maps the full stick range to `1200`/`1500`/`1800`. Both limits at `1500` hold the axis at neutral.
 
-Limits follow the physical input when channels are remapped. Reversal changes which stick direction reaches the lower or upper output; the numeric limits stay the same. ADC calibration and live readings remain separate. Fault and self-test outputs stay at neutral, including throttle. Save the page to apply changes after restart. Older settings receive the full-travel defaults, and saving calibration preserves the selected limits. Check receiver travel with the actual servo/linkage to choose safe endpoints.
+Limits follow the physical input when channels are remapped. Reversal changes which stick direction reaches the lower or upper output; the numeric limits stay the same. ADC calibration and live readings remain separate. Fault and self-test outputs stay at neutral, including throttle. Save the page to apply changes after restart. Saving calibration preserves the selected limits. Check receiver travel with the actual servo/linkage to choose safe endpoints.
 
 ##### &#9193; ELRS/CRSF Gimbal Calibration
 
@@ -1091,11 +1084,13 @@ The page offers three related file workflows:
 | `remote.remote-model.json` | Transfer a portable model to another Remote, or import a converted transmitter model | Keeps the destination's ADC calibration and filtering; radio preferences require separate review |
 | `*.remote-radio.json` | Capture external transmitter/receiver menu settings with the desktop helper | Requires a separate live preview and verified device writes |
 
+Only the current complete CRSF settings format is loaded; older calibration-only and partial settings files are not migrated. Reconfigure and calibrate CRSF after replacing an older format.
+
 CRSF backup/model files cover CRSF/ELRS settings. WiFi credentials, hostname, MQTT, audio, and other prop settings stay on the destination. External TX/RX configuration is handled by the separate radio snapshot workflow below.
 
 To restore or import a native file:
 
-1. Choose the JSON file and its **File type**: Portable model or CRSF settings backup. Each native file is limited to 16 KiB.
+1. For a portable model, first enable **ELRS/CRSF** or **Prop controls + ELRS/CRSF** and restart. A settings backup must also have a CRSF-enabled operation mode; activation rejects files that would leave Legacy mode selected. Choose the JSON file and its **File type**: Portable model or CRSF settings backup. Each native file is limited to 16 KiB.
 2. Click **Validate and preview file** and review the proposed model and calibration changes.
 3. Enter maintenance, refresh the required radio status, then confirm **Activate and restart**.
 4. After reboot, discover/read the radio and verify the imported profile and radio preferences. The review action refreshes the transmitter preferences. Complete **Finish radio review** before normal preference application resumes.
@@ -1183,7 +1178,6 @@ The MQTT topic for on/off messages. Nothing is published/sent if the topic is em
 The MQTT message to publish to the button's topic when a button is pressed/released (or in case of a maintained switch: when the switch is put in "on"/"off" position). If a field is empty, nothing is published/sent.
 
 ---
-
 
 ## Appendix B: Display messages
 

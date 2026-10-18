@@ -10,7 +10,7 @@ enum class ELRSDeviceError : uint8_t {
     None, Busy, Stale, Malformed, TooLarge, Unsupported, Timeout, Unsafe, Rejected, NotConnected
 };
 struct ELRSConfigSafety {
-    bool maintenance = false, legacyPreferenceApply = false, radioReviewPending = false;
+    bool maintenance = false, automaticPreferenceApply = false, radioReviewPending = false;
     bool fakePower = false, calibrating = false, selfTest = false, storageBusy = false;
     bool rfConnectionKnown = false, rfConnected = false, armedKnown = false, armed = false;
     bool modelMatched = false;

@@ -71,42 +71,26 @@ extern uint32_t calcHash(uint8_t *buf, int len);
 extern void     wifiOnFakePowerOn(bool showWait);
 
 // CRSF settings
-// Stored as a raw blob in /crsfcfg. Keep compatibility in mind when changing
-// this layout because older builds may have written legacy calibration-only data.
-
-static_assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68, "Preserve the legacy CRSF settings prefix");
-static_assert(offsetof(ELRSCrsfSettingsBlob, localActions) == 84, "Preserve travel limits before local actions");
-static_assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96, "Preserve the existing CRSF settings prefix");
-static_assert(offsetof(ELRSCrsfSettingsBlob, vehicleConfig) == 106, "Preserve the complete display settings tail");
-static_assert(offsetof(ELRSVehicleConfig, rpmType) == 13, "Preserve existing vehicle settings");
-static_assert(offsetof(ELRSCrsfSettingsBlob, logicVersion) == 120, "Preserve the existing prefix");
-static_assert(offsetof(ELRSCrsfSettingsBlob, logic) == 121 && offsetof(ELRSCrsfSettingsBlob, mixes) == 201, "Compact logic/mix tail");
-static_assert(sizeof(ELRSCrsfSettingsBlob) == 297, "Complete versioned logic/mix storage");
+// Stored as one complete model and portal-preferences record in /crsfcfg.
 
 ELRSRadioPreferences remoteRadioPreferences;
-bool remoteRadioVersioned=false,crsfSettingsSaving=false,crsfSettingsRecoveryBlocked=false;
+bool crsfSettingsSaving=false,crsfSettingsRecoveryBlocked=false;
 static ELRSPortalPreferences crsfPortalPreferences;
 struct ELRSStoredSettings {ELRSCrsfSettingsBlob model;ELRSPortalPreferences portal;};
-static_assert(offsetof(ELRSStoredSettings,portal)==297,"Keep the shipped CRSF model prefix");
-static_assert(sizeof(ELRSStoredSettings)==297+sizeof(ELRSPortalPreferences),"No padding in CRSF settings storage");
+static_assert(sizeof(ELRSStoredSettings)==sizeof(ELRSCrsfSettingsBlob)+sizeof(ELRSPortalPreferences),"No padding in CRSF settings storage");
 static bool validPortalPreferences(const ELRSPortalPreferences &p) {
     return p.version==1 && p.opMode<=2 && p.connectWiFi<=1 && p.cadence<=4 && p.speedUnits<=1 && p.radioReview<=1 && elrsIsValidRadioPreferences(p.radio);
 }
 ELRSPortalPreferences snapshotELRSPortalPreferences() {
     ELRSPortalPreferences p;p.version=1;p.opMode=atoi(settings.opMode);p.connectWiFi=settings.crsfap[0]!='0';
     p.cadence=atoi(settings.elrsPktRate);p.speedUnits=atoi(settings.elrsSpdUnit);p.radioReview=crsfPortalPreferences.radioReview;
-    p.radio=remoteRadioVersioned?remoteRadioPreferences:elrsRadioPreferencesFromLegacy(atoi(settings.elrsTlmRatio),atoi(settings.elrsMaxPower),atoi(settings.elrsDynPower));
-    p.radio.modelId=remoteRadioPreferences.modelId;return p;
+    p.radio=remoteRadioPreferences;return p;
 }
 static void installPortalPreferences(const ELRSPortalPreferences &p) {
-    crsfPortalPreferences=p;remoteRadioPreferences=p.radio;remoteRadioVersioned=true;
+    crsfPortalPreferences=p;remoteRadioPreferences=p.radio;
     settings.opMode[0]='0'+p.opMode;settings.opMode[1]=0;settings.crsfap[0]=p.connectWiFi?'1':'0';settings.crsfap[1]=0;
     settings.elrsPktRate[0]='0'+p.cadence;settings.elrsPktRate[1]=0;settings.elrsSpdUnit[0]='0'+p.speedUnits;settings.elrsSpdUnit[1]=0;
 }
-
-struct [[gnu::packed]] ELRSCrsfLegacySettingsBlob {
-    ELRSAxisCalibrationData elrsAxis[ELRS_GIMBAL_AXIS_COUNT];
-};
 
 static ELRSCrsfSettingsBlob defaultCrsfSettings()
 {
@@ -137,17 +121,6 @@ static ELRSAxisCalibrationData profileToCalibration(const ELRSInputAxisProfile &
     calibration.maximum = profile.maximum;
 
     return calibration;
-}
-
-static ELRSInputAxisProfile calibrationToProfile(const ELRSAxisCalibrationData &calibration)
-{
-    ELRSInputAxisProfile profile = elrsDefaultInputAxisProfile();
-
-    profile.minimum = calibration.minimum;
-    profile.center = calibration.center;
-    profile.maximum = calibration.maximum;
-
-    return profile;
 }
 
 static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
@@ -190,14 +163,14 @@ static const char *crsfCfgName  = "/crsfcfg";
 static const char *crsfTmpName  = "/crsfcfg.tmp";
 static const char *crsfBackupName = "/crsfcfg.bak";
 
-static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes, size_t capacity=sizeof(ELRSCrsfSettingsBlob))
+static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes)
 {
     validBytes = 0;
     File file = storage.open(path, FILE_READ);
     if(!file) return false;
     const size_t size = file.size();
     // Existing binary framing: uint16_t payload length, payload, checksum.
-    uint8_t *data = size >= 3 && size <= sizeof(ELRSStoredSettings)+3 ? (uint8_t *)malloc(size) : NULL;
+    uint8_t *data = size == sizeof(ELRSStoredSettings)+3 ? (uint8_t *)malloc(size) : NULL;
     bool ret = data && file.read(data, size) == size;
     file.close();
     if(ret) {
@@ -209,7 +182,7 @@ static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf
         ret = payloadBytes == size - 3 && data[size - 1] == (uint8_t)~checksum;
         if(ret) {
             validBytes = payloadBytes;
-            if(buf) memcpy(buf, data + 2, min((int)capacity, validBytes));
+            if(buf) memcpy(buf, data + 2, validBytes);
         }
     }
     if(data) free(data);
@@ -223,8 +196,8 @@ static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)
     for(int medium = 0; medium < 2; medium++) {
         if(medium ? !haveFS : !fromSD) continue;
         fs::FS &storage = medium ? static_cast<fs::FS &>(LittleFS) : static_cast<fs::FS &>(SD);
-        if(crsfReadSettingsFile(storage, crsfCfgName, buf, validBytes, sizeof(ELRSStoredSettings)) ||
-           crsfReadSettingsFile(storage, crsfBackupName, buf, validBytes, sizeof(ELRSStoredSettings))) return true;
+        if(crsfReadSettingsFile(storage, crsfCfgName, buf, validBytes) ||
+           crsfReadSettingsFile(storage, crsfBackupName, buf, validBytes)) return true;
     }
     return false;
 }
@@ -249,7 +222,7 @@ static bool crsfSaveStoredSettings(uint8_t *buf, int len, bool requireSafe=false
     uint8_t verified[sizeof(ELRSStoredSettings)];
     int validBytes;
     ret = ret && len >= 0 && len <= (int)sizeof(verified) &&
-          crsfReadSettingsFile(storage, temporary, verified, validBytes, sizeof(verified)) &&
+          crsfReadSettingsFile(storage, temporary, verified, validBytes) &&
           validBytes == len && !memcmp(verified, buf, len);
     if(ret && requireSafe) {RemoteTransferError e;ret=remoteFileActivationSafe(e);}
     if(ret) {
@@ -292,30 +265,6 @@ static const uint8_t speedUnits[2] = {
     ELRS_SPEED_UNITS_MPH
 };
 
-static const uint8_t telemetryRatios[7] = {
-    ELRS_TLM_RATIO_STD,
-    ELRS_TLM_RATIO_1_2,
-    ELRS_TLM_RATIO_1_4,
-    ELRS_TLM_RATIO_1_8,
-    ELRS_TLM_RATIO_1_16,
-    ELRS_TLM_RATIO_1_32,
-    ELRS_TLM_RATIO_OFF
-};
-
-static const uint8_t maxPowers[6] = {
-    ELRS_MAX_POWER_10MW,
-    ELRS_MAX_POWER_25MW,
-    ELRS_MAX_POWER_100MW,
-    ELRS_MAX_POWER_250MW,
-    ELRS_MAX_POWER_500MW,
-    ELRS_MAX_POWER_1000MW
-};
-
-static const uint8_t dynamicPowers[2] = {
-    ELRS_DYNAMIC_POWER_OFF,
-    ELRS_DYNAMIC_POWER_DYNAMIC
-};
-
 uint16_t crsf_getPacketRate(int idx)
 {
     if(idx < 0 || idx > 4) idx = 3;
@@ -328,83 +277,23 @@ uint8_t crsf_getSpeedUnits(int idx)
     return speedUnits[idx];
 }
 
-uint8_t crsf_getTelemetryRatio(int idx)
-{
-    if(idx < 0 || idx > 6) idx = 0;
-    return telemetryRatios[idx];
-}
-
-uint8_t crsf_getMaxPower(int idx)
-{
-    if(idx < 0 || idx > 5) idx = 3;
-    return maxPowers[idx];
-}
-
-uint8_t crsf_getDynamicPower(int idx)
-{
-    if(idx < 0 || idx > 1) idx = 0;
-    return dynamicPowers[idx];
-}
-
 void crsf_load_settings()
 {
     uint8_t rawSettings[sizeof(ELRSStoredSettings)] = { 0 };
-    crsfSettingsRecoveryBlocked=false;remoteRadioVersioned=false;
-    crsfPortalPreferences=snapshotELRSPortalPreferences();remoteRadioPreferences=crsfPortalPreferences.radio;
-
+    crsfSettingsRecoveryBlocked=false;
+    installPortalPreferences(ELRSPortalPreferences{});
     crsfSettings = defaultCrsfSettings();
-    if(crsfLoadStoredSettings(rawSettings, crsfSetValidBytes)) {
-        if(crsfSetValidBytes>(int)sizeof(ELRSCrsfSettingsBlob) && crsfSetValidBytes!=(int)sizeof(ELRSStoredSettings)){crsfSettingsRecoveryBlocked=true;return;}
-        if(crsfSetValidBytes <= (int)sizeof(ELRSCrsfLegacySettingsBlob)) {
-            ELRSCrsfLegacySettingsBlob legacySettings = {};
-            int legacyAxisCount;
-
-            memcpy(&legacySettings, rawSettings, min(crsfSetValidBytes, (int)sizeof(legacySettings)));
-            legacyAxisCount = clampProfileCount(crsfSetValidBytes / (int)sizeof(ELRSAxisCalibrationData));
-            for(int i = 0; i < legacyAxisCount; i++) {
-                crsfSettings.axisProfile[i] = calibrationToProfile(legacySettings.elrsAxis[i]);
-            }
-        } else {
-            int bytes = min(crsfSetValidBytes, (int)sizeof(crsfSettings));
-            const int logicOffset = offsetof(ELRSCrsfSettingsBlob, logicVersion);
-            const bool oldLogicTail = bytes == 209 && rawSettings[logicOffset] == 1;
-            // An incomplete extension cannot enable any portion of logic or mixing.
-            if(bytes > logicOffset && bytes < (int)sizeof(crsfSettings)) bytes = logicOffset;
-            const int toleranceOffset = offsetof(ELRSCrsfSettingsBlob, adcHysteresis);
-            const int switchOffset = offsetof(ELRSCrsfSettingsBlob, switchRouting);
-            const int limitsOffset = offsetof(ELRSCrsfSettingsBlob, outputLimits);
-            const int localOffset = offsetof(ELRSCrsfSettingsBlob, localActions);
-            const int displayOffset = offsetof(ELRSCrsfSettingsBlob, displayConfig);
-            const int vehicleOffset = offsetof(ELRSCrsfSettingsBlob, vehicleConfig);
-            if(bytes > vehicleOffset && bytes < vehicleOffset + (int)offsetof(ELRSVehicleConfig, rpmType)) bytes = vehicleOffset;
-            if(bytes > displayOffset && bytes < vehicleOffset) bytes = displayOffset;
-            // A partial permutation cannot safely replace the complete default map.
-            if(bytes > switchOffset && bytes < limitsOffset) bytes = switchOffset;
-            // A partial endpoint pair retains both default bounds for that axis.
-            if(bytes > limitsOffset && bytes < localOffset) bytes = limitsOffset + ((bytes - limitsOffset) / (int)sizeof(ELRSOutputLimits)) * sizeof(ELRSOutputLimits);
-            // Optional tolerances use defaults until a complete uint16_t is present.
-            if(bytes > toleranceOffset && bytes < switchOffset) bytes = toleranceOffset + ((bytes - toleranceOffset) / 2) * 2;
-            memcpy(&crsfSettings, rawSettings, bytes);
-            if(oldLogicTail) {
-                // Version 1 stores eight rules at 121 and eight mixes at 161; IDs and order stay unchanged.
-                memcpy(crsfSettings.logic.rules, rawSettings + 121, 8 * sizeof(ELRSLogicRule));
-                memcpy(crsfSettings.mixes.lines, rawSettings + 161, 8 * sizeof(ELRSMixLine));
-                for(int i = 0; i < 8; i++) {
-                    const auto &line = crsfSettings.mixes.lines[i];
-                    if((line.source & 0x7f) > 25 || (line.switchSource & 0x7f) > 24) crsfSettings.logicVersion = 0;
-                }
-            }
-        }
-        sanitizeCrsfSettings(crsfSettings);
-        if(crsfSetValidBytes==(int)sizeof(ELRSStoredSettings)) {
-            ELRSPortalPreferences loaded;memcpy(&loaded,rawSettings+sizeof(crsfSettings),sizeof(loaded));
-            if(!validPortalPreferences(loaded)){crsfSettingsRecoveryBlocked=true;return;}
-            installPortalPreferences(loaded);
-        }
-        ELRSStoredSettings stored={crsfSettings,crsfPortalPreferences};
-        crsfSettingsHash = calcHash((uint8_t *)&stored, sizeof(stored));
-        haveCRSFSettings = true;
-    }
+    crsfSettingsHash = 0;
+    haveCRSFSettings = false;
+    if(!crsfLoadStoredSettings(rawSettings, crsfSetValidBytes) || crsfSetValidBytes!=(int)sizeof(ELRSStoredSettings))return;
+    ELRSStoredSettings loaded;memcpy(&loaded,rawSettings,sizeof(loaded));
+    if(!validPortalPreferences(loaded.portal) || loaded.model.logicVersion!=2){crsfSettingsRecoveryBlocked=true;return;}
+    crsfSettings=loaded.model;
+    sanitizeCrsfSettings(crsfSettings);
+    installPortalPreferences(loaded.portal);
+    ELRSStoredSettings stored={crsfSettings,crsfPortalPreferences};
+    crsfSettingsHash = calcHash((uint8_t *)&stored, sizeof(stored));
+    haveCRSFSettings = true;
 }
 
 ELRSCrsfSettingsBlob snapshotELRSSettings() { return crsfSettings; }
@@ -575,21 +464,10 @@ bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
     return elrsMode.readCurrentRawAxes(axes);
 }
 
-void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
-{
-    if(remoteRadioVersioned)return;
-    auto next=elrsRadioPreferencesFromLegacy(telemetryRatio,maxPower,dynamicPower);
-    next.modelId=remoteRadioPreferences.modelId;
-    remoteRadioPreferences=next;
-    elrsMode.setRadioPreferences(next,remoteRadioReviewPending());
-}
-
 bool crsf_begin(
             uint16_t packetRateHz,
             uint8_t speedDisplayUnits,
-            uint8_t telemetryRatio,
-            uint8_t maxPower,
-            uint8_t dynamicPower,
+            const ELRSRadioPreferences &radio,
             ButtonPack *buttonPack,
             bool haveButtonPack,
             remDisplay *remdisplay,
@@ -619,9 +497,7 @@ bool crsf_begin(
     bool started=elrsMode.begin(
             packetRateHz,
             speedDisplayUnits,
-            telemetryRatio,
-            maxPower,
-            dynamicPower,
+            radio,
             axisProfiles,
             inputRouting,
             buttonPack,
@@ -646,7 +522,7 @@ bool crsf_begin(
             &logic,
             &mixes
         );
-    if(started && remoteRadioVersioned) elrsMode.setRadioPreferences(remoteRadioPreferences,remoteRadioReviewPending());
+    if(started) elrsMode.setRadioPreferences(remoteRadioPreferences,remoteRadioReviewPending());
     if(started) elrsMode.setDeviceConfigAccess(false,remoteSettingsBusy(),remoteRadioReviewPending());
     return started;
 }

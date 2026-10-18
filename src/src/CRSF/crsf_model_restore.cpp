@@ -181,6 +181,7 @@ bool applyRemoteTransfer(const RemoteRestorePreview &preview,RemoteTransferError
     bool valid=captureRemoteSettings(before,e) && before.generation==preview.settingsGeneration && before.deviceGeneration==preview.deviceGeneration && before.capabilityFingerprint==preview.capabilityFingerprint && settingsHash(before,hash,e) && !strcmp(hash,preview.settingsHash) && fileHash(file,hash) && !strcmp(hash,preview.fileHash);
     if(!valid){file.close();return remoteTransferFail(e,RemoteTransferCode::StalePreview,"preview","File, CRSF settings or capabilities changed");}
     valid=decodeFile(file,preview.kind,before,candidate,e);file.close();if(!valid)return false;
+    if(candidate.settings.opMode[0]=='0')return remoteTransferFail(e,RemoteTransferCode::UnsupportedBehavior,"opMode","Imports must leave ELRS/CRSF enabled");
     ELRSPortalPreferences p=snapshotELRSPortalPreferences();p.radio=candidate.radio;p.opMode=atoi(candidate.settings.opMode);p.connectWiFi=candidate.settings.crsfap[0]!='0';p.cadence=atoi(candidate.settings.elrsPktRate);p.speedUnits=atoi(candidate.settings.elrsSpdUnit);p.radioReview=1;
     if(!saveELRSSettings(candidate.crsf,p,true))return remoteTransferFail(e,RemoteTransferCode::WriteFailed,"crsf","CRSF save stopped; check storage and fresh radio status");return true;
 }
@@ -188,7 +189,8 @@ bool remoteCompleteRadioReview(){
     if(!opModeCRSF || remoteSettingsBusy())return false;RemoteTransferError e;if(!remoteFileActivationSafe(e))return false;
     if(opModeCRSF){auto &c=elrsMode.deviceConfig();if(!c.modelIdKnown() || c.modelId()!=remoteRadioPreferences.modelId)return false;
         const char *labels[]={remoteRadioPreferences.maxPower.label,remoteRadioPreferences.telemetry,remoteRadioPreferences.dynamic};const char *units[]={remoteRadioPreferences.maxPower.unit,"",""};RemoteSettingsSnapshot s;remoteCaptureRfChoices(s);
-        for(unsigned i=0;i<3;i++){const auto &r=rfObservations[i+5];if(r.generation!=s.deviceGeneration || (uint32_t)(millis()-r.at)>1000 || strcmp(r.choice.label,labels[i]) || strcmp(r.choice.unit,units[i]))return false;}}
+        // ELRS telemetry units describe the current bandwidth, not the selected ratio.
+        for(unsigned i=0;i<3;i++){const auto &r=rfObservations[i+5];if(r.generation!=s.deviceGeneration || (uint32_t)(millis()-r.at)>1000 || strcmp(r.choice.label,labels[i]) || (i!=1 && strcmp(r.choice.unit,units[i])))return false;}}
     auto p=snapshotELRSPortalPreferences();p.radioReview=0;return saveELRSSettings(snapshotELRSSettings(),p);
 }
 #endif

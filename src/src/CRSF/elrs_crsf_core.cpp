@@ -135,9 +135,8 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _logHost = &host;
     _config.transport.packetRateHz = elrsPacketRateOrDefault(_config.transport.packetRateHz);
     _config.speedDisplayUnits = elrsSpeedUnitsOrDefault(_config.speedDisplayUnits);
-    _config.telemetryRatio = elrsTelemetryRatioOrDefault(_config.telemetryRatio);
-    _config.maxPower = elrsMaxPowerOrDefault(_config.maxPower);
-    _config.dynamicPower = elrsDynamicPowerOrDefault(_config.dynamicPower);
+    if(!elrsIsValidRadioPreferences(_config.radio)) return false;
+    _radioPreferences = _config.radio;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _axisProfiles[i] = elrsSanitizeInputAxisProfile(_config.axisProfiles[i]);
         _config.axisProfiles[i] = _axisProfiles[i];
@@ -225,10 +224,10 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     log(host, "ELRS/CRSF: full ELRS Lua/config menu unsupported");
     log(host, "ELRS/CRSF: TX=GPIO2 RX=GPIO34 OE=GPIO0");
     logf(host, "ELRS/CRSF: packet rate %uHz (module must match externally)", (unsigned)_config.transport.packetRateHz);
-    logf(host, "ELRS/CRSF: desired Telem Ratio=%s Max Power=%umW Dynamic=%s",
-         elrsTelemetryRatioLabel(_config.telemetryRatio),
-         (unsigned)elrsMaxPowerMilliwatts(_config.maxPower),
-         elrsDynamicPowerLabel(_config.dynamicPower));
+    logf(host, "ELRS/CRSF: desired Telem Ratio=%s Max Power=%s%s Dynamic=%s",
+         _radioPreferences.telemetry,
+         _radioPreferences.maxPower.label, _radioPreferences.maxPower.unit,
+         _radioPreferences.dynamic);
     logf(host,
          "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; all inputs configurable on CH1-CH16",
          (unsigned)_inputRouting.aileronChannel,
@@ -586,20 +585,10 @@ ELRSCrsfStatus ELRSCrsfCore::getStatus() const
     return status;
 }
 
-void ELRSCrsfCore::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower, unsigned long now)
-{
-    _haveRadioPreferences = false;
-    _config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
-    _config.maxPower = elrsMaxPowerOrDefault(maxPower);
-    _config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
-    startModuleConfigSession(now);
-}
-
 bool ELRSCrsfCore::setRadioPreferences(const ELRSRadioPreferences &preferences, uint32_t now, bool radioReviewPending, bool scheduleApply)
 {
     if(!elrsIsValidRadioPreferences(preferences)) return false;
     _radioPreferences = preferences;
-    _haveRadioPreferences = true;
     _radioReviewPending = radioReviewPending;
     if(scheduleApply) startModuleConfigSession(now); else pauseModuleConfigSession();
     return true;
@@ -1558,7 +1547,7 @@ bool ELRSCrsfCore::moduleSettingValueForTarget(uint8_t targetIndex, const char *
     if(!options || !value) {
         return false;
     }
-    if(_haveRadioPreferences && targetIndex == 1) {
+    if(targetIndex == 1) {
         const auto *view = _deviceConfig.parameter();
         return view && elrsMatchSelection(*view, _radioPreferences.maxPower, *value);
     }
@@ -1566,23 +1555,13 @@ bool ELRSCrsfCore::moduleSettingValueForTarget(uint8_t targetIndex, const char *
     for(uint8_t i = 0; readOptionAt(options, i, &optionStart, &optionLen); i++) {
         switch(targetIndex) {
         case 0:
-            if(optionEquals(optionStart, optionLen, _haveRadioPreferences ? _radioPreferences.telemetry : elrsTelemetryRatioLabel(_config.telemetryRatio))) {
+            if(optionEquals(optionStart, optionLen, _radioPreferences.telemetry)) {
                 *value = i;
                 return true;
             }
             break;
-        case 1: {
-            uint16_t moduleMilliwatts = 0;
-
-            if(parseOptionTerminalMilliwatts(optionStart, optionLen, moduleMilliwatts) &&
-               moduleMilliwatts == elrsMaxPowerMilliwatts(_config.maxPower)) {
-                *value = i;
-                return true;
-            }
-            break;
-        }
         case 2:
-            if(optionEquals(optionStart, optionLen, _haveRadioPreferences ? _radioPreferences.dynamic : elrsDynamicPowerLabel(_config.dynamicPower))) {
+            if(optionEquals(optionStart, optionLen, _radioPreferences.dynamic)) {
                 *value = i;
                 return true;
             }
@@ -1599,7 +1578,7 @@ bool ELRSCrsfCore::haveAllModuleTargets() const
 {
     return _moduleTelemetryRatio.found &&
            _moduleMaxPower.found &&
-           _moduleDynamicPower.found;
+           _moduleDynamicPower.found && _deviceConfig.modelIdKnown();
 }
 
 void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
@@ -1718,7 +1697,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         }
 
         const auto radio = _deviceConfig.radioStatus((uint32_t)now);
-        if(_haveRadioPreferences && (!_deviceConfig.modelIdKnown() || _radioPreferences.modelId != _deviceConfig.modelId())) return;
+        if(!_deviceConfig.modelIdKnown() || _radioPreferences.modelId != _deviceConfig.modelId()) return;
         if(!radio.armedKnown) { _deviceConfig.readRadioStatus(UINT32_MAX); return; }
         if(radio.armed || _fakePowerOn || isCalibrating() || _selfTestActive || _channels[4] > 992 || _settingsBusy || _radioReviewPending) return;
         if(queueParameterWrite(targetInfo->fieldId, desiredValue)) {
@@ -1750,7 +1729,7 @@ ELRSConfigSafety ELRSCrsfCore::configSafety(uint32_t now) const
 {
     ELRSConfigSafety safety = _deviceConfig.radioStatus(now);
     safety.maintenance = _configMaintenance;
-    safety.legacyPreferenceApply = _deviceConfig.status().id == UINT32_MAX && _moduleConfigState == MODULECFG_WAIT_WRITE;
+    safety.automaticPreferenceApply = _deviceConfig.status().id == UINT32_MAX && _moduleConfigState == MODULECFG_WAIT_WRITE;
     safety.radioReviewPending = _radioReviewPending;
     safety.fakePower = _fakePowerOn;
     safety.calibrating = isCalibrating();
@@ -1846,25 +1825,6 @@ size_t ELRSCrsfCore::copyToken(char *out, size_t outSize, const char *start, siz
 bool ELRSCrsfCore::optionEquals(const char *start, size_t len, const char *text)
 {
     return (text && strlen(text) == len && !strncmp(start, text, len));
-}
-
-bool ELRSCrsfCore::parseOptionTerminalMilliwatts(const char *start, size_t len, uint16_t &value)
-{
-    if(!start || !len) return false;
-    size_t i = 0;
-    while(i < len && start[i] == ' ') i++;
-    if(i == len || start[i] < '0' || start[i] > '9') return false;
-    uint32_t parsed = 0;
-    while(i < len && start[i] >= '0' && start[i] <= '9') {
-        parsed = parsed * 10 + start[i++] - '0';
-        if(parsed > 65535) return false;
-    }
-    while(i < len && start[i] == ' ') i++;
-    if(i + 2 <= len && start[i] == 'm' && start[i + 1] == 'W') i += 2;
-    while(i < len && start[i] == ' ') i++;
-    if(i != len) return false;
-    value = parsed;
-    return true;
 }
 
 bool ELRSCrsfCore::readOptionAt(const char *options, uint8_t index, const char **start, size_t *len)

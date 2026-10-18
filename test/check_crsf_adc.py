@@ -189,7 +189,7 @@ static void resetFixture(uint32_t ms = 0, uint32_t us = 0) {
     for(int i = 0; i < 4; i++) profiles[i] = elrsDefaultInputAxisProfile();
 }
 static void beginMode(ELRSCrsfMode &mode, uint16_t rate = 250, bool prop = false, const ELRSOutputLimits *limits = nullptr, uint16_t tolerance = 5, remDisplay *display = nullptr) {
-    assert(mode.begin(rate, 0, 0, 0, 0, profiles, elrsDefaultGimbalRouting(),
+    assert(mode.begin(rate, 0, ELRSRadioPreferences{}, profiles, elrsDefaultGimbalRouting(),
         nullptr, false, display, nullptr, nullptr, nullptr, false, false, false, false,
         nullptr, tolerance, tolerance, nullptr, limits, nullptr, prop));
 }

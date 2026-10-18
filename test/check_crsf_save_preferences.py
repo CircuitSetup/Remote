@@ -1,12 +1,10 @@
-"""Protect saved radio preferences when the CRSF settings form omits legacy fields."""
-import re
-import unittest
+"""Exercise snapshots of current radio preferences without old numeric settings."""
 from pathlib import Path
+import re
+from check_crsf_adc import compile_and_run
 
 ROOT = Path(__file__).resolve().parents[1]
-WIFI = (ROOT / "src/src/CRSF/crsf_wifi.h").read_text(encoding="utf-8")
 KLUDGE = (ROOT / "src/src/CRSF/crsf_kludge.cpp").read_text(encoding="utf-8")
-
 
 def function(source, signature):
     match = re.search(signature, source)
@@ -24,41 +22,32 @@ def function(source, signature):
     raise AssertionError(f"unterminated function matching {signature}")
 
 
-class CRSFSavePreferenceTests(unittest.TestCase):
-    def test_top_level_radio_ratio_and_power_controls_are_removed(self):
-        params = function(WIFI, r"static bool crsf_wifi_saveParamsCallback\(\)")
-        rendered = WIFI[WIFI.index("WiFiManagerParameter * const crsfParmArray[]"):WIFI.index("NULL", WIFI.index("WiFiManagerParameter * const crsfParmArray[]"))]
-        for name in ("custom_crsftlm", "custom_crsfpwr", "custom_crsfdyn"):
-            self.assertNotIn(name, rendered)
-        self.assertIn('custom_crsfpr', rendered)
-        self.assertIn('custom_crsfsu', rendered)
-        self.assertIn('"ctlmr","cmpwr","cdynp"', params)
-
-    def test_omitted_legacy_controls_do_not_overwrite_versioned_radio_values(self):
-        parser = function(WIFI, r"static bool crsf_wifi_saveParamsCallback\(\)")
-        versioned = parser.index("if(remoteRadioVersioned)")
-        legacy = parser.index("if(!remoteRadioVersioned)")
-        self.assertLess(versioned, legacy)
-        guard = parser[versioned:legacy]
-        self.assertIn('wm.server->hasArg(names[i])', guard)
-        self.assertIn('wm.server->arg(names[i])!=values[i]', guard)
-        self.assertIn('wm.setParamSaveError(409);return false', guard)
-        for name, setting in (("ctlmr", "elrsTlmRatio"), ("cmpwr", "elrsMaxPower"), ("cdynp", "elrsDynPower")):
-            self.assertRegex(parser[legacy:], rf'hasArg\("{name}"\)\)getServerParam\("{name}", settings\.{setting}')
-
-    def test_snapshot_keeps_saved_profile_id_even_when_legacy_preferences_seed_values(self):
-        snapshot = function(KLUDGE, r"ELRSPortalPreferences snapshotELRSPortalPreferences\(\)")
-        self.assertIn("remoteRadioVersioned?remoteRadioPreferences", snapshot)
-        self.assertIn("p.radio.modelId=remoteRadioPreferences.modelId", snapshot)
-        self.assertLess(snapshot.index("p.radio=remoteRadioVersioned?"), snapshot.index("p.radio.modelId=remoteRadioPreferences.modelId"))
-
-    def test_settings_save_passes_the_unchanged_snapshot_into_checked_single_file_save(self):
-        save = function(WIFI, r"static bool crsf_wifi_loop_settings\(\)")
-        self.assertIn("snapshotELRSPortalPreferences()", save)
-        self.assertIn("saveELRSSettings(candidate,preferences)", save)
-        self.assertIn("wm.setParamSaveError(500)", save)
-        self.assertIn("syncCRSFPortalBuffers()", save)
-
-
-if __name__ == "__main__":
-    unittest.main()
+source = r'''
+#include <cassert>
+#include <cstring>
+#include <cstdlib>
+#include "crsf_settings.h"
+struct {
+    char opMode[2] = "2", crsfap[2] = "1", elrsPktRate[2] = "4", elrsSpdUnit[2] = "1";
+} settings;
+ELRSRadioPreferences remoteRadioPreferences;
+ELRSPortalPreferences crsfPortalPreferences;
+'''
+source += function(KLUDGE, r"ELRSPortalPreferences snapshotELRSPortalPreferences\(\)")
+source += r'''
+int main() {
+    auto p = snapshotELRSPortalPreferences();
+    assert(p.opMode == 2 && p.cadence == 4 && p.speedUnits == 1);
+    assert(!strcmp(p.radio.telemetry, "Std") && !strcmp(p.radio.maxPower.label, "250") && !strcmp(p.radio.dynamic, "Off"));
+    remoteRadioPreferences.modelId = 12;
+    strcpy(remoteRadioPreferences.telemetry, "1:64");
+    strcpy(remoteRadioPreferences.maxPower.label, "25/1000");
+    strcpy(remoteRadioPreferences.dynamic, "Dyn");
+    crsfPortalPreferences.radioReview = 1;
+    p = snapshotELRSPortalPreferences();
+    assert(!memcmp(&p.radio, &remoteRadioPreferences, sizeof(p.radio)));
+    assert(p.radioReview == 1);
+}
+'''
+compile_and_run(source, [], ["-I" + str(ROOT / "src/src/CRSF")])
+print("Current radio preference snapshots pass")

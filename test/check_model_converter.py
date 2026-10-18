@@ -323,6 +323,21 @@ def test_etx_selects_explicit_model_and_rejects_hostile_zip_entries():
         assert result.profile is None and result.errors
 
 
+def test_malformed_enum_values_return_errors():
+    with tempfile.TemporaryDirectory() as temp:
+        path = Path(temp) / "enum.yml"
+        for version in ("2.10.6", "2.12.4"):
+            for value in ("[]", "{}", "null", "true", "1", "UNKNOWN"):
+                for body, error_path in (
+                    (f"mixData: [{{destCh: 0, srcRaw: Ail, mltpx: {value}}}]\n", "mixData[0].mltpx"),
+                    (f"logicalSw: {{0: {{func: {value}, def: 'Ail,0'}}}}\n", "logicalSw.0"),
+                ):
+                    _write_source(path, f"semver: {version}\n" + body)
+                    result = convert_model(path, "TX16S", version, MAPPING)
+                    assert result.profile is None
+                    assert any(error.path == error_path for error in result.errors), result.errors
+
+
 def test_rejection_matrix_and_translated_row_capacity():
     cases = {
         "srcRaw": "mixData: [{destCh: 4, srcRaw: 'ch(0)'}]\n",
@@ -363,6 +378,7 @@ def test_rejection_matrix_and_translated_row_capacity():
 
 
 if __name__ == "__main__":
+    test_malformed_enum_values_return_errors()
     test_mixed_switch_destination_has_no_implicit_switch_base()
     test_converted_power_uses_descriptor_label_and_unit_separately()
     test_converts_supported_source()

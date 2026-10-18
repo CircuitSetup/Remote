@@ -392,7 +392,7 @@ static std::vector<uint8_t> makeDeviceInfoFrame(const char *name, uint8_t fieldC
     return makeExtendedFrame(0xEE, 0x29, 0xEA, 0xEE, payload);
 }
 
-static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const char *name, const char *options, uint8_t value, uint8_t maxValue)
+static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const char *name, const char *options, uint8_t value, uint8_t maxValue, const char *unit = "")
 {
     std::vector<uint8_t> payload;
 
@@ -406,7 +406,7 @@ static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const c
     payload.push_back(0x00);
     payload.push_back(maxValue);
     payload.push_back(0x00);
-    payload.push_back(0x00);
+    payload.insert(payload.end(), unit, unit + strlen(unit) + 1);
 
     return makeExtendedFrame(0xEE, 0x2B, 0xEA, 0xEE, payload);
 }
@@ -2080,7 +2080,7 @@ static void test_nondefault_axis_profile_changes_runtime_output_scaling()
     TEST_ASSERT_EQUAL_UINT16(992, profiledCore.channelAt(0));
 }
 
-static void test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapping()
+static void test_out_of_range_axis_profile_is_sanitized_before_runtime_mapping()
 {
     FakeHost host;
     ELRSCrsfCore core;
@@ -2907,14 +2907,14 @@ static void test_transport_service_queue_cannot_overwrite_and_reports_actual_sen
     TEST_ASSERT_FALSE(transport.hasPendingServiceFrame());
 }
 
-static std::vector<uint8_t> modelMatchEntry(uint8_t id)
+static std::vector<uint8_t> modelMatchEntry(uint8_t id, uint8_t field = 1)
 {
     auto data = makeTextSelectionEntryData("Model Match", "Off;On", 0, 1);
     data.pop_back();
     std::string unit = " (ID: " + std::to_string(id) + ")";
     data.insert(data.end(), unit.begin(), unit.end());
     data.push_back(0);
-    return makeParameterChunkFrame(1, 0, data);
+    return makeParameterChunkFrame(field, 0, data);
 }
 
 static void feedRadioStatus(ELRSDeviceConfig &device, uint32_t now, uint8_t flags = 0)
@@ -3238,20 +3238,6 @@ static void test_non_elrs_device_cannot_supply_elrs_safety_status()
     TEST_ASSERT_FALSE(device.readRadioStatus(2));
 }
 
-static void test_legacy_radio_preferences_preserve_all_meanings()
-{
-    const char *telemetry[] = {"Std", "1:2", "1:4", "1:8", "1:16", "1:32", "Off"};
-    const char *power[] = {"10", "25", "100", "250", "500", "1000"};
-    for(uint8_t t = 0; t < 7; t++) for(uint8_t p = 0; p < 6; p++) for(uint8_t d = 0; d < 2; d++) {
-        const auto preferences = elrsRadioPreferencesFromLegacy(t, p, d);
-        TEST_ASSERT_TRUE(elrsIsValidRadioPreferences(preferences));
-        TEST_ASSERT_EQUAL_STRING(telemetry[t], preferences.telemetry);
-        TEST_ASSERT_EQUAL_STRING(power[p], preferences.maxPower.label);
-        TEST_ASSERT_EQUAL_STRING("mW", preferences.maxPower.unit);
-        TEST_ASSERT_EQUAL_STRING(d ? "Dyn" : "Off", preferences.dynamic);
-    }
-}
-
 static void test_scalar_power_never_matches_a_composite_power_option()
 {
     FakeHost host;
@@ -3263,7 +3249,7 @@ static void test_scalar_power_never_matches_a_composite_power_option()
     auto data = makeTextSelectionEntryData("Max Power", "25/250;25/1000;2000", 0, 2);
     data.pop_back(); data.insert(data.end(), {'m', 'W', 0});
     feedDevice(device, makeParameterChunkFrame(1, 0, data), 601);
-    auto preference = elrsRadioPreferencesFromLegacy(0, 3, 0).maxPower;
+    ELRSSelectionPreference preference;
     uint8_t index = 255;
     TEST_ASSERT_FALSE(elrsMatchSelection(*device.parameter(), preference, index));
     strcpy(preference.label, "25/1000");
@@ -3518,10 +3504,14 @@ static void driveModuleReplies(ELRSCrsfCore &core, FakeHost &host, uint8_t value
         loopAt(core, host, (uint32_t)(origin + elapsed), elapsed * 1000);
         while(handled < host.writes.size()) {
             const auto frame = host.writes[handled++];
-            if(frame[2] == 0x28) host.queueFrame(makeDeviceInfoFrame("Another ELRS vendor", 3));
-            else if(frame[2] == 0x2C && frame[5] >= 1 && frame[5] <= 3)
-                host.queueFrame(makeTextSelectionEntryFrame(frame[5], names[frame[5] - 1], options[frame[5] - 1],
-                    values[frame[5] - 1], frame[5] == 1 ? 4 : frame[5] == 2 ? powerMaximum : 2));
+            if(frame[2] == 0x28) host.queueFrame(makeDeviceInfoFrame("Another ELRS vendor", 4));
+            else if(frame[2] == 0x2C && frame[5] == 4) host.queueFrame(modelMatchEntry(0, 4));
+            else if(frame[2] == 0x2C && frame[5] >= 1 && frame[5] <= 3) {
+                auto data = makeTextSelectionEntryData(names[frame[5] - 1], options[frame[5] - 1],
+                    values[frame[5] - 1], frame[5] == 1 ? 4 : frame[5] == 2 ? powerMaximum : 2);
+                if(frame[5] == 2) { data.pop_back(); data.insert(data.end(), {'m', 'W', 0}); }
+                host.queueFrame(makeParameterChunkFrame(frame[5], 0, data));
+            }
             else if(frame[2] == 0x2D && frame[5] == 0)
                 host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, 0, 0}));
             else if(frame[2] == 0x2D && frame[5] <= 3) values[frame[5] - 1] = frame[6];
@@ -3535,9 +3525,9 @@ static void test_module_settings_are_discovered_and_written()
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
-    config.maxPower = ELRS_MAX_POWER_500MW;
-    config.dynamicPower = ELRS_DYNAMIC_POWER_DYNAMIC;
+    strcpy(config.radio.telemetry, "1:4");
+    strcpy(config.radio.maxPower.label, "500");
+    strcpy(config.radio.dynamic, "Dyn");
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     uint8_t values[3] = {0, 3, 0};
@@ -3554,12 +3544,12 @@ static void test_module_settings_are_discovered_and_written()
     TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
 }
 
-static void test_legacy_startup_never_guesses_a_paired_band_power()
+static void test_startup_never_guesses_a_paired_band_power()
 {
     FakeHost host;
     ELRSCrsfCore core;
     auto config = defaultConfig();
-    config.maxPower = ELRS_MAX_POWER_1000MW;
+    strcpy(config.radio.maxPower.label, "1000");
     beginAt(core, host, config, 0, 0);
     uint8_t values[3] = {0, 0, 0};
     driveModuleReplies(core, host, values, 0, 0, 5000, "10/10;25/1000");
@@ -3576,7 +3566,7 @@ static void test_verified_manual_preferences_do_not_restart_configuration()
     TEST_ASSERT_EQUAL_UINT32(0,core.deviceConfig().status().id);
 }
 
-static void test_manual_maintenance_suspends_legacy_configuration()
+static void test_manual_maintenance_suspends_automatic_configuration()
 {
     FakeHost host;ELRSCrsfCore core;beginAt(core,host,defaultConfig(),0,0);core.setDeviceConfigAccess(true,false);
     size_t handled=0;
@@ -3584,7 +3574,7 @@ static void test_manual_maintenance_suspends_legacy_configuration()
     for(const auto &frame:host.writes)TEST_ASSERT_NOT_EQUAL(0x2C,frame[2]);
 }
 
-static void test_legacy_save_overrides_versioned_pending_preferences()
+static void test_new_preferences_replace_pending_preferences()
 {
     FakeHost host;
     ELRSCrsfCore core;
@@ -3593,7 +3583,8 @@ static void test_legacy_save_overrides_versioned_pending_preferences()
     preferences.modelId = 7;
     strcpy(preferences.maxPower.label, "2000");
     TEST_ASSERT_TRUE(core.setRadioPreferences(preferences, 0));
-    core.requestModuleConfigUpdate(0, ELRS_MAX_POWER_250MW, 0, 0);
+    preferences = ELRSRadioPreferences{}; preferences.modelId = 7;
+    TEST_ASSERT_TRUE(core.setRadioPreferences(preferences, 0));
     uint8_t power = 0;
     size_t handled = 0;
     for(uint32_t now = 0; now <= 5000; now += 20) {
@@ -3664,7 +3655,7 @@ static void test_unanswered_module_probes_stop_until_reconnect_or_save()
     loopAt(core, host, 65200, 65200000);
     loopAt(core, host, 65220, 65220000);
     TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x28));
-    core.requestModuleConfigUpdate(0, 0, 0, 66000);
+    TEST_ASSERT_TRUE(core.setRadioPreferences(ELRSRadioPreferences{}, 66000));
     loopAt(core, host, 67000, 67000000);
     loopAt(core, host, 67020, 67020000);
     TEST_ASSERT_EQUAL_INT(6, countWrittenFrameType(host, 0x28));
@@ -3800,7 +3791,7 @@ static void test_module_start_and_save_delay_survive_millis_rollover()
             ELRSCrsfCore core;
             const ELRSCrsfCoreConfig config = defaultConfig();
             beginAt(core, host, config, save ? 0 : start, 0);
-            if(save) core.requestModuleConfigUpdate(config.telemetryRatio, config.maxPower, config.dynamicPower, start);
+            if(save) TEST_ASSERT_TRUE(core.setRadioPreferences(config.radio, start));
             moduleTimerLoopAt(core, host, start, 20);
             moduleTimerLoopAt(core, host, start, 980);
             TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x28));
@@ -3859,7 +3850,7 @@ static void test_module_write_delay_survives_zero_deadline()
     FakeHost host;
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    strcpy(config.radio.telemetry, "1:4");
     const uint32_t start = 0UL - 1740UL;
     beginAt(core, host, config, start, 0);
     uint8_t values[3] = {0, 3, 0};
@@ -3877,12 +3868,12 @@ static void test_module_settings_ignore_duplicate_chunk_after_retry()
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    strcpy(config.radio.telemetry, "1:4");
     beginAt(core, host, config, 0, 0);
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
-    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 4));
     loopAt(core, host, 1030, 1030000);
     loopAt(core, host, 1120, 1120000);
     loopAt(core, host, 1620, 1620000);
@@ -3916,12 +3907,12 @@ static void test_module_settings_preserve_chunks_when_retry_read_is_still_queued
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    strcpy(config.radio.telemetry, "1:4");
     beginAt(core, host, config, 0, 0);
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
-    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 4));
     loopAt(core, host, 1030, 1030000);
     loopAt(core, host, 1120, 1120000);
     loopAt(core, host, 1620, 1620000); // Timeout starts at the actual 1120ms transmission.
@@ -4052,9 +4043,9 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     ELRSCrsfCoreConfig config = defaultConfig();
 
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_STD;
-    config.maxPower = ELRS_MAX_POWER_100MW;
-    config.dynamicPower = ELRS_DYNAMIC_POWER_OFF;
+    strcpy(config.radio.telemetry, "Std");
+    strcpy(config.radio.maxPower.label, "100");
+    strcpy(config.radio.dynamic, "Off");
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
@@ -4081,7 +4072,7 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     loopAt(core, host, 1460, 1460000);
 
     loopAt(core, host, 1560, 1560000);
-    host.queueFrame(makeTextSelectionEntryFrame(5, "Model Match", "Off;On", 0, 1));
+    host.queueFrame(modelMatchEntry(0, 5));
     loopAt(core, host, 1570, 1570000);
 
     loopAt(core, host, 1670, 1670000);
@@ -4089,7 +4080,7 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     loopAt(core, host, 1680, 1680000);
 
     loopAt(core, host, 1780, 1780000);
-    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5));
+    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5, "mW"));
     loopAt(core, host, 1790, 1790000);
 
     loopAt(core, host, 1890, 1890000);
@@ -4113,9 +4104,9 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     const std::vector<uint8_t> *frame = NULL;
 
     config.transport.packetRateHz = 500;
-    config.telemetryRatio = ELRS_TLM_RATIO_STD;
-    config.maxPower = ELRS_MAX_POWER_100MW;
-    config.dynamicPower = ELRS_DYNAMIC_POWER_OFF;
+    strcpy(config.radio.telemetry, "Std");
+    strcpy(config.radio.maxPower.label, "100");
+    strcpy(config.radio.dynamic, "Off");
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
@@ -4142,7 +4133,7 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     loopAt(core, host, 1470, 1470000);
 
     loopAt(core, host, 1570, 1570000);
-    host.queueFrame(makeTextSelectionEntryFrame(5, "Model Match", "Off;On", 0, 1));
+    host.queueFrame(modelMatchEntry(0, 5));
     loopAt(core, host, 1580, 1580000);
 
     loopAt(core, host, 1680, 1680000);
@@ -4150,7 +4141,7 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     loopAt(core, host, 1690, 1690000);
 
     loopAt(core, host, 1790, 1790000);
-    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5));
+    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5, "mW"));
     loopAt(core, host, 1800, 1800000);
 
     loopAt(core, host, 1900, 1900000);
@@ -6122,7 +6113,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_control_mapping_and_reversed_axis_calibration);
     RUN_TEST(test_axis_order_aileron_elevator_throttle_rudder_matches_runtime_banner);
     RUN_TEST(test_nondefault_axis_profile_changes_runtime_output_scaling);
-    RUN_TEST(test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapping);
+    RUN_TEST(test_out_of_range_axis_profile_is_sanitized_before_runtime_mapping);
     RUN_TEST(test_gimbal_routing_collision_uses_defaults);
     RUN_TEST(test_telemetry_parsing_and_bad_crc_rejection);
     RUN_TEST(test_non_c8_sync_frame_is_accepted);
@@ -6172,7 +6163,6 @@ int main(int argc, char **argv)
     RUN_TEST(test_busy_write_cannot_change_inflight_value);
     RUN_TEST(test_changed_descriptor_blocks_old_option_index);
     RUN_TEST(test_non_elrs_device_cannot_supply_elrs_safety_status);
-    RUN_TEST(test_legacy_radio_preferences_preserve_all_meanings);
     RUN_TEST(test_scalar_power_never_matches_a_composite_power_option);
     RUN_TEST(test_command_confirmation_query_and_cancel_are_distinct);
     RUN_TEST(test_command_lost_ack_does_not_repeat_start);
@@ -6183,10 +6173,10 @@ int main(int argc, char **argv)
     RUN_TEST(test_rx_wifi_requires_connected_receiver);
     RUN_TEST(test_pwm_capture_sweeps_each_pin_and_restores_cursor);
     RUN_TEST(test_module_settings_are_discovered_and_written);
-    RUN_TEST(test_legacy_startup_never_guesses_a_paired_band_power);
-    RUN_TEST(test_legacy_save_overrides_versioned_pending_preferences);
+    RUN_TEST(test_startup_never_guesses_a_paired_band_power);
+    RUN_TEST(test_new_preferences_replace_pending_preferences);
     RUN_TEST(test_verified_manual_preferences_do_not_restart_configuration);
-    RUN_TEST(test_manual_maintenance_suspends_legacy_configuration);
+    RUN_TEST(test_manual_maintenance_suspends_automatic_configuration);
     RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
     RUN_TEST(test_unanswered_module_probes_stop_until_reconnect_or_save);
     RUN_TEST(test_module_settings_request_remaining_chunks_before_advancing_field);

@@ -491,7 +491,7 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
         definition = row.get("def", "")
         parts = definition.split(",") if isinstance(definition, str) else []
         and_switch = row.get("andsw", "NONE")
-        fn = {"FUNC_VPOS": 1, "FUNC_VNEG": 2, "FUNC_AND": 3, "FUNC_OR": 4, "FUNC_XOR": 5}.get(func)
+        fn = {"FUNC_VPOS": 1, "FUNC_VNEG": 2, "FUNC_AND": 3, "FUNC_OR": 4, "FUNC_XOR": 5}.get(func) if isinstance(func, str) else None
         if fn is None or len(parts) != 2:
             _fail(errors, path, f"Unsupported logical function {func!r}")
             continue
@@ -568,7 +568,8 @@ def _convert(doc, source_radio, source_version, source_name, mapping, errors):
             switch = _condition(switch, mapping, f"{path}.swtch", errors)
             if switch is not None and switch < 5:
                 _fail(errors, f"{path}.swtch", "Conditional mixes require a mapped two-position switch")
-        mux = {"ADD": 0, "MUL": 1, "REPL": 2}.get(row.get("mltpx", "ADD"))
+        multiplex = row.get("mltpx", "ADD")
+        mux = {"ADD": 0, "MUL": 1, "REPL": 2}.get(multiplex) if isinstance(multiplex, str) else None
         if mux is None:
             _fail(errors, f"{path}.mltpx", "Unsupported multiplex operation")
         elif mux in (1, 2):

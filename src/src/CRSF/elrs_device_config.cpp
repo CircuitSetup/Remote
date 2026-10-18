@@ -3,15 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-ELRSRadioPreferences elrsRadioPreferencesFromLegacy(uint8_t telemetry, uint8_t power, uint8_t dynamic)
-{
-    ELRSRadioPreferences result;
-    snprintf(result.telemetry, sizeof(result.telemetry), "%s", elrsTelemetryRatioLabel(telemetry));
-    snprintf(result.maxPower.label, sizeof(result.maxPower.label), "%u", (unsigned)elrsMaxPowerMilliwatts(power));
-    snprintf(result.dynamic, sizeof(result.dynamic), "%s", elrsDynamicPowerLabel(dynamic));
-    return result;
-}
-
 bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &p)
 {
     return p.modelId <= 63 && p.telemetry[0] && p.dynamic[0] && p.maxPower.label[0] &&
@@ -208,9 +199,9 @@ bool ELRSDeviceConfig::refreshesDependents() const
 bool ELRSDeviceConfig::safe(const ELRSConfigSafety &local, uint32_t now) const
 {
     auto radio = radioStatus(now);
-    const bool legacy = local.legacyPreferenceApply && !local.radioReviewPending && _status.device == 0xEE &&
+    const bool automatic = local.automaticPreferenceApply && !local.radioReviewPending && _status.device == 0xEE &&
         (!strcmp(_view.name(), "Telem Ratio") || !strcmp(_view.name(), "Max Power") || !strcmp(_view.name(), "Dynamic"));
-    if((!local.maintenance && !legacy) || local.fakePower || local.calibrating || local.selfTest ||
+    if((!local.maintenance && !automatic) || local.fakePower || local.calibrating || local.selfTest ||
        local.storageBusy || local.finalCh5Ticks > 992 || !radio.armedKnown || radio.armed || !radio.rfConnectionKnown) return false;
     if(_request == AssignReceiver || (_request == Command &&
         (!strcmp(_view.name(), "Enable Rx WiFi") || !strcmp(_view.name(), "Enable RX WiFi")))) return radio.rfConnected;

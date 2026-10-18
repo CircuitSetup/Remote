@@ -19,9 +19,7 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool begin(
             uint16_t packetRateHz,
             uint8_t speedDisplayUnits,
-            uint8_t telemetryRatio,
-            uint8_t maxPower,
-            uint8_t dynamicPower,
+            const ELRSRadioPreferences &radio,
             const ELRSInputAxisProfile *axisProfiles,
             const ELRSGimbalRouting &inputRouting,
             ButtonPack *buttonPack,
@@ -62,7 +60,6 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool telemetryDisplayAssigned() const;
         void renderAssignedDisplay(uint32_t now, int battWarn);
         uint8_t speedDisplayUnits() const;
-        void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
         bool setRadioPreferences(const ELRSRadioPreferences &preferences, bool radioReviewPending = false, bool scheduleApply = true) {
             return _core.setRadioPreferences(preferences, millis(), radioReviewPending, scheduleApply);
         }

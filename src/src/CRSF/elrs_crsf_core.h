@@ -90,9 +90,7 @@ struct ELRSCrsfCoreConfig {
     uint8_t speedDisplayUnits = ELRS_SPEED_UNITS_DEFAULT;
     ELRSDisplayConfig displayConfig = elrsDefaultDisplayConfig();
     ELRSVehicleConfig vehicleConfig = elrsDefaultVehicleConfig();
-    uint8_t telemetryRatio = ELRS_TLM_RATIO_DEFAULT;
-    uint8_t maxPower = ELRS_MAX_POWER_DEFAULT;
-    uint8_t dynamicPower = ELRS_DYNAMIC_POWER_DEFAULT;
+    ELRSRadioPreferences radio;
     uint16_t adcHysteresis = ELRS_INPUT_TOLERANCE_DEFAULT;
     uint16_t throttleIdleDeadband = ELRS_INPUT_TOLERANCE_DEFAULT;
     ELRSInputAxisProfile axisProfiles[ELRS_GIMBAL_AXIS_COUNT] = {};
@@ -148,7 +146,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void setDeviceConfigAccess(bool maintenance, bool storageBusy, bool radioReviewPending = false) {
             _configMaintenance = maintenance; _settingsBusy = storageBusy; _radioReviewPending = radioReviewPending;
         }
-        void requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower, unsigned long now);
         bool setRadioPreferences(const ELRSRadioPreferences &preferences, uint32_t now, bool radioReviewPending = false, bool scheduleApply = true);
         void pauseModulePreferenceApply() { pauseModuleConfigSession(); }
 
@@ -229,7 +226,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         static uint16_t readBE16(const uint8_t *data);
         static size_t copyToken(char *out, size_t outSize, const char *start, size_t len);
         static bool optionEquals(const char *start, size_t len, const char *text);
-        static bool parseOptionTerminalMilliwatts(const char *start, size_t len, uint16_t &value);
         static bool readOptionAt(const char *options, uint8_t index, const char **start, size_t *len);
         static const char *speedSourceName(SpeedSource source);
         static const char *commCodeText(uint8_t code);
@@ -260,7 +256,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         ELRSCrsfTransport _transport;
         ELRSDeviceConfig _deviceConfig;
         bool _configMaintenance = false, _settingsBusy = false, _radioReviewPending = false;
-        bool _haveRadioPreferences = false;
         ELRSRadioPreferences _radioPreferences;
 
         bool _haveAds = false;

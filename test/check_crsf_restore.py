@@ -125,10 +125,10 @@ static RemoteSettingsSnapshot capture() {
     RemoteSettingsSnapshot snapshot; RemoteTransferError error;
     assert(captureRemoteSettings(snapshot, error)); return snapshot;
 }
-static RemoteRestorePreview preview(const std::string &json, RemoteSettingsSnapshot &target) {
+static RemoteRestorePreview preview(const std::string &json, RemoteSettingsSnapshot &target, RemoteTransferKind kind = RemoteTransferKind::ModelProfile) {
     target = capture(); putFile(remoteUploadStorage(), remoteUploadPath(), json);
     File file = remoteUploadStorage().open(remoteUploadPath()); RemoteRestorePreview result; RemoteTransferError error;
-    const bool accepted = validateRemoteTransfer(file, RemoteTransferKind::ModelProfile, target, result, error);
+    const bool accepted = validateRemoteTransfer(file, kind, target, result, error);
     if(!accepted) fprintf(stderr, "preview rejected: code=%u path=%s message=%s\n", (unsigned)error.code, error.path, error.message);
     assert(accepted && result.valid);
     file.close(); return result;
@@ -165,6 +165,33 @@ static void testFileValidation() {
     file = LittleFS.open(remoteUploadPath());
     assert(!validateRemoteTransfer(file, RemoteTransferKind::ModelProfile, target, rejected, error));
     assert(error.code == RemoteTransferCode::TooLarge); file.close();
+}
+static void testImportsCannotLeaveCrsfDisabled() {
+    const unsigned calls = saveCalls;
+    const auto original = livePortal;
+    const auto originalExpo = liveCrsf.axisProfile[0].expo;
+    for(unsigned mode = 0; mode <= 2; ++mode) {
+        livePortal.opMode = mode;
+        auto target = capture();
+        RemoteRestorePreview p;
+        RemoteTransferError error;
+        if(mode == 0) {
+            p = preview(encodeModel(target, 42, 9), target);
+            assert(!applyRemoteTransfer(p, error));
+            assert(error.code == RemoteTransferCode::UnsupportedBehavior && !strcmp(error.path, "opMode"));
+        }
+        auto source = target;
+        strcpy(source.settings.opMode, "0");
+        DynamicJsonDocument doc(REMOTE_TRANSFER_JSON_CAPACITY);
+        assert(remoteEncodeBackup(doc.to<JsonObject>(), source, error));
+        std::string json; serializeJson(doc, json);
+        p = preview(json, target, RemoteTransferKind::DeviceBackup);
+        assert(!applyRemoteTransfer(p, error));
+        assert(error.code == RemoteTransferCode::UnsupportedBehavior && !strcmp(error.path, "opMode"));
+        assert(saveCalls == calls && !remoteRadioReviewPending());
+        assert(livePortal.opMode == mode && liveCrsf.axisProfile[0].expo == originalExpo);
+    }
+    livePortal = original;
 }
 static void testPreviewBindingAndApply() {
     auto target = capture(); const std::string valid = encodeModel(target, 42, 9);
@@ -203,7 +230,7 @@ static void testRadioReviewRequiresActiveCrsfAndReadback() {
     assert(!remoteCompleteRadioReview());
     assert(livePortal.radioReview == 1 && saveCalls == calls);
     const char *labels[] = {livePortal.radio.maxPower.label, livePortal.radio.telemetry, livePortal.radio.dynamic};
-    const char *units[] = {livePortal.radio.maxPower.unit, "", ""};
+    const char *units[] = {livePortal.radio.maxPower.unit, " (1:64)", ""};
     for(unsigned i = 0; i < 3; ++i) {
         auto &observation = rfObservations[i + 5];
         observation.generation = 0;
@@ -211,8 +238,18 @@ static void testRadioReviewRequiresActiveCrsfAndReadback() {
         strcpy(observation.choice.label, labels[i]);
         strcpy(observation.choice.unit, units[i]);
     }
-    assert(remoteCompleteRadioReview());
-    assert(livePortal.radioReview == 0 && saveCalls == calls + 1);
+    strcpy(rfObservations[5].choice.unit, "W");
+    assert(!remoteCompleteRadioReview());
+    strcpy(rfObservations[5].choice.unit, livePortal.radio.maxPower.unit);
+    strcpy(rfObservations[6].choice.label, "Off");
+    assert(!remoteCompleteRadioReview());
+    strcpy(rfObservations[6].choice.label, livePortal.radio.telemetry);
+    for(const char *unit : {" (1:64)", " (2000bps)", ""}) {
+        strcpy(rfObservations[6].choice.unit, unit);
+        livePortal.radioReview = 1;
+        assert(remoteCompleteRadioReview());
+        assert(livePortal.radioReview == 0 && saveCalls == ++calls);
+    }
     opModeCRSF = false;
 }
 static void testCapabilityBindingAndStorage() {
@@ -240,10 +277,11 @@ int main() {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 #endif
     liveCrsf = remoteDefaultCrsfSettings();
+    livePortal.opMode = 1;
     livePortal.radio.modelId = 2; strcpy(livePortal.radio.telemetry, "Std");
     strcpy(livePortal.radio.dynamic, "Off"); strcpy(livePortal.radio.maxPower.label, "100mW");
     strcpy(livePortal.radio.maxPower.unit, "mW");
-    testFileValidation(); testPreviewBindingAndApply(); testRadioReviewRequiresActiveCrsfAndReadback(); testCapabilityBindingAndStorage();
+    testFileValidation(); testImportsCannotLeaveCrsfDisabled(); testPreviewBindingAndApply(); testRadioReviewRequiresActiveCrsfAndReadback(); testCapabilityBindingAndStorage();
     puts("CRSF model bounds, preview binding/expiry, upload selection and CRSF-only review pass");
 }
 '''

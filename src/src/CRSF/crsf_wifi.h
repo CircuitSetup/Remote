@@ -214,19 +214,10 @@ static bool crsf_wifi_loop_settings()
 
 static bool crsf_wifi_saveParamsCallback()
 {
-    if(remoteRadioVersioned) {
-        const char *names[]={"ctlmr","cmpwr","cdynp"};
-        const char *values[]={settings.elrsTlmRatio,settings.elrsMaxPower,settings.elrsDynPower};
-        for(unsigned i=0;i<3;i++)if(wm.server->hasArg(names[i]) && wm.server->arg(names[i])!=values[i]){wm.setParamSaveError(409);return false;}
-    }
     getServerParam("copm", settings.opMode, 1, 0, 2, 0);
     getServerParam("cpktr", settings.elrsPktRate, 1, 0, 4, DEF_ELRSPKTRATE);
     getServerParam("cspdu", settings.elrsSpdUnit, 1, 0, 1, DEF_ELRSSPDUNIT);
-    if(!remoteRadioVersioned) {
-        if(wm.server->hasArg("ctlmr"))getServerParam("ctlmr", settings.elrsTlmRatio, 1, 0, 6, DEF_ELRSTLMRATIO);
-        if(wm.server->hasArg("cmpwr"))getServerParam("cmpwr", settings.elrsMaxPower, 1, 0, 5, DEF_ELRSMAXPOWER);
-        if(wm.server->hasArg("cdynp"))getServerParam("cdynp", settings.elrsDynPower, 1, 0, 1, DEF_ELRSDYNPWR);
-    }
+
     crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
     crsfReadGimbalChannelParam("cptch", settings.elrsPitchCh);
     crsfReadGimbalChannelParam("cthch", settings.elrsThrCh);

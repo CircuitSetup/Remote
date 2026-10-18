@@ -57,11 +57,11 @@
 #include "elrs_input_model.h"
 
 struct ELRSPortalPreferences {
-    uint8_t version=0,opMode=0,connectWiFi=1,cadence=3,speedUnits=0,radioReview=0;
+    uint8_t version=1,opMode=0,connectWiFi=1,cadence=3,speedUnits=0,radioReview=0;
     ELRSRadioPreferences radio;
 };
 extern ELRSRadioPreferences remoteRadioPreferences;
-extern bool remoteRadioVersioned,crsfSettingsSaving,crsfSettingsRecoveryBlocked;
+extern bool crsfSettingsSaving,crsfSettingsRecoveryBlocked;
 ELRSPortalPreferences snapshotELRSPortalPreferences();
 bool saveELRSSettings(const ELRSCrsfSettingsBlob &,const ELRSPortalPreferences &,bool requireSafe=false);
 
@@ -84,7 +84,6 @@ bool saveELRSInputConfig(const ELRSInputAxisProfile *profiles, int count, const 
                          const ELRSVehicleConfig *vehicleConfig = NULL,
                          const ELRSLogicConfig *logicConfig = NULL, const ELRSMixConfig *mixConfig = NULL);
 bool readELRSCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT]);
-void requestELRSModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower);
 ELRSCrsfSettingsBlob snapshotELRSSettings();
 
 #endif // HAVE_CRSF

@@ -41,9 +41,7 @@ ELRSCrsfMode::ELRSCrsfMode() : _serial(1)
 bool ELRSCrsfMode::begin(
     uint16_t packetRateHz,
     uint8_t speedDisplayUnits,
-    uint8_t telemetryRatio,
-    uint8_t maxPower,
-    uint8_t dynamicPower,
+    const ELRSRadioPreferences &radio,
     const ELRSInputAxisProfile *axisProfiles,
     const ELRSGimbalRouting &inputRouting,
     ButtonPack *buttonPack,
@@ -129,9 +127,7 @@ bool ELRSCrsfMode::begin(
     config.powerLedOnFakePower = _powerLedOnFakePower;
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
     config.speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
-    config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
-    config.maxPower = elrsMaxPowerOrDefault(maxPower);
-    config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
+    config.radio = radio;
     config.adcHysteresis = adcHysteresis;
     config.throttleIdleDeadband = throttleIdleDeadband;
     if(switchRouting) config.switchRouting = *switchRouting;
@@ -210,11 +206,6 @@ ELRSTelemetrySample ELRSCrsfMode::telemetrySample(uint8_t source, uint32_t now, 
 bool ELRSCrsfMode::telemetryDisplayAssigned() const { return _core.telemetryDisplayAssigned(); }
 void ELRSCrsfMode::renderAssignedDisplay(uint32_t now, int battWarn) { _core.renderAssignedDisplay(*this, now, battWarn); }
 uint8_t ELRSCrsfMode::speedDisplayUnits() const { return _speedDisplayUnits; }
-
-void ELRSCrsfMode::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
-{
-    _core.requestModuleConfigUpdate(telemetryRatio, maxPower, dynamicPower, millis());
-}
 
 bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
