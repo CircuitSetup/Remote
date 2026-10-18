@@ -1,6 +1,6 @@
 # Remote Control (Delorean Time Machine)
 
-This [repository](https://remote.out-a-ti.me) _really_ holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a speedo connected to it. Of course, the Remote can also be used stand-alone.
+This [repository](https://github.com/CircuitSetup/Remote) _really_ holds the most current firmware for CircuitSetup's [Futaba remote control kit](https://circuitsetup.us/product/futaba-remote-stanley-display-wireless-control-kit/), meant mainly for use in combination with a CircuitSetup [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) with a speedo connected to it. Of course, the Remote can also be used stand-alone.
 
 See [here](FUTABA.md) for information on the hardware (parts, disassembly & building instructions).
 
@@ -33,12 +33,15 @@ Firmware features:
 - Eight optional "[User Buttons](#user-buttons)" for playback of user-provided sound effects and/or sending user-configurable [Home Assistant/MQTT](#home-assistant--mqtt) messages
 - [Music player](#the-music-player): Play mp3 files located on an SD card, controlled by the _O.O_/_RESET_ buttons or [Time Circuits Display](https://circuitsetup.us/product/complete-time-circuits-display-kit/) keypad via BTTFN
 - Advanced network-accessible [Config Portal](#the-config-portal) for setup (http://dtmremote.local)
+- Optional [ELRS/CRSF operation](#elrscrsf-settings), with gimbal/switch routing, calibration, curves, travel limits, logical switches, mixes, and telemetry display
+- Live ELRS transmitter/receiver controls, verified profile selection, and receiver assignment on the ELRS/CRSF page
+- CRSF settings backup/restore, portable model files, and desktop conversion of supported transmitter model exports
 - [Home Assistant](#home-assistant--mqtt) (MQTT) support
 - Smart battery monitoring for certain LiPo batteries (requires Control Board 1.6M or >= 1.7)
 - Built-in OTA installer for firmware updates and custom audio files
 - &#128007; &#129370;
 
->The firmware in [this repository](https://remote.out-a-ti.me) is the upstream source of all forks, but is a __pure movie-prop firmware__ and does not support ExpressLRS/CRSF. For ELRS/CRSF support, please see CircuitSetup's fork.
+>This CircuitSetup version includes optional [ELRS/CRSF support](#elrscrsf-settings) alongside the movie-prop functions. ELRS/CRSF requires a compatible control board and a firmware build with CRSF support enabled. The original movie-prop firmware is available from [upstream](https://remote.out-a-ti.me).
 
 For information on updating the firmware of your Remote, see [here](#firmware-installation--firmware-update).
 
@@ -695,10 +698,10 @@ This leads to the [Settings page](#settings).
 
 This leads to the [HomeAssistant/MQTT Settings page](#hamqtt-settings).
 
-<!--##### &#9193; ELRS/CRSF Settings
+##### &#9193; ELRS/CRSF Settings
 
-This leads to the [ELRS/CRSF Settings page](#elrscrsf-settings).
--->
+This leads to the [ELRS/CRSF Settings page](#elrscrsf-settings), including live radio controls and CRSF settings files. It is available on compatible hardware with a CRSF-enabled build.
+
 ##### &#9193; Update & Upload
 
 This leads to the firmware update and audio upload page.
