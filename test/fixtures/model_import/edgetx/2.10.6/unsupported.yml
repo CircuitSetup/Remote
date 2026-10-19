@@ -1,0 +1,6 @@
+semver: 2.10.6
+header: {name: Unsupported timer, modelId: {0: {val: 12}, 1: {val: 42}}}
+timers:
+  "0": {start: 0, mode: THR}
+mixData: []
+moduleData: {0: {type: TYPE_NONE}, 1: {type: TYPE_CROSSFIRE}}

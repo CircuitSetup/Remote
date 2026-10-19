@@ -189,9 +189,6 @@ void   freeUploadFileNames();
 #define DEF_CRSFWM          1     // 0: Remain in AP mode   1: Connect to WiFi in CRSF/ELRS mode
 #define DEF_ELRSPKTRATE     3
 #define DEF_ELRSSPDUNIT     0
-#define DEF_ELRSTLMRATIO    0
-#define DEF_ELRSMAXPOWER    3
-#define DEF_ELRSDYNPWR      0
 #define DEF_ELRSROLLCH      1
 #define DEF_ELRSPITCHCH     2
 #define DEF_ELRSTHRCH       3
@@ -281,9 +278,6 @@ struct Settings {
     char crsfap[2]          = MS(DEF_CRSFWM);
     char elrsPktRate[2]     = MS(DEF_ELRSPKTRATE);
     char elrsSpdUnit[2]     = MS(DEF_ELRSSPDUNIT);
-    char elrsTlmRatio[2]    = MS(DEF_ELRSTLMRATIO);
-    char elrsMaxPower[2]    = MS(DEF_ELRSMAXPOWER);
-    char elrsDynPower[2]    = MS(DEF_ELRSDYNPWR);
 
     // Kludges. Saved as "profile".
     char elrsAdcHysteresis[3] = "5";

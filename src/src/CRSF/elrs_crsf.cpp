@@ -24,7 +24,6 @@ constexpr uint8_t ADS_REG_CONFIG = 0x01;
 constexpr int16_t ADS_LOG_DELTA_THRESHOLD = 20;
 constexpr uint32_t ADS_LOG_INTERVAL_MS = 200;
 #endif
-constexpr uint8_t ADS_FILTER_SHIFT = 2;
 constexpr uint32_t ADS_CONVERSION_US = 500;
 constexpr uint32_t ADS_RETRY_MS = 20;
 // At 400kHz a config write takes 90us; a register read takes 113us.
@@ -42,9 +41,7 @@ ELRSCrsfMode::ELRSCrsfMode() : _serial(1)
 bool ELRSCrsfMode::begin(
     uint16_t packetRateHz,
     uint8_t speedDisplayUnits,
-    uint8_t telemetryRatio,
-    uint8_t maxPower,
-    uint8_t dynamicPower,
+    const ELRSRadioPreferences &radio,
     const ELRSInputAxisProfile *axisProfiles,
     const ELRSGimbalRouting &inputRouting,
     ButtonPack *buttonPack,
@@ -102,6 +99,7 @@ bool ELRSCrsfMode::begin(
     _lastAdsProbeAt = 0;
     memset(_stagingAxes, 0, sizeof(_stagingAxes));
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
+        _adcFilters[i].reset();
         _rawAxes[i] = 1024;
         _filteredAxes[i] = 1024;
         #ifdef REMOTE_DBG
@@ -129,9 +127,7 @@ bool ELRSCrsfMode::begin(
     config.powerLedOnFakePower = _powerLedOnFakePower;
     config.levelMeterOnFakePower = _levelMeterOnFakePower;
     config.speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
-    config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
-    config.maxPower = elrsMaxPowerOrDefault(maxPower);
-    config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
+    config.radio = radio;
     config.adcHysteresis = adcHysteresis;
     config.throttleIdleDeadband = throttleIdleDeadband;
     if(switchRouting) config.switchRouting = *switchRouting;
@@ -187,6 +183,11 @@ bool ELRSCrsfMode::isCalibrating() const
     return _core.isCalibrating();
 }
 
+bool ELRSCrsfMode::throttleReady() const
+{
+    return _core.throttleReady();
+}
+
 bool ELRSCrsfMode::fakePowerOn() const
 {
     return _core.fakePowerOn();
@@ -205,11 +206,6 @@ ELRSTelemetrySample ELRSCrsfMode::telemetrySample(uint8_t source, uint32_t now, 
 bool ELRSCrsfMode::telemetryDisplayAssigned() const { return _core.telemetryDisplayAssigned(); }
 void ELRSCrsfMode::renderAssignedDisplay(uint32_t now, int battWarn) { _core.renderAssignedDisplay(*this, now, battWarn); }
 uint8_t ELRSCrsfMode::speedDisplayUnits() const { return _speedDisplayUnits; }
-
-void ELRSCrsfMode::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower)
-{
-    _core.requestModuleConfigUpdate(telemetryRatio, maxPower, dynamicPower, millis());
-}
 
 bool ELRSCrsfMode::readCurrentRawAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT])
 {
@@ -269,6 +265,7 @@ ELRSAxesResult ELRSCrsfMode::failAdsSweep()
     _adsChannel = 0;
     _haveAds = false;
     _haveFilteredAxes = false;
+    for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) _adcFilters[i].reset();
     _adsRetryPending = true;
     _lastAdsProbeAt = (uint32_t)millis();
     return ELRS_AXES_ERROR;
@@ -397,10 +394,10 @@ ELRSAxesResult ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], ui
         return ELRS_AXES_PENDING;
     }
     _adsState = ADS_IDLE;
+    const uint32_t completedAtUs = (uint32_t)micros();
     completedAt = (uint32_t)millis();
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        _filteredAxes[i] = !_haveFilteredAxes ? _stagingAxes[i] :
-            elrsIirFilterStep(_filteredAxes[i], _stagingAxes[i], ADS_FILTER_SHIFT);
+        _filteredAxes[i] = _adcFilters[i].update(_stagingAxes[i], completedAtUs);
         _rawAxes[i] = axes[i] = _filteredAxes[i];
     }
     _haveFilteredAxes = true;

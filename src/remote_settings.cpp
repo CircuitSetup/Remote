@@ -819,19 +819,6 @@ static bool read_settings(File configFile, int cfgReadCount)
         wd |= CopyCheckValidNumParm(json["bTy"], settings.batType, 0, 4, DEF_BAT_TYPE);
         wd |= CopyCheckValidNumParm(json["bCa"], settings.batCap, 1000, 6000, DEF_BAT_CAP);
         #endif
-
-        #ifdef HAVE_CRSF
-        if(haveNewBoard) {
-            wd |= CopyCheckValidNumParm(json["opMode"], settings.opMode, 0, 2, DEF_OPMODE);
-            wd |= CopyCBParm(json["eWAP"], settings.crsfap, DEF_CRSFWM);
-            wd |= CopyCheckValidNumParm(json["ePRHz"], settings.elrsPktRate, 0, 4, DEF_ELRSPKTRATE);
-            wd |= CopyCheckValidNumParm(json["eSUnit"], settings.elrsSpdUnit, 0, 1, DEF_ELRSSPDUNIT);
-            wd |= CopyCheckValidNumParm(json["eTlmR"], settings.elrsTlmRatio, 0, 6, DEF_ELRSTLMRATIO);
-            wd |= CopyCheckValidNumParm(json["eMxPwr"], settings.elrsMaxPower, 0, 5, DEF_ELRSMAXPOWER);
-            wd |= CopyCheckValidNumParm(json["eDynP"], settings.elrsDynPower, 0, 1, DEF_ELRSDYNPWR);
-        }
-        #endif
-  
         // HA/MQTT Settings in separate file
 
     } else {
@@ -926,19 +913,6 @@ void write_settings()
     json["bTy"] = (const char *)settings.batType;
     json["bCa"] = (const char *)settings.batCap;
     #endif
-
-    #ifdef HAVE_CRSF
-    if(haveNewBoard) {
-        json["opMode"] = (const char *)settings.opMode;
-        json["eWAP"] = (const char *)settings.crsfap;
-        json["ePRHz"] = (const char *)settings.elrsPktRate;
-        json["eSUnit"] = (const char *)settings.elrsSpdUnit;
-        json["eTlmR"] = (const char *)settings.elrsTlmRatio;
-        json["eMxPwr"] = (const char *)settings.elrsMaxPower;
-        json["eDynP"] = (const char *)settings.elrsDynPower;
-    }
-    #endif
-  
     writeJSONCfgFile(json, cfgName, FlashROMode, mainConfigHash, &mainConfigHash);
 }
 

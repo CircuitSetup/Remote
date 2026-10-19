@@ -31,26 +31,17 @@
 #define ELRS_SPEED_UNITS_MPH 1
 #define ELRS_SPEED_UNITS_DEFAULT ELRS_SPEED_UNITS_KMH
 
-#define ELRS_TLM_RATIO_STD   0
-#define ELRS_TLM_RATIO_1_2   1
-#define ELRS_TLM_RATIO_1_4   2
-#define ELRS_TLM_RATIO_1_8   3
-#define ELRS_TLM_RATIO_1_16  4
-#define ELRS_TLM_RATIO_1_32  5
-#define ELRS_TLM_RATIO_OFF   6
-#define ELRS_TLM_RATIO_DEFAULT ELRS_TLM_RATIO_STD
-
-#define ELRS_MAX_POWER_10MW    0
-#define ELRS_MAX_POWER_25MW    1
-#define ELRS_MAX_POWER_100MW   2
-#define ELRS_MAX_POWER_250MW   3
-#define ELRS_MAX_POWER_500MW   4
-#define ELRS_MAX_POWER_1000MW  5
-#define ELRS_MAX_POWER_DEFAULT ELRS_MAX_POWER_250MW
-
-#define ELRS_DYNAMIC_POWER_OFF     0
-#define ELRS_DYNAMIC_POWER_DYNAMIC 1
-#define ELRS_DYNAMIC_POWER_DEFAULT ELRS_DYNAMIC_POWER_OFF
+struct ELRSSelectionPreference {
+    char label[64] = "250";
+    char unit[24] = "mW";
+};
+struct ELRSRadioPreferences {
+    uint8_t modelId = 0;
+    char telemetry[16] = "Std";
+    ELRSSelectionPreference maxPower;
+    char dynamic[16] = "Off";
+};
+bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &preferences);
 
 struct ELRSAxisCalibrationData {
     int16_t minimum;
@@ -219,66 +210,6 @@ static inline uint8_t elrsSpeedUnitsOrDefault(uint8_t speedUnits)
     return elrsSpeedUnitsSupported(speedUnits) ? speedUnits : (uint8_t)ELRS_SPEED_UNITS_DEFAULT;
 }
 
-static inline bool elrsTelemetryRatioSupported(uint8_t telemetryRatio)
-{
-    return (telemetryRatio <= ELRS_TLM_RATIO_OFF);
-}
-
-static inline uint8_t elrsTelemetryRatioOrDefault(uint8_t telemetryRatio)
-{
-    return elrsTelemetryRatioSupported(telemetryRatio) ? telemetryRatio : (uint8_t)ELRS_TLM_RATIO_DEFAULT;
-}
-
-static inline const char *elrsTelemetryRatioLabel(uint8_t telemetryRatio)
-{
-    switch(elrsTelemetryRatioOrDefault(telemetryRatio)) {
-    case ELRS_TLM_RATIO_STD:  return "Std";
-    case ELRS_TLM_RATIO_1_2:  return "1:2";
-    case ELRS_TLM_RATIO_1_4:  return "1:4";
-    case ELRS_TLM_RATIO_1_8:  return "1:8";
-    case ELRS_TLM_RATIO_1_16: return "1:16";
-    case ELRS_TLM_RATIO_1_32: return "1:32";
-    default:                  return "Off";
-    }
-}
-
-static inline bool elrsMaxPowerSupported(uint8_t maxPower)
-{
-    return (maxPower <= ELRS_MAX_POWER_1000MW);
-}
-
-static inline uint8_t elrsMaxPowerOrDefault(uint8_t maxPower)
-{
-    return elrsMaxPowerSupported(maxPower) ? maxPower : (uint8_t)ELRS_MAX_POWER_DEFAULT;
-}
-
-static inline uint16_t elrsMaxPowerMilliwatts(uint8_t maxPower)
-{
-    switch(elrsMaxPowerOrDefault(maxPower)) {
-    case ELRS_MAX_POWER_10MW:   return 10;
-    case ELRS_MAX_POWER_25MW:   return 25;
-    case ELRS_MAX_POWER_100MW:  return 100;
-    case ELRS_MAX_POWER_250MW:  return 250;
-    case ELRS_MAX_POWER_500MW:  return 500;
-    default:                    return 1000;
-    }
-}
-
-static inline bool elrsDynamicPowerSupported(uint8_t dynamicPower)
-{
-    return (dynamicPower == ELRS_DYNAMIC_POWER_OFF ||
-            dynamicPower == ELRS_DYNAMIC_POWER_DYNAMIC);
-}
-
-static inline uint8_t elrsDynamicPowerOrDefault(uint8_t dynamicPower)
-{
-    return elrsDynamicPowerSupported(dynamicPower) ? dynamicPower : (uint8_t)ELRS_DYNAMIC_POWER_DEFAULT;
-}
-
-static inline const char *elrsDynamicPowerLabel(uint8_t dynamicPower)
-{
-    return (elrsDynamicPowerOrDefault(dynamicPower) == ELRS_DYNAMIC_POWER_DYNAMIC) ? "Dyn" : "Off";
-}
 
 static inline uint8_t elrsAds1015SingleEndedConfigHighByte(uint8_t channel)
 {
@@ -328,5 +259,56 @@ static inline int16_t elrsIirFilterStep(int16_t previous, int16_t sample, uint8_
     if(!step && delta) step = (delta > 0) ? 1 : -1;
     return (int16_t)(previous + step);
 }
+
+constexpr float ELRS_ADC_FILTER_MIN_CUTOFF_HZ = 1.0f;
+constexpr float ELRS_ADC_FILTER_BETA = 0.02f;
+constexpr float ELRS_ADC_FILTER_DERIVATIVE_CUTOFF_HZ = 1.0f;
+constexpr uint32_t ELRS_ADC_FILTER_STALE_US = 100000UL;
+
+class ELRSOneEuroFilter {
+    public:
+        void reset() { _initialized = false; }
+
+        int16_t update(int16_t sample, uint32_t nowUs)
+        {
+            if(!_initialized) {
+                _initialized = true;
+                _previousRaw = _filtered = (float)sample;
+                _derivative = 0.0f;
+                _lastAtUs = nowUs;
+                return sample;
+            }
+
+            const uint32_t elapsedUs = nowUs - _lastAtUs;
+            if(elapsedUs > ELRS_ADC_FILTER_STALE_US) {
+                reset();
+                return update(sample, nowUs);
+            }
+            if(!elapsedUs) return (int16_t)roundf(_filtered);
+
+            const float dt = elapsedUs * 0.000001f;
+            const float raw = (float)sample;
+            const float derivative = (raw - _previousRaw) / dt;
+            _derivative += alpha(ELRS_ADC_FILTER_DERIVATIVE_CUTOFF_HZ, dt) * (derivative - _derivative);
+            const float cutoff = ELRS_ADC_FILTER_MIN_CUTOFF_HZ + ELRS_ADC_FILTER_BETA * fabsf(_derivative);
+            _filtered += alpha(cutoff, dt) * (raw - _filtered);
+            _previousRaw = raw;
+            _lastAtUs = nowUs;
+            return (int16_t)roundf(_filtered);
+        }
+
+    private:
+        static float alpha(float cutoff, float dt)
+        {
+            const float tau = 1.0f / (6.28318530718f * cutoff);
+            return 1.0f / (1.0f + tau / dt);
+        }
+
+        bool _initialized = false;
+        float _previousRaw = 0.0f;
+        float _filtered = 0.0f;
+        float _derivative = 0.0f;
+        uint32_t _lastAtUs = 0;
+};
 
 #endif

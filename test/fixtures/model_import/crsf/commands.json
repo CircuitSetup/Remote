@@ -1,0 +1,12 @@
+{
+  "provenance": "Source-derived CRSF command examples; not a hardware capture",
+  "firmware": "ExpressLRS 4.1.0",
+  "source": "https://github.com/ExpressLRS/ExpressLRS/blob/4.1.0/src/lib/tx-crsf/TXModuleParameters.cpp",
+  "states": {"idle": 0, "start": 1, "running": 2, "confirm_required": 3, "confirm": 4, "cancel": 5, "query": 6},
+  "timeout_unit_ms": 10,
+  "examples": [
+    {"name": "Enable WiFi", "sequence": [1, 3, 4, 2, 6, 2, 5, 0]},
+    {"name": "Bind", "sequence": [1, 2, 6, 2]},
+    {"name": "Enable Rx WiFi", "sequence": [1, 2]}
+  ]
+}

@@ -7,6 +7,7 @@
 
 #include "src/CRSF/elrs_crsf_core.h"
 #include "src/CRSF/elrs_input_model.h"
+#include "src/CRSF/elrs_device_config.h"
 
 namespace {
 
@@ -80,12 +81,12 @@ class FakeHost : public ELRSCrsfHost {
                 for(size_t i = 0; i < len; i++) {
                     rx.push_back(data[i]);
                 }
-                if(!rxAppendAfterWrite.empty()) {
-                    for(size_t i = 0; i < rxAppendAfterWrite.size(); i++) {
-                        rx.push_back(rxAppendAfterWrite[i]);
-                    }
-                    rxAppendAfterWrite.clear();
+            }
+            if(!rxAppendAfterWrite.empty()) {
+                for(size_t i = 0; i < rxAppendAfterWrite.size(); i++) {
+                    rx.push_back(rxAppendAfterWrite[i]);
                 }
+                rxAppendAfterWrite.clear();
             }
             return len;
         }
@@ -147,6 +148,11 @@ class FakeHost : public ELRSCrsfHost {
             completedAt = fakeMillis;
             axesAwaiting = false;
             return ELRS_AXES_READY;
+        }
+
+        int16_t rawThrottleSample() const override
+        {
+            return useRawThrottleOverride ? rawThrottleOverride : axes[AXIS_THROTTLE];
         }
 
         bool readFakePowerSwitch() override
@@ -266,6 +272,8 @@ class FakeHost : public ELRSCrsfHost {
         ELRSAxisCalibrationData calibration[ELRS_GIMBAL_AXIS_COUNT];
         bool axesAvailable = true;
         bool axesPending = false;
+        bool useRawThrottleOverride = false;
+        int16_t rawThrottleOverride = 0;
         bool axesAwaiting = false;
         bool fakePower = false;
         bool stop = false;
@@ -384,7 +392,7 @@ static std::vector<uint8_t> makeDeviceInfoFrame(const char *name, uint8_t fieldC
     return makeExtendedFrame(0xEE, 0x29, 0xEA, 0xEE, payload);
 }
 
-static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const char *name, const char *options, uint8_t value, uint8_t maxValue)
+static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const char *name, const char *options, uint8_t value, uint8_t maxValue, const char *unit = "")
 {
     std::vector<uint8_t> payload;
 
@@ -398,7 +406,7 @@ static std::vector<uint8_t> makeTextSelectionEntryFrame(uint8_t fieldId, const c
     payload.push_back(0x00);
     payload.push_back(maxValue);
     payload.push_back(0x00);
-    payload.push_back(0x00);
+    payload.insert(payload.end(), unit, unit + strlen(unit) + 1);
 
     return makeExtendedFrame(0xEE, 0x2B, 0xEA, 0xEE, payload);
 }
@@ -804,13 +812,14 @@ static void test_rc_frame_packing_and_driver_enable()
 
     host.axes[AXIS_AILERON] = 2047;
     host.axes[AXIS_ELEVATOR] = 1024;
-    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_THROTTLE] = 1024;
     host.axes[AXIS_RUDDER] = 2047;
     host.stop = true;
     host.buttonA = true;
     host.packStates = 0b11001010;
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    host.axes[AXIS_THROTTLE] = 0;
     loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_UINT32(400000, host.bauds[0]);
@@ -940,6 +949,51 @@ static void test_light_iir_filter_converges_on_small_stable_changes()
         for(int i = 0; i < 5; i++) filtered = elrsIirFilterStep(filtered, sample, 2);
         TEST_ASSERT_EQUAL_INT16(sample, filtered);
     }
+}
+
+static void test_one_euro_filter_suppresses_jitter_and_tracks_steps()
+{
+    float adaptiveNoise = 0.0f, quarterNoise = 0.0f;
+    ELRSOneEuroFilter filter;
+    int16_t quarter = 1000;
+    uint32_t at = 0;
+    for(int i = 0; i < 200; i++) {
+        const int16_t sample = (i & 1) ? 1004 : 996;
+        at += 4000;
+        const int16_t adaptive = filter.update(sample, at);
+        if(i > 20) {
+            adaptiveNoise += (adaptive - 1000) * (adaptive - 1000);
+            quarterNoise += (quarter - 1000) * (quarter - 1000);
+        }
+        quarter = elrsIirFilterStep(quarter, sample, 2);
+    }
+    TEST_ASSERT_TRUE(adaptiveNoise < quarterNoise * 0.5f);
+    const float adaptiveRms = sqrtf(adaptiveNoise / 179.0f);
+    const float quarterRms = sqrtf(quarterNoise / 179.0f);
+    TEST_ASSERT_TRUE(adaptiveRms < 0.35f);
+    TEST_ASSERT_TRUE(quarterRms > 0.65f);
+
+    filter.reset();
+    for(int i = 0; i <= 100; i++)
+        quarter = filter.update((int16_t)(1000 + i), (uint32_t)(200000 + i * 20000));
+    TEST_ASSERT_TRUE(quarter >= 1090);
+    TEST_ASSERT_TRUE(quarter <= 1100);
+
+    for(uint32_t intervalUs : {2000U, 4000U, 20000U}) {
+        filter.reset();
+        TEST_ASSERT_EQUAL_INT16(1000, filter.update(1000, 100000));
+        const int16_t adaptiveStep = filter.update(1400, 100000 + intervalUs);
+        TEST_ASSERT_TRUE(adaptiveStep > 1100);
+        if(intervalUs == 2000U) TEST_ASSERT_INT16_WITHIN(5, 1156, adaptiveStep);
+        if(intervalUs == 4000U) TEST_ASSERT_INT16_WITHIN(5, 1223, adaptiveStep);
+        if(intervalUs == 20000U) TEST_ASSERT_INT16_WITHIN(5, 1341, adaptiveStep);
+    }
+    filter.reset();
+    filter.update(1000, UINT32_MAX - 1000U);
+    TEST_ASSERT_TRUE(filter.update(1400, 3000U) > 1100);
+    const int16_t before = filter.update(1500, 3000U);
+    TEST_ASSERT_EQUAL_INT16(before, filter.update(0, 3000U));
+    TEST_ASSERT_EQUAL_INT16(0, filter.update(0, 103001U));
 }
 
 static void test_output_limits_scale_each_side_of_neutral()
@@ -1160,10 +1214,12 @@ static void test_output_limits_preserve_safe_neutral_and_idle()
         config.inputRouting = {4, 3, 2, 1};
         for(auto &limits : config.outputLimits) limits = {1200, 1800};
         for(auto &profile : config.axisProfiles) profile.expo = 100;
-        host.axes[AXIS_THROTTLE] = 0;
+        host.axes[AXIS_THROTTLE] = 1024;
         host.axesAvailable = scenario != 0;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         if(scenario) {
+            host.axes[AXIS_THROTTLE] = 0;
+            loopAtMs(core, host, 20, 0);
             TEST_ASSERT_EQUAL_UINT16(500, core.channelAt(1));
             if(scenario == 1) host.axesAvailable = false;
             else core.startSelfTest(0);
@@ -1316,17 +1372,23 @@ static void test_gimbal_curves_are_independent_and_follow_channel_routing()
             config.axisProfiles[axis] = {300, 900, 1500, 0, 0, strengths[axis]};
             host.axes[axis] = 600;
         }
+        host.axes[AXIS_THROTTLE] = 900;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+        host.axes[AXIS_THROTTLE] = 600; loopAtMs(core, host, 20, 0);
         for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
         // Changing Elevator cannot change the other three physical outputs.
         config.axisProfiles[AXIS_ELEVATOR].expo = 100;
+        host.axes[AXIS_THROTTLE] = 900;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 20));
+        host.axes[AXIS_THROTTLE] = 600; loopAtMs(core, host, 40, 0);
         TEST_ASSERT_EQUAL_UINT16(888, core.channelAt(channels[permuted][AXIS_ELEVATOR]));
         for(int axis : {AXIS_AILERON, AXIS_RUDDER, AXIS_THROTTLE}) TEST_ASSERT_EQUAL_UINT16(expected[axis], core.channelAt(channels[permuted][axis]));
         // Curves shape calibrated input before travel limits scale each physical axis.
         config.axisProfiles[AXIS_ELEVATOR].expo = strengths[AXIS_ELEVATOR];
         for(auto &limits : config.outputLimits) limits = {1200, 1800};
+        host.axes[AXIS_THROTTLE] = 900;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 40));
+        host.axes[AXIS_THROTTLE] = 600; loopAtMs(core, host, 60, 0);
         const uint16_t limited[] = {819, 746, 929, 654};
         for(int axis = 0; axis < 4; axis++) TEST_ASSERT_EQUAL_UINT16(limited[axis], core.channelAt(channels[permuted][axis]));
     }
@@ -1838,10 +1900,12 @@ static void test_adc_fault_and_self_test_keep_remapped_throttle_neutral()
         config.inputRouting = elrsDefaultGimbalRouting();
         config.inputRouting.elevatorChannel = 3;
         config.inputRouting.throttleChannel = 2;
-        host.axes[AXIS_THROTTLE] = 0;
+        host.axes[AXIS_THROTTLE] = 1024;
         host.axesAvailable = scenario != 0;
         TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
         if(scenario) {
+            host.axes[AXIS_THROTTLE] = 0;
+            loopAtMs(core, host, 20, 0);
             TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(1));
             if(scenario == 1) host.axesAvailable = false;
             else core.startSelfTest(0);
@@ -1930,7 +1994,7 @@ static void test_control_mapping_and_reversed_axis_calibration()
 
     host.axes[AXIS_AILERON] = 2047;
     host.axes[AXIS_ELEVATOR] = 1024;
-    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_THROTTLE] = 1024;
     host.axes[AXIS_RUDDER] = 2047;
     host.stop = true;
     host.fakePower = true;
@@ -1941,6 +2005,7 @@ static void test_control_mapping_and_reversed_axis_calibration()
     config.axisProfiles[AXIS_RUDDER].reverse = 1;
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0));
+    host.axes[AXIS_THROTTLE] = 0;
     loopAtMs(core, host, 10, 0);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
@@ -1975,12 +2040,13 @@ static void test_axis_order_aileron_elevator_throttle_rudder_matches_runtime_ban
     TEST_ASSERT_EQUAL_UINT8(2, AXIS_RUDDER);
     TEST_ASSERT_EQUAL_UINT8(3, AXIS_THROTTLE);
 
-    host.axes[AXIS_THROTTLE] = 0;
+    host.axes[AXIS_THROTTLE] = 1024;
     host.axes[AXIS_RUDDER] = 512;
     host.axes[AXIS_ELEVATOR] = 1536;
     host.axes[AXIS_AILERON] = 2047;
 
     TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    host.axes[AXIS_THROTTLE] = 0;
     loopAt(core, host, 20, 20000);
 
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
@@ -2014,7 +2080,7 @@ static void test_nondefault_axis_profile_changes_runtime_output_scaling()
     TEST_ASSERT_EQUAL_UINT16(992, profiledCore.channelAt(0));
 }
 
-static void test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapping()
+static void test_out_of_range_axis_profile_is_sanitized_before_runtime_mapping()
 {
     FakeHost host;
     ELRSCrsfCore core;
@@ -2151,6 +2217,120 @@ static void test_parser_recovers_after_bad_crc_followed_by_valid_frame()
 
     TEST_ASSERT_TRUE(core.synced());
     TEST_ASSERT_EQUAL_UINT8(91, core.linkQuality());
+}
+
+static void test_parser_resyncs_link_stats_inside_bad_crc_candidate()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 92, 0, 0, 0, 0, 0, 0, 0});
+
+    candidate.insert(candidate.end(), reply.begin(), reply.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_UINT8(92, core.linkQuality());
+}
+
+static void test_parser_resyncs_device_info_inside_bad_crc_candidate()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    std::vector<uint8_t> reply = makeDeviceInfoFrame("ELRS", 3);
+
+    reply[0] = 0xC8;
+    candidate.insert(candidate.end(), reply.begin(), reply.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_STRING("ELRS", statusOf(core).moduleName);
+}
+
+static void test_parser_rejects_unsupported_sync_in_recovered_suffix()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 92, 0, 0, 0, 0, 0, 0, 0});
+    std::vector<uint8_t> unsupported = makeFrame(0x14, {0, 0, 11, 0, 0, 0, 0, 0, 0, 0});
+    unsupported[0] = 0x55;
+
+    candidate.insert(candidate.end(), reply.begin(), reply.end());
+    candidate.insert(candidate.end(), unsupported.begin(), unsupported.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_EQUAL_UINT8(92, core.linkQuality());
+}
+
+static void test_parser_keeps_multiple_valid_embedded_frames()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    std::vector<uint8_t> candidate{0xC8, 62};
+    const std::vector<uint8_t> first = makeFrame(0x14, {0, 0, 92, 0, 0, 0, 0, 0, 0, 0});
+    const std::vector<uint8_t> second = makeFrame(0x14, {0, 0, 95, 0, 0, 0, 0, 0, 0, 0});
+
+    candidate.insert(candidate.end(), first.begin(), first.end());
+    candidate.insert(candidate.end(), second.begin(), second.end());
+    candidate.resize(63, 0x7F);
+    candidate.push_back(ELRSCrsfTransport::crc8D5(candidate.data() + 2, candidate.size() - 2) ^ 0xFF);
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, candidate);
+    loopAtMs(core, host, 100, 0);
+
+    TEST_ASSERT_EQUAL_UINT8(95, core.linkQuality());
+}
+
+static void test_parser_keeps_delayed_uart_remainder_of_valid_frame()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 94, 0, 0, 0, 0, 0, 0, 0});
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, std::vector<uint8_t>(reply.begin(), reply.begin() + 3));
+    loopAtMs(core, host, 100, 0);
+
+    queueBytes(host, std::vector<uint8_t>(reply.begin() + 3, reply.end()));
+    loopAtMs(core, host, 110, 0);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_UINT8(94, core.linkQuality());
+}
+
+static void test_parser_bounds_rx_bytes_per_loop()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0));
+    queueBytes(host, std::vector<uint8_t>(128, 0xFF));
+
+    loopAtMs(core, host, 100, 0);
+    TEST_ASSERT_EQUAL_INT(64, host.serialReadCount);
+    TEST_ASSERT_EQUAL_INT(64, host.serialAvailable());
+
+    loopAtMs(core, host, 101, 0);
+    TEST_ASSERT_EQUAL_INT(128, host.serialReadCount);
+    TEST_ASSERT_EQUAL_INT(0, host.serialAvailable());
 }
 
 static void test_comm_codes_show_no_sync_until_valid_frame()
@@ -2546,83 +2726,888 @@ static void test_self_test_expires_across_millis_rollover()
     }
 }
 
+static bool feedDevice(ELRSDeviceConfig &device, const std::vector<uint8_t> &frame, uint32_t now)
+{
+    return device.onFrame(frame[2], frame.data() + 3, frame.size() - 4, now);
+}
+
+static void deviceStep(ELRSDeviceConfig &device, ELRSCrsfTransport &transport, FakeHost &host, uint32_t now,
+                       const ELRSConfigSafety &safety = ELRSConfigSafety())
+{
+    host.setTime(now, now * 1000);
+    device.tick(transport, safety, now);
+    transport.loop(host, now, now * 1000);
+    device.tick(transport, safety, now);
+}
+
+static void discoverDevice(ELRSDeviceConfig &device, ELRSCrsfTransport &transport, FakeHost &host, uint8_t fields = 3)
+{
+    transport.begin(host, ELRSCrsfTransportConfig(), 0, 0);
+    TEST_ASSERT_TRUE(device.discover(1));
+    deviceStep(device, transport, host, 0);
+    TEST_ASSERT_TRUE(feedDevice(device, makeDeviceInfoFrame("Any ELRS manufacturer", fields), 1));
+    deviceStep(device, transport, host, 501);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+}
+
+static void test_device_scan_routes_tx_and_rx()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto rx = makeDeviceInfoFrame("PWM receiver", 8);
+    rx[4] = 0xEC;
+    TEST_ASSERT_TRUE(feedDevice(device, rx, 502));
+    TEST_ASSERT_EQUAL_UINT8(2, device.deviceCount());
+    TEST_ASSERT_EQUAL_UINT8(0xEC, device.deviceAt(1)->address);
+    TEST_ASSERT_TRUE(device.read(0xEC, 2, device.deviceAt(1)->generation, 2));
+    deviceStep(device, transport, host, 601);
+    const auto &request = host.writes.back();
+    TEST_ASSERT_EQUAL_HEX8(0x2C, request[2]);
+    TEST_ASSERT_EQUAL_HEX8(0xEC, request[3]);
+    TEST_ASSERT_EQUAL_HEX8(0xEF, request[4]);
+    TEST_ASSERT_EQUAL_UINT8(2, request[5]);
+    auto reply = makeTextSelectionEntryFrame(2, "Protocol", "CRSF;SBUS", 0, 1);
+    TEST_ASSERT_FALSE(feedDevice(device, reply, 602));
+    reply[4] = 0xEC;
+    TEST_ASSERT_TRUE(feedDevice(device, reply, 602));
+    TEST_ASSERT_EQUAL_STRING("Protocol", device.parameter()->name());
+}
+
+static void test_chunk_retry_does_not_duplicate()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    auto data = makeTextSelectionEntryData("Packet Rate", "50Hz;100Hz Full;200Hz", 1, 2);
+    std::vector<uint8_t> first(data.begin(), data.begin() + 16), last(data.begin() + 16, data.end());
+    auto chunk = makeParameterChunkFrame(1, 1, first);
+    TEST_ASSERT_TRUE(feedDevice(device, chunk, 601));
+    deviceStep(device, transport, host, 700);
+    TEST_ASSERT_FALSE(feedDevice(device, chunk, 701));
+    deviceStep(device, transport, host, 1201);
+    deviceStep(device, transport, host, 1220);
+    TEST_ASSERT_EQUAL_HEX8(0x2C, host.writes.back()[2]);
+    TEST_ASSERT_EQUAL_UINT8(1, host.writes.back()[6]);
+    TEST_ASSERT_TRUE(feedDevice(device, makeParameterChunkFrame(1, 0, last), 1221));
+    TEST_ASSERT_EQUAL_STRING("50Hz;100Hz Full;200Hz", device.parameter()->options());
+    TEST_ASSERT_EQUAL_INT32(1, device.parameter()->value.raw);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+}
+
+static void test_field_options_keep_empty_indices()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    TEST_ASSERT_TRUE(feedDevice(device, makeTextSelectionEntryFrame(1, "Antenna Mode", "Gemini;;;Switch", 3, 3), 601));
+    const char *option;
+    size_t length;
+    TEST_ASSERT_TRUE(device.parameter()->optionAt(3, option, length));
+    TEST_ASSERT_EQUAL_STRING("Switch", std::string(option, length).c_str());
+    TEST_ASSERT_FALSE(device.parameter()->optionAt(1, option, length));
+    TEST_ASSERT_EQUAL_INT32(3, device.parameter()->value.raw);
+}
+
+static void test_parameter_read_has_total_deadline_even_when_chunks_arrive()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    for(int chunk = 0; chunk < 155 && device.busy(); chunk++) {
+        feedDevice(device, makeParameterChunkFrame(1, 249 - chunk, {'x'}), 601 + chunk * 200);
+        deviceStep(device, transport, host, 800 + chunk * 200);
+    }
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Failed, (int)device.status().state);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Timeout, (int)device.status().error);
+}
+
+static void test_descriptor_limits_and_hidden_types()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    auto hidden = makeTextSelectionEntryFrame(1, "Backpack", "Off;On", 0, 1);
+    hidden[8] = 0x89;
+    TEST_ASSERT_TRUE(feedDevice(device, hidden, 601));
+    TEST_ASSERT_TRUE(device.parameter()->hidden());
+    TEST_ASSERT_EQUAL_UINT8(9, device.parameter()->type);
+
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 3));
+    deviceStep(device, transport, host, 800);
+    std::vector<uint8_t> oversized(56, 'x');
+    for(int chunk = 0; chunk < 5; chunk++) {
+        feedDevice(device, makeParameterChunkFrame(1, 4 - chunk, oversized), 801 + chunk * 100);
+        deviceStep(device, transport, host, 900 + chunk * 100);
+    }
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Failed, (int)device.status().state);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::TooLarge, (int)device.status().error);
+    TEST_ASSERT_NULL(device.parameter());
+
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 4));
+    deviceStep(device, transport, host, 1500);
+    TEST_ASSERT_FALSE(feedDevice(device, makeParameterChunkFrame(1, 0, {0, 9, 'x'}), 1501));
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Malformed, (int)device.status().error);
+}
+
+static void test_field_decoder_handles_signed_integer_and_family_options()
+{
+    const char *names[] = {"SX128x vendor", "SX127x vendor", "Gemini vendor", "Dual LR1121 vendor"};
+    const char *rates[] = {"F500;F1000", "50Hz;100Hz Full", "250Hz;333Hz Full", "X150;X100 Full"};
+    for(int family = 0; family < 4; family++) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSDeviceConfig device;
+        transport.begin(host, ELRSCrsfTransportConfig(), 0, 0);
+        TEST_ASSERT_TRUE(device.discover(1));
+        deviceStep(device, transport, host, 0);
+        feedDevice(device, makeDeviceInfoFrame(names[family], 3), 1);
+        deviceStep(device, transport, host, 501);
+        TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+        deviceStep(device, transport, host, 600);
+        TEST_ASSERT_TRUE(feedDevice(device, makeTextSelectionEntryFrame(1, "Packet Rate", rates[family], 1, 1), 601));
+        TEST_ASSERT_EQUAL_STRING(rates[family], device.parameter()->options());
+        TEST_ASSERT_TRUE(device.read(0xEE, 2, device.deviceAt(0)->generation, 3));
+        deviceStep(device, transport, host, 800);
+        TEST_ASSERT_TRUE(feedDevice(device, makeParameterChunkFrame(2, 0,
+            {0, 3, 'T', 'r', 'i', 'm', 0, 0xff, 0xfb, 0xff, 0x9c, 0, 100, 0, 0, 0}), 801));
+        TEST_ASSERT_EQUAL_INT32(-5, device.parameter()->value.raw);
+        TEST_ASSERT_EQUAL_INT32(-100, device.parameter()->minimum.raw);
+    }
+}
+
+static void test_transport_service_queue_cannot_overwrite_and_reports_actual_send()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    transport.begin(host, ELRSCrsfTransportConfig(), 0, 0);
+    auto ping = makeExtendedFrame(0xC8, 0x28, 0, 0xEA, {});
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    TEST_ASSERT_FALSE(transport.queueServiceFrame(ping.data(), ping.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, transport.serviceTxCount());
+    host.setTime(10, 10000);
+    transport.loop(host, 10, 10000);
+    TEST_ASSERT_EQUAL_UINT32(1, transport.serviceTxCount());
+    TEST_ASSERT_EQUAL_UINT32(10, transport.lastServiceTxAt());
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    TEST_ASSERT_TRUE(transport.cancelServiceFrame());
+    TEST_ASSERT_FALSE(transport.hasPendingServiceFrame());
+}
+
+static std::vector<uint8_t> modelMatchEntry(uint8_t id, uint8_t field = 1)
+{
+    auto data = makeTextSelectionEntryData("Model Match", "Off;On", 0, 1);
+    data.pop_back();
+    std::string unit = " (ID: " + std::to_string(id) + ")";
+    data.insert(data.end(), unit.begin(), unit.end());
+    data.push_back(0);
+    return makeParameterChunkFrame(field, 0, data);
+}
+
+static void feedRadioStatus(ELRSDeviceConfig &device, uint32_t now, uint8_t flags = 0)
+{
+    TEST_ASSERT_TRUE(feedDevice(device, makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE,
+        {0, 0, 10, flags, 0}), now));
+}
+
+static ELRSConfigSafety maintenanceSafety()
+{
+    ELRSConfigSafety safety;
+    safety.maintenance = true;
+    return safety;
+}
+
+static ELRSParameterView preparePowerWrite(ELRSDeviceConfig &device, ELRSCrsfTransport &transport, FakeHost &host)
+{
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1), 601);
+    return *device.parameter();
+}
+
+static void test_crsf_reply_is_not_rf_connection()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    TEST_ASSERT_TRUE(beginAt(core, host, defaultConfig(), 0, 0));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 3));
+    loopAt(core, host, 1, 1000);
+    TEST_ASSERT_TRUE(core.getStatus().synced);
+    TEST_ASSERT_FALSE(core.deviceConfig().radioStatus(1).rfConnectionKnown);
+    feedRadioStatus(core.deviceConfig(), 2, 1);
+    TEST_ASSERT_TRUE(core.deviceConfig().radioStatus(2).rfConnected);
+    TEST_ASSERT_FALSE(core.deviceConfig().radioStatus(1003).rfConnectionKnown);
+}
+
+static void test_off_race_stale_status_blocks_mutation()
+{
+    for(int condition = 0; condition < 6; condition++) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSDeviceConfig device;
+        auto expected = preparePowerWrite(device, transport, host);
+        auto safety = maintenanceSafety();
+        feedRadioStatus(device, condition == 0 ? 1 : 700, condition == 1 ? 8 : 0);
+        if(condition == 2) safety.fakePower = true;
+        if(condition == 3) safety.calibrating = true;
+        if(condition == 4) safety.selfTest = true;
+        if(condition == 5) safety.storageBusy = true;
+        TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+        deviceStep(device, transport, host, 1500, safety);
+        feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1), 1501);
+        deviceStep(device, transport, host, 1600, safety);
+        for(const auto &frame : host.writes) if(frame[2] == 0x2D) TEST_ASSERT_EQUAL_UINT8(0, frame[5]);
+        TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 4) || device.busy());
+    }
+}
+
+static void test_final_ch5_blocks_stop_named_safe()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    auto expected = preparePowerWrite(device, transport, host);
+    auto safety = maintenanceSafety();
+    safety.finalCh5Ticks = 1811;
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1), 801);
+    deviceStep(device, transport, host, 900, safety);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsafe, (int)device.status().error);
+    TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static void test_unsafe_transition_cancels_unsent_write()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    auto expected = preparePowerWrite(device, transport, host);
+    auto safety = maintenanceSafety();
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1), 801);
+    device.tick(transport, safety, 802);
+    TEST_ASSERT_TRUE(transport.hasPendingServiceFrame());
+    safety.fakePower = true;
+    device.tick(transport, safety, 900);
+    TEST_ASSERT_FALSE(transport.hasPendingServiceFrame());
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsafe, (int)device.status().error);
+    TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static void test_core_rechecks_fresh_radio_status_before_mutation_tx()
+{
+    for(bool backlog : {false, true}) {
+        for(uint8_t flags : {uint8_t(0), uint8_t(1), uint8_t(8), uint8_t(9)}) {
+            FakeHost host;
+            ELRSCrsfCore core;
+            beginAt(core, host, defaultConfig(), 0, 0);
+            core.setDeviceConfigAccess(true, false);
+            auto &device = core.deviceConfig();
+            TEST_ASSERT_TRUE(device.discover(1));
+            loopAt(core, host, 0, 0);
+            host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 3));
+            loopAt(core, host, 1, 1000);
+            host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, 0, 0}));
+            loopAt(core, host, 2, 2000);
+            loopAt(core, host, 501, 501000);
+            TEST_ASSERT_TRUE(device.write(0xEE, 1, device.deviceAt(0)->generation,
+                                          ELRSParameterValue(9, 0), ELRSParameterValue(9, 1), 3));
+            loopAt(core, host, 600, 600000);
+            host.queueFrame(makeTextSelectionEntryFrame(1, "Packet Rate", "50Hz;250Hz", 0, 1));
+            loopAt(core, host, 601, 601000);
+            if(backlog) {
+                std::vector<uint8_t> echo;
+                for(const auto &frame : host.writes) if(frame[2] == 0x16) echo = frame;
+                TEST_ASSERT_EQUAL_UINT(26, echo.size());
+                for(unsigned i = 0; i < 3; ++i) host.queueFrame(echo);
+            }
+            host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, flags, 0}));
+            loopAt(core, host, 700, 700000);
+
+            unsigned writes = 0;
+            for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5] == 1) ++writes;
+            if(backlog) {
+                TEST_ASSERT_EQUAL_UINT(0, writes);
+                loopAt(core, host, 710, 710000);
+                writes = 0;
+                for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5] == 1) ++writes;
+            }
+            TEST_ASSERT_EQUAL_UINT(flags == 0 ? 1 : 0, writes);
+            if(flags) TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsafe, (int)device.status().error);
+        }
+    }
+}
+
+static void test_readback_rejection_is_not_success()
+{
+    for(int accepted = 0; accepted < 2; accepted++) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSDeviceConfig device;
+        auto expected = preparePowerWrite(device, transport, host);
+        auto safety = maintenanceSafety();
+        feedRadioStatus(device, 700);
+        TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+        deviceStep(device, transport, host, 800, safety);
+        feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1), 801);
+        deviceStep(device, transport, host, 900, safety);
+        TEST_ASSERT_EQUAL_HEX8(0x2D, host.writes.back()[2]);
+        TEST_ASSERT_EQUAL_UINT8(1, host.writes.back()[6]);
+        TEST_ASSERT_TRUE(device.busy());
+        deviceStep(device, transport, host, 1000, safety);
+        TEST_ASSERT_EQUAL_HEX8(0x2C, host.writes.back()[2]);
+        feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", accepted, 1), 1001);
+        TEST_ASSERT_EQUAL((int)(accepted ? ELRSOperationState::Complete : ELRSOperationState::Failed), (int)device.status().state);
+        TEST_ASSERT_NOT_NULL(device.parameter());
+        TEST_ASSERT_EQUAL_INT32(accepted, device.parameter()->value.raw);
+    }
+}
+
+static void test_id_63_allowed_64_rejected()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto safety = maintenanceSafety();
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    feedDevice(device, modelMatchEntry(7), 601);
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_FALSE(device.selectModel(64, device.deviceAt(0)->generation, 3));
+    TEST_ASSERT_TRUE(device.selectModel(63, device.deviceAt(0)->generation, 4));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, modelMatchEntry(7), 801);
+    deviceStep(device, transport, host, 900, safety);
+    const auto &frame = host.writes.back();
+    TEST_ASSERT_EQUAL_HEX8(0x32, frame[2]);
+    TEST_ASSERT_EQUAL_HEX8(0x10, frame[5]);
+    TEST_ASSERT_EQUAL_HEX8(0x05, frame[6]);
+    TEST_ASSERT_EQUAL_UINT8(63, frame[7]);
+    uint8_t crc = 0;
+    for(size_t i = 2; i < 8; i++) for(int bit = 0; bit < 8; bit++) {
+        uint8_t input = bit == 0 ? frame[i] : 0;
+        if(bit == 0) crc ^= input;
+        crc = (crc & 0x80) ? (crc << 1) ^ 0xBA : crc << 1;
+    }
+    TEST_ASSERT_EQUAL_HEX8(crc, frame[8]);
+    deviceStep(device, transport, host, 1000, safety);
+    feedDevice(device, modelMatchEntry(63), 1001);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    TEST_ASSERT_EQUAL_UINT8(63, device.modelId());
+}
+
+static void test_module_swap_invalidates_pending_write()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    auto expected = preparePowerWrite(device, transport, host);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+    feedDevice(device, makeDeviceInfoFrame("Different module", 4), 800);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Stale, (int)device.status().error);
+    TEST_ASSERT_FALSE(device.read(0xEE, 1, expected.generation, 4));
+}
+
+static void test_module_swap_invalidates_cached_model_id()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    feedDevice(device, modelMatchEntry(9), 601);
+    TEST_ASSERT_TRUE(device.modelIdKnown());
+    TEST_ASSERT_EQUAL_UINT8(9, device.modelId());
+
+    feedDevice(device, makeDeviceInfoFrame("Different module", 4), 700);
+    TEST_ASSERT_FALSE(device.modelIdKnown());
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 3));
+    deviceStep(device, transport, host, 800);
+    feedDevice(device, modelMatchEntry(42), 801);
+    TEST_ASSERT_TRUE(device.modelIdKnown());
+    TEST_ASSERT_EQUAL_UINT8(42, device.modelId());
+}
+
+static void test_band_change_refreshes_rate_antenna_and_power()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto safety = maintenanceSafety();
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "RF Band", "868MHz;2.4GHz;X-Band", 0, 2), 601);
+    auto old = *device.parameter();
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, old.generation, old.value, ELRSParameterValue(9, 2), 3));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "RF Band", "868MHz;2.4GHz;X-Band", 0, 2), 801);
+    deviceStep(device, transport, host, 900, safety);
+    deviceStep(device, transport, host, 1000, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "RF Band", "868MHz;2.4GHz;X-Band", 2, 2), 1001);
+    TEST_ASSERT_NOT_EQUAL(old.generation, device.deviceAt(0)->generation);
+    TEST_ASSERT_FALSE(device.read(0xEE, 2, old.generation, 4));
+}
+
+static void test_crossband_forced_gemini_is_not_overridden()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto safety = maintenanceSafety();
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Antenna Mode", "Gemini;;;", 0, 3), 601);
+    auto expected = *device.parameter();
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 2), 3));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Antenna Mode", "Gemini;;;", 0, 3), 801);
+    deviceStep(device, transport, host, 900, safety);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsupported, (int)device.status().error);
+    TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static void test_busy_write_cannot_change_inflight_value()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    auto expected = preparePowerWrite(device, transport, host);
+    auto safety = maintenanceSafety();
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+    TEST_ASSERT_FALSE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 0), 4));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1), 801);
+    deviceStep(device, transport, host, 900, safety);
+    TEST_ASSERT_EQUAL_UINT32(3, device.status().id);
+    TEST_ASSERT_EQUAL_UINT8(1, host.writes.back()[6]);
+}
+
+static void test_changed_descriptor_blocks_old_option_index()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    auto expected = preparePowerWrite(device, transport, host);
+    auto safety = maintenanceSafety();
+    feedRadioStatus(device, 700);
+    TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+    deviceStep(device, transport, host, 800, safety);
+    feedDevice(device, makeTextSelectionEntryFrame(1, "Max Power", "250;25/1000", 0, 1), 801);
+    deviceStep(device, transport, host, 900, safety);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Stale, (int)device.status().error);
+    TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static void test_non_elrs_device_cannot_supply_elrs_safety_status()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto other = makeDeviceInfoFrame("Other CRSF protocol", 3);
+    const size_t serial = 5 + strlen("Other CRSF protocol") + 1;
+    other[serial] = 0;
+    feedDevice(device, other, 502);
+    TEST_ASSERT_FALSE(feedDevice(device, makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, 0, 0}), 600));
+    TEST_ASSERT_FALSE(device.radioStatus(600).armedKnown);
+    TEST_ASSERT_FALSE(device.readRadioStatus(2));
+}
+
+static void test_scalar_power_never_matches_a_composite_power_option()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    auto data = makeTextSelectionEntryData("Max Power", "25/250;25/1000;2000", 0, 2);
+    data.pop_back(); data.insert(data.end(), {'m', 'W', 0});
+    feedDevice(device, makeParameterChunkFrame(1, 0, data), 601);
+    ELRSSelectionPreference preference;
+    uint8_t index = 255;
+    TEST_ASSERT_FALSE(elrsMatchSelection(*device.parameter(), preference, index));
+    strcpy(preference.label, "25/1000");
+    TEST_ASSERT_TRUE(elrsMatchSelection(*device.parameter(), preference, index));
+    TEST_ASSERT_EQUAL_UINT8(1, index);
+    strcpy(preference.label, "2000");
+    TEST_ASSERT_TRUE(elrsMatchSelection(*device.parameter(), preference, index));
+    TEST_ASSERT_EQUAL_UINT8(2, index);
+}
+
+static std::vector<uint8_t> commandEntry(const char *name, uint8_t state, const char *info = "")
+{
+    std::vector<uint8_t> data = {0, 13};
+    data.insert(data.end(), name, name + strlen(name) + 1);
+    data.push_back(state); data.push_back(200);
+    data.insert(data.end(), info, info + strlen(info) + 1);
+    return makeParameterChunkFrame(1, 0, data);
+}
+
+static void prepareCommand(ELRSDeviceConfig &device, ELRSCrsfTransport &transport, FakeHost &host, const char *name)
+{
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    TEST_ASSERT_TRUE(feedDevice(device, commandEntry(name, 0), 601));
+    TEST_ASSERT_TRUE(device.mutationSupported());
+    feedRadioStatus(device, 700, 1);
+    TEST_ASSERT_TRUE(device.command(0xEE, 1, device.deviceAt(0)->generation, 1, 3));
+    deviceStep(device, transport, host, 800, maintenanceSafety());
+    TEST_ASSERT_TRUE(feedDevice(device, commandEntry(name, 0), 801));
+    deviceStep(device, transport, host, 900, maintenanceSafety());
+}
+
+static void test_command_confirmation_query_and_cancel_are_distinct()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    prepareCommand(device, transport, host, "Enable WiFi");
+    TEST_ASSERT_EQUAL_HEX8(0x2D, host.writes.back()[2]);
+    TEST_ASSERT_EQUAL_UINT8(1, host.writes.back()[6]);
+    TEST_ASSERT_TRUE(feedDevice(device, commandEntry("Enable WiFi", 3, "Enter WiFi Update?"), 901));
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::ConfirmationRequired, (int)device.status().state);
+    deviceStep(device, transport, host, 1000, maintenanceSafety());
+    TEST_ASSERT_FALSE(device.command(0xEE, 1, device.deviceAt(0)->generation, 4, 99));
+    TEST_ASSERT_TRUE(device.command(0xEE, 1, device.deviceAt(0)->generation, 4, 3));
+    deviceStep(device, transport, host, 1020, maintenanceSafety());
+    TEST_ASSERT_EQUAL_UINT8(4, host.writes.back()[6]);
+    TEST_ASSERT_TRUE(feedDevice(device, commandEntry("Enable WiFi", 2, "WiFi Running..."), 1021));
+    feedRadioStatus(device, 1200);
+    deviceStep(device, transport, host, 1240, maintenanceSafety());
+    TEST_ASSERT_EQUAL_HEX8(0x2D, host.writes.back()[2]);
+    TEST_ASSERT_EQUAL_UINT8(6, host.writes.back()[6]);
+    TEST_ASSERT_TRUE(device.command(0xEE, 1, device.deviceAt(0)->generation, 5, 3));
+    deviceStep(device, transport, host, 1340, maintenanceSafety());
+    TEST_ASSERT_EQUAL_UINT8(5, host.writes.back()[6]);
+    feedDevice(device, commandEntry("Enable WiFi", 0), 1341);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Cancelled, (int)device.status().state);
+}
+
+static void test_command_lost_ack_does_not_repeat_start()
+{
+    for(const char *name : {"Bind", "BLE Joystick", "Enable Rx WiFi"}) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSDeviceConfig device;
+        prepareCommand(device, transport, host, name);
+        for(uint32_t now = 1000; now <= 5000; now += 20) deviceStep(device, transport, host, now, maintenanceSafety());
+        int starts = 0;
+        for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5] == 1 && frame[6] == 1) starts++;
+        TEST_ASSERT_EQUAL_INT(1, starts);
+        TEST_ASSERT_EQUAL((int)ELRSOperationState::OutcomeUnknown, (int)device.status().state);
+    }
+}
+
+static void test_command_status_chunks_use_queries_without_resetting_command()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    prepareCommand(device, transport, host, "Bind");
+    auto frame = commandEntry("Bind", 2, "Binding receiver, waiting for response");
+    std::vector<uint8_t> data(frame.begin() + 7, frame.end() - 1);
+    TEST_ASSERT_TRUE(feedDevice(device, makeParameterChunkFrame(1, 1, std::vector<uint8_t>(data.begin(), data.begin() + 18)), 901));
+    deviceStep(device, transport, host, 1020, maintenanceSafety());
+    TEST_ASSERT_EQUAL_HEX8(0x2D, host.writes.back()[2]);
+    TEST_ASSERT_EQUAL_UINT8(6, host.writes.back()[6]);
+    TEST_ASSERT_TRUE(feedDevice(device, makeParameterChunkFrame(1, 0, std::vector<uint8_t>(data.begin() + 18, data.end())), 1021));
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Running, (int)device.status().state);
+    TEST_ASSERT_EQUAL_STRING("Binding receiver, waiting for response", device.status().message);
+    deviceStep(device, transport, host, 1240, maintenanceSafety());
+    TEST_ASSERT_TRUE(feedDevice(device, commandEntry("Bind", 0), 1241));
+    TEST_ASSERT_EQUAL_STRING("Command acknowledged; verify receiver link and Model Match", device.status().message);
+}
+
+static void test_missing_backpack_command_never_guesses_a_field()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host, 1);
+    TEST_ASSERT_FALSE(device.command(0xEE, 2, device.deviceAt(0)->generation, 1, 3));
+    TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static void test_serial_mode_refreshes_sibling_outputs()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto rx = makeDeviceInfoFrame("PWM RX", 4); rx[4] = 0xEC; feedDevice(device, rx, 502);
+    TEST_ASSERT_TRUE(device.read(0xEC, 1, device.deviceAt(1)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    auto value = makeTextSelectionEntryFrame(1, "Output Mode", "50Hz;Serial TX", 0, 1); value[4] = 0xEC;
+    feedDevice(device, value, 601);
+    auto expected = *device.parameter();
+    feedRadioStatus(device, 700, 1);
+    TEST_ASSERT_TRUE(device.write(0xEC, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+    deviceStep(device, transport, host, 800, maintenanceSafety()); feedDevice(device, value, 801);
+    deviceStep(device, transport, host, 900, maintenanceSafety());
+    deviceStep(device, transport, host, 1000, maintenanceSafety());
+    value = makeTextSelectionEntryFrame(1, "Output Mode", "50Hz;Serial TX", 1, 1); value[4] = 0xEC;
+    feedDevice(device, value, 1001);
+    TEST_ASSERT_NOT_EQUAL(expected.generation, device.deviceAt(1)->generation);
+    TEST_ASSERT_FALSE(device.read(0xEC, 2, expected.generation, 4));
+}
+
+static void test_assign_rx_id_does_not_write_info_field()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto rx = makeDeviceInfoFrame("Connected RX", 3); rx[4] = 0xEC; feedDevice(device, rx, 502);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600);
+    auto model = modelMatchEntry(7);
+    auto modelData = makeTextSelectionEntryData("Model Match", "Off;On", 1, 1);
+    modelData.pop_back();
+    const char *unit = " (ID: 7)";
+    modelData.insert(modelData.end(), unit, unit + strlen(unit) + 1);
+    model = makeParameterChunkFrame(1, 0, modelData);
+    feedDevice(device, model, 601);
+    TEST_ASSERT_TRUE(device.read(0xEC, 2, device.deviceAt(1)->generation, 3));
+    deviceStep(device, transport, host, 700);
+    auto info = makeParameterChunkFrame(2, 0, {0, 12, 'M', 'o', 'd', 'e', 'l', ' ', 'I', 'd', 0, '3', 0}); info[4] = 0xEC;
+    feedDevice(device, info, 701);
+    feedRadioStatus(device, 750, 5);
+    TEST_ASSERT_TRUE(device.assignReceiver(0xEC, 7, device.deviceAt(1)->generation, 4));
+    deviceStep(device, transport, host, 800, maintenanceSafety()); feedDevice(device, model, 801);
+    deviceStep(device, transport, host, 900, maintenanceSafety());
+    TEST_ASSERT_EQUAL_HEX8(0x2D, host.writes.back()[2]);
+    TEST_ASSERT_EQUAL_HEX8(0xEE, host.writes.back()[3]);
+    TEST_ASSERT_EQUAL_UINT8(1, host.writes.back()[5]);
+    TEST_ASSERT_EQUAL_UINT8(1, host.writes.back()[6]);
+    deviceStep(device, transport, host, 1000, maintenanceSafety());
+    TEST_ASSERT_EQUAL_HEX8(0xEC, host.writes.back()[3]);
+    TEST_ASSERT_EQUAL_UINT8(2, host.writes.back()[5]);
+    info[info.size() - 3] = '7';
+    feedDevice(device, info, 1001);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5]) TEST_ASSERT_EQUAL_HEX8(0xEE, frame[3]);
+}
+
+static void test_rx_wifi_requires_connected_receiver()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
+    deviceStep(device, transport, host, 600); feedDevice(device, commandEntry("Enable Rx WiFi", 0), 601);
+    feedRadioStatus(device, 700, 0);
+    TEST_ASSERT_TRUE(device.command(0xEE, 1, device.deviceAt(0)->generation, 1, 3));
+    deviceStep(device, transport, host, 800, maintenanceSafety()); feedDevice(device, commandEntry("Enable Rx WiFi", 0), 801);
+    deviceStep(device, transport, host, 900, maintenanceSafety());
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsafe, (int)device.status().error);
+    TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static std::vector<uint8_t> rxNumber(uint8_t field, const char *name, uint8_t value, uint8_t minimum, uint8_t maximum)
+{
+    std::vector<uint8_t> data = {0, 0};
+    data.insert(data.end(), name, name + strlen(name) + 1);
+    data.insert(data.end(), {value, minimum, maximum, 0, 0});
+    auto frame = makeParameterChunkFrame(field, 0, data); frame[4] = 0xEC;
+    return frame;
+}
+
+static void test_pwm_capture_sweeps_each_pin_and_restores_cursor()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto rx = makeDeviceInfoFrame("PWM RX", 4); rx[4] = 0xEC; feedDevice(device, rx, 502);
+    uint8_t cursor = 1;
+    uint32_t now = 600, operation = 2;
+    int inputs[2] = {}, modes[2] = {}, inversions[2] = {};
+    auto read = [&](uint8_t field, const char *name, uint8_t value, uint8_t minimum, uint8_t maximum) {
+        TEST_ASSERT_TRUE(device.read(0xEC, field, device.deviceAt(1)->generation, operation++));
+        deviceStep(device, transport, host, now, maintenanceSafety());
+        TEST_ASSERT_TRUE(feedDevice(device, rxNumber(field, name, value, minimum, maximum), now + 1));
+        now += 120;
+    };
+    auto select = [&](uint8_t target) {
+        read(1, "Output Ch", cursor, 1, 2);
+        auto expected = *device.parameter();
+        feedRadioStatus(device, now, 1);
+        TEST_ASSERT_TRUE(device.write(0xEC, 1, expected.generation, expected.value, ELRSParameterValue(0, target), operation++));
+        deviceStep(device, transport, host, now, maintenanceSafety());
+        TEST_ASSERT_TRUE(feedDevice(device, rxNumber(1, "Output Ch", cursor, 1, 2), now + 1));
+        now += 120;
+        deviceStep(device, transport, host, now, maintenanceSafety());
+        TEST_ASSERT_EQUAL_UINT8(target, host.writes.back()[6]);
+        cursor = target;
+        now += 120;
+        deviceStep(device, transport, host, now, maintenanceSafety());
+        TEST_ASSERT_TRUE(feedDevice(device, rxNumber(1, "Output Ch", cursor, 1, 2), now + 1));
+        now += 120;
+    };
+    for(uint8_t pin = 1; pin <= 2; pin++) {
+        if(cursor != pin) select(pin);
+        read(2, "Input Ch", pin == 1 ? 5 : 9, 1, 16);
+        inputs[pin - 1] = device.parameter()->value.raw;
+        TEST_ASSERT_TRUE(device.read(0xEC, 3, device.deviceAt(1)->generation, operation++));
+        deviceStep(device, transport, host, now, maintenanceSafety());
+        auto mode = makeTextSelectionEntryFrame(3, "Output Mode", "50Hz;Serial TX", pin - 1, 1); mode[4] = 0xEC;
+        TEST_ASSERT_TRUE(feedDevice(device, mode, now + 1));
+        modes[pin - 1] = device.parameter()->value.raw;
+        now += 120;
+        read(4, "Invert", pin - 1, 0, 1);
+        inversions[pin - 1] = device.parameter()->value.raw;
+    }
+    select(1);
+    TEST_ASSERT_EQUAL_INT(5, inputs[0]); TEST_ASSERT_EQUAL_INT(9, inputs[1]);
+    TEST_ASSERT_EQUAL_INT(0, modes[0]); TEST_ASSERT_EQUAL_INT(1, modes[1]);
+    TEST_ASSERT_EQUAL_INT(0, inversions[0]); TEST_ASSERT_EQUAL_INT(1, inversions[1]);
+    TEST_ASSERT_EQUAL_UINT8(1, cursor);
+}
+
+static void driveModuleReplies(ELRSCrsfCore &core, FakeHost &host, uint8_t values[3], uint32_t origin = 0,
+                               uint32_t first = 0, uint32_t last = 5000, const char *powerOptions = "10;25;100;250;500;1000")
+{
+    const char *names[] = {"Telem Ratio", "Max Power", "Dynamic"};
+    const char *options[] = {"Std;1:2;1:4;1:8;Off", powerOptions, "Off;Dyn;AUX9"};
+    uint8_t powerMaximum = 0;
+    for(const char *text = powerOptions; *text; text++) if(*text == ';') powerMaximum++;
+    size_t handled = host.writes.size();
+    for(uint32_t elapsed = first; elapsed <= last; elapsed += 20) {
+        loopAt(core, host, (uint32_t)(origin + elapsed), elapsed * 1000);
+        while(handled < host.writes.size()) {
+            const auto frame = host.writes[handled++];
+            if(frame[2] == 0x28) host.queueFrame(makeDeviceInfoFrame("Another ELRS vendor", 4));
+            else if(frame[2] == 0x2C && frame[5] == 4) host.queueFrame(modelMatchEntry(0, 4));
+            else if(frame[2] == 0x2C && frame[5] >= 1 && frame[5] <= 3) {
+                auto data = makeTextSelectionEntryData(names[frame[5] - 1], options[frame[5] - 1],
+                    values[frame[5] - 1], frame[5] == 1 ? 4 : frame[5] == 2 ? powerMaximum : 2);
+                if(frame[5] == 2) { data.pop_back(); data.insert(data.end(), {'m', 'W', 0}); }
+                host.queueFrame(makeParameterChunkFrame(frame[5], 0, data));
+            }
+            else if(frame[2] == 0x2D && frame[5] == 0)
+                host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, 0, 0}));
+            else if(frame[2] == 0x2D && frame[5] <= 3) values[frame[5] - 1] = frame[6];
+        }
+    }
+}
+
 static void test_module_settings_are_discovered_and_written()
 {
     FakeHost host;
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
-    const std::vector<uint8_t> *frame = NULL;
-
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
-    config.maxPower = ELRS_MAX_POWER_500MW;
-    config.dynamicPower = ELRS_DYNAMIC_POWER_DYNAMIC;
+    strcpy(config.radio.telemetry, "1:4");
+    strcpy(config.radio.maxPower.label, "500");
+    strcpy(config.radio.dynamic, "Dyn");
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
-    loopAt(core, host, 0, 0);
-    loopAt(core, host, 1000, 1000000);
-    loopAt(core, host, 1020, 1020000);
+    uint8_t values[3] = {0, 3, 0};
+    driveModuleReplies(core, host, values);
+    TEST_ASSERT_EQUAL_UINT8(2, values[0]);
+    TEST_ASSERT_EQUAL_UINT8(4, values[1]);
+    TEST_ASSERT_EQUAL_UINT8(1, values[2]);
+    int writes = 0;
+    for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5]) {
+        TEST_ASSERT_EQUAL_UINT8(++writes, frame[5]);
+        TEST_ASSERT_EQUAL_HEX8(0xEF, frame[4]);
+    }
+    TEST_ASSERT_EQUAL_INT(3, writes);
+    TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
+}
 
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x28));
-    frame = findWrittenFrameType(host, 0x28, 0);
-    TEST_ASSERT_NOT_NULL(frame);
-    TEST_ASSERT_EQUAL_UINT8(0xC8, (*frame)[0]);
-    TEST_ASSERT_EQUAL_UINT8(0x00, (*frame)[3]);
-    TEST_ASSERT_EQUAL_UINT8(0xEA, (*frame)[4]);
+static void test_startup_never_guesses_a_paired_band_power()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    auto config = defaultConfig();
+    strcpy(config.radio.maxPower.label, "1000");
+    beginAt(core, host, config, 0, 0);
+    uint8_t values[3] = {0, 0, 0};
+    driveModuleReplies(core, host, values, 0, 0, 5000, "10/10;25/1000");
+    TEST_ASSERT_EQUAL_UINT8(0, values[1]);
+    for(const auto &frame : host.writes) if(frame[2] == 0x2D) TEST_ASSERT_EQUAL_UINT8(0, frame[5]);
+}
 
-    host.queueFrame(makeDeviceInfoFrame("ExpressLRS TX", 3));
-    loopAt(core, host, 1030, 1030000);
+static void test_verified_manual_preferences_do_not_restart_configuration()
+{
+    FakeHost host;ELRSCrsfCore core;beginAt(core,host,defaultConfig(),0,0);
+    ELRSRadioPreferences preferences;preferences.modelId=12;
+    TEST_ASSERT_TRUE(core.setRadioPreferences(preferences,0,false,false));
+    for(uint32_t now=0;now<5000;now+=20)loopAt(core,host,now,now*1000);
+    TEST_ASSERT_EQUAL_UINT32(0,core.deviceConfig().status().id);
+}
 
-    loopAt(core, host, 1120, 1120000);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
-    frame = findWrittenFrameType(host, 0x2C, 0);
-    TEST_ASSERT_NOT_NULL(frame);
-    TEST_ASSERT_EQUAL_UINT8(0xC8, (*frame)[0]);
-    TEST_ASSERT_EQUAL_UINT8(0xEE, (*frame)[3]);
-    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
-    host.queueFrame(makeTextSelectionEntryFrame(1, "Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4));
-    loopAt(core, host, 1130, 1130000);
+static void test_manual_maintenance_suspends_automatic_configuration()
+{
+    FakeHost host;ELRSCrsfCore core;beginAt(core,host,defaultConfig(),0,0);core.setDeviceConfigAccess(true,false);
+    size_t handled=0;
+    for(uint32_t now=0;now<5000;now+=20){loopAt(core,host,now,now*1000);while(handled<host.writes.size()){auto frame=host.writes[handled++];if(frame[2]==0x28)host.queueFrame(makeDeviceInfoFrame("ELRS",3));}}
+    for(const auto &frame:host.writes)TEST_ASSERT_NOT_EQUAL(0x2C,frame[2]);
+}
 
-    loopAt(core, host, 1230, 1230000);
-    loopAt(core, host, 1240, 1240000);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countWrittenFrameType(host, 0x2C), writtenFrameTypes(host).c_str());
-    host.queueFrame(makeTextSelectionEntryFrame(2, "Max Power", "10;25;100;250;500;1000", 3, 5));
-    loopAt(core, host, 1250, 1250000);
-
-    loopAt(core, host, 1350, 1350000);
-    loopAt(core, host, 1360, 1360000);
-    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
-    host.queueFrame(makeTextSelectionEntryFrame(3, "Dynamic", "Off;Dyn;AUX9", 0, 2));
-    loopAt(core, host, 1370, 1370000);
-
-    loopAt(core, host, 1470, 1470000);
-    loopAt(core, host, 1480, 1480000);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
-    frame = findWrittenFrameType(host, 0x2D, 0);
-    TEST_ASSERT_NOT_NULL(frame);
-    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
-    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[5]);
-    TEST_ASSERT_EQUAL_UINT8(2, (*frame)[6]);
-
-    loopAt(core, host, 1770, 1770000);
-    loopAt(core, host, 1780, 1780000);
-    loopAt(core, host, 1880, 1880000);
-    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2D));
-    frame = findWrittenFrameType(host, 0x2D, 1);
-    TEST_ASSERT_NOT_NULL(frame);
-    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
-    TEST_ASSERT_EQUAL_UINT8(2, (*frame)[5]);
-    TEST_ASSERT_EQUAL_UINT8(4, (*frame)[6]);
-
-    loopAt(core, host, 2170, 2170000);
-    loopAt(core, host, 2180, 2180000);
-    loopAt(core, host, 2280, 2280000);
-    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2D));
-    frame = findWrittenFrameType(host, 0x2D, 2);
-    TEST_ASSERT_NOT_NULL(frame);
-    TEST_ASSERT_EQUAL_UINT8(0xEF, (*frame)[4]);
-    TEST_ASSERT_EQUAL_UINT8(3, (*frame)[5]);
-    TEST_ASSERT_EQUAL_UINT8(1, (*frame)[6]);
+static void test_new_preferences_replace_pending_preferences()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    beginAt(core, host, defaultConfig(), 0, 0);
+    ELRSRadioPreferences preferences;
+    preferences.modelId = 7;
+    strcpy(preferences.maxPower.label, "2000");
+    TEST_ASSERT_TRUE(core.setRadioPreferences(preferences, 0));
+    preferences = ELRSRadioPreferences{}; preferences.modelId = 7;
+    TEST_ASSERT_TRUE(core.setRadioPreferences(preferences, 0));
+    uint8_t power = 0;
+    size_t handled = 0;
+    for(uint32_t now = 0; now <= 5000; now += 20) {
+        loopAt(core, host, now, now * 1000);
+        while(handled < host.writes.size()) {
+            auto frame = host.writes[handled++];
+            if(frame[2] == 0x28) host.queueFrame(makeDeviceInfoFrame("ELRS multi-band", 4));
+            else if(frame[2] == 0x2D && !frame[5]) host.queueFrame(makeExtendedFrame(0xEE, 0x2E, 0xEA, 0xEE, {0, 0, 10, 0, 0}));
+            else if(frame[2] == 0x2D && frame[5] == 3) power = frame[6];
+            else if(frame[2] == 0x2C) {
+                if(frame[5] == 1) host.queueFrame(modelMatchEntry(7));
+                else if(frame[5] == 2) host.queueFrame(makeTextSelectionEntryFrame(2, "Telem Ratio", "Std;Off", 0, 1));
+                else if(frame[5] == 4) host.queueFrame(makeTextSelectionEntryFrame(4, "Dynamic", "Off;Dyn", 0, 1));
+                else if(frame[5] == 3) {
+                    auto data = makeTextSelectionEntryData("Max Power", "250;2000", power, 1);
+                    data.pop_back(); data.insert(data.end(), {'m', 'W', 0});
+                    host.queueFrame(makeParameterChunkFrame(3, 0, data));
+                }
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT8(0, power);
+    TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
 }
 
 static void test_module_settings_retry_without_blocking_rc_output()
@@ -2670,7 +3655,7 @@ static void test_unanswered_module_probes_stop_until_reconnect_or_save()
     loopAt(core, host, 65200, 65200000);
     loopAt(core, host, 65220, 65220000);
     TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x28));
-    core.requestModuleConfigUpdate(0, 0, 0, 66000);
+    TEST_ASSERT_TRUE(core.setRadioPreferences(ELRSRadioPreferences{}, 66000));
     loopAt(core, host, 67000, 67000000);
     loopAt(core, host, 67020, 67020000);
     TEST_ASSERT_EQUAL_INT(6, countWrittenFrameType(host, 0x28));
@@ -2806,7 +3791,7 @@ static void test_module_start_and_save_delay_survive_millis_rollover()
             ELRSCrsfCore core;
             const ELRSCrsfCoreConfig config = defaultConfig();
             beginAt(core, host, config, save ? 0 : start, 0);
-            if(save) core.requestModuleConfigUpdate(config.telemetryRatio, config.maxPower, config.dynamicPower, start);
+            if(save) TEST_ASSERT_TRUE(core.setRadioPreferences(config.radio, start));
             moduleTimerLoopAt(core, host, start, 20);
             moduleTimerLoopAt(core, host, start, 980);
             TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x28));
@@ -2842,17 +3827,17 @@ static void test_module_parameter_zero_deadline_still_retries_after_500ms()
 {
     FakeHost host;
     ELRSCrsfCore core;
-    const uint32_t start = 0UL - 1540UL;
+    const uint32_t start = 0UL - 1620UL;
     beginAt(core, host, defaultConfig(), start, 0);
     moduleTimerLoopAt(core, host, start, 1000);
     moduleTimerLoopAt(core, host, start, 1020);
     host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
-    moduleTimerLoopAt(core, host, start, 1040); // Parameter deadline is exactly zero.
-    moduleTimerLoopAt(core, host, start, 1120);
-    moduleTimerLoopAt(core, host, start, 1539);
+    moduleTimerLoopAt(core, host, start, 1040);
+    moduleTimerLoopAt(core, host, start, 1120); // Actual transmission + 500ms wraps to zero.
+    moduleTimerLoopAt(core, host, start, 1619);
     TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2C));
-    moduleTimerLoopAt(core, host, start, 1540);
-    moduleTimerLoopAt(core, host, start, 1560);
+    moduleTimerLoopAt(core, host, start, 1620);
+    moduleTimerLoopAt(core, host, start, 1640);
     TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
     const std::vector<uint8_t> *retry = findWrittenFrameType(host, 0x2C, 1);
     TEST_ASSERT_EQUAL_UINT8(1, (*retry)[5]);
@@ -2865,20 +3850,15 @@ static void test_module_write_delay_survives_zero_deadline()
     FakeHost host;
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
-    const uint32_t start = 0UL - 1600UL;
+    strcpy(config.radio.telemetry, "1:4");
+    const uint32_t start = 0UL - 1740UL;
     beginAt(core, host, config, start, 0);
-    moduleTimerLoopAt(core, host, start, 1000);
-    moduleTimerLoopAt(core, host, start, 1020);
-    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
-    moduleTimerLoopAt(core, host, start, 1040);
-    moduleTimerLoopAt(core, host, start, 1120);
-    host.queueFrame(makeTextSelectionEntryFrame(1, "Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4));
-    moduleTimerLoopAt(core, host, start, 1300); // Write's 300ms delay ends at zero.
-    for(uint32_t elapsed = 1320; elapsed < 1600; elapsed += 20) moduleTimerLoopAt(core, host, start, elapsed);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
-    TEST_ASSERT_FALSE(logsContain(host, "module settings apply complete"));
-    for(uint32_t elapsed = 1600; elapsed <= 1660; elapsed += 20) moduleTimerLoopAt(core, host, start, elapsed);
+    uint8_t values[3] = {0, 3, 0};
+    driveModuleReplies(core, host, values, start);
+    TEST_ASSERT_EQUAL_UINT8(2, values[0]);
+    int writes = 0;
+    for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5]) writes++;
+    TEST_ASSERT_EQUAL_INT(1, writes);
     TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
 }
 
@@ -2888,17 +3868,17 @@ static void test_module_settings_ignore_duplicate_chunk_after_retry()
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    strcpy(config.radio.telemetry, "1:4");
     beginAt(core, host, config, 0, 0);
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
-    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 4));
     loopAt(core, host, 1030, 1030000);
     loopAt(core, host, 1120, 1120000);
-    loopAt(core, host, 1530, 1530000);
-    loopAt(core, host, 1540, 1540000);
-    loopAt(core, host, 1550, 1550000); // Recovery leaves one full 50Hz slot after 1530.
+    loopAt(core, host, 1620, 1620000);
+    loopAt(core, host, 1640, 1640000);
+    loopAt(core, host, 1650, 1650000);
     TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(0, (*findWrittenFrameType(host, 0x2C, 1))[6]);
 
@@ -2906,18 +3886,18 @@ static void test_module_settings_ignore_duplicate_chunk_after_retry()
     const std::vector<uint8_t> first(data.begin(), data.begin() + data.size() / 2);
     const std::vector<uint8_t> last(data.begin() + data.size() / 2, data.end());
     host.queueFrame(makeParameterChunkFrame(1, 1, first));
-    loopAt(core, host, 1550, 1550000);
+    loopAt(core, host, 1651, 1651000);
     host.queueFrame(makeParameterChunkFrame(1, 1, first));
-    loopAt(core, host, 1560, 1560000);
-    loopAt(core, host, 1640, 1640000);
-    loopAt(core, host, 1660, 1660000); // First slot after the 100ms service gap. // Service spacing is measured from the actual retry slot.
+    loopAt(core, host, 1652, 1652000);
+    loopAt(core, host, 1720, 1720000);
+    loopAt(core, host, 1740, 1740000);
     TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
     TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
     host.queueFrame(makeParameterChunkFrame(1, 0, last));
-    for(unsigned long now = 1660; now <= 2400; now += 20) loopAt(core, host, now, now * 1000UL);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
-    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2D, 0))[5]);
-    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2D, 0))[6]);
+    loopAt(core, host, 1741, 1741000);
+    uint8_t values[3] = {0, 3, 0};
+    driveModuleReplies(core, host, values, 0, 1760, 4000);
+    TEST_ASSERT_EQUAL_UINT8(2, values[0]);
     TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
 }
 
@@ -2927,60 +3907,52 @@ static void test_module_settings_preserve_chunks_when_retry_read_is_still_queued
     ELRSCrsfCore core;
     ELRSCrsfCoreConfig config = defaultConfig();
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_1_4;
+    strcpy(config.radio.telemetry, "1:4");
     beginAt(core, host, config, 0, 0);
     loopAt(core, host, 0, 0);
     loopAt(core, host, 1000, 1000000);
     loopAt(core, host, 1020, 1020000);
-    host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
+    host.queueFrame(makeDeviceInfoFrame("ELRS", 4));
     loopAt(core, host, 1030, 1030000);
     loopAt(core, host, 1120, 1120000);
-    loopAt(core, host, 1530, 1530000); // Retry chunk zero is queued, but not sent yet.
+    loopAt(core, host, 1620, 1620000); // Timeout starts at the actual 1120ms transmission.
     const std::vector<uint8_t> data = makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4);
     const std::vector<uint8_t> first(data.begin(), data.begin() + 18);
     const std::vector<uint8_t> middle(data.begin() + 18, data.begin() + 30);
     const std::vector<uint8_t> last(data.begin() + 30, data.end());
     host.queueFrame(makeParameterChunkFrame(1, 2, first));
-    loopAt(core, host, 1531, 1531000);
+    loopAt(core, host, 1621, 1621000); // This late response cancels the unsent retry.
     host.queueFrame(makeParameterChunkFrame(1, 2, first));
-    loopAt(core, host, 1532, 1532000);
-    loopAt(core, host, 1540, 1540000);
-    loopAt(core, host, 1550, 1550000);
-    host.queueFrame(makeParameterChunkFrame(1, 2, first));
-    loopAt(core, host, 1550, 1550000);
+    loopAt(core, host, 1622, 1622000);
     loopAt(core, host, 1640, 1640000);
-    loopAt(core, host, 1660, 1660000); // First slot after the 100ms service gap.
-    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
-    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
+    host.queueFrame(makeParameterChunkFrame(1, 2, first));
+    loopAt(core, host, 1641, 1641000);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 1))[6]);
 
     // Skipping a chunk, an increased remaining count, and another field cannot alter progress.
     host.queueFrame(makeParameterChunkFrame(1, 0, last));
     host.queueFrame(makeParameterChunkFrame(1, 3, first));
     host.queueFrame(makeParameterChunkFrame(2, 1, middle));
-    loopAt(core, host, 1660, 1660000);
-    for(unsigned long now = 1680; now <= 2020; now += 20) {
-        const size_t before = host.writes.size();
-        loopAt(core, host, now, now * 1000UL);
-        TEST_ASSERT_EQUAL_INT(before + 1, host.writes.size());
-        TEST_ASSERT_EQUAL_HEX8(0x16, host.writes.back()[2]);
-    }
-    loopAt(core, host, 2040, 2040000);
-    loopAt(core, host, 2060, 2060000);
-    loopAt(core, host, 2080, 2080000); // Retry queued at 2060 uses the next scheduled slot.
-    TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x2C));
-    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 3))[6]);
+    loopAt(core, host, 1650, 1650000);
+    TEST_ASSERT_EQUAL_INT(2, countWrittenFrameType(host, 0x2C));
+    loopAt(core, host, 2150, 2150000);
+    loopAt(core, host, 2170, 2170000);
+    TEST_ASSERT_EQUAL_INT(3, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(1, (*findWrittenFrameType(host, 0x2C, 2))[6]);
     host.queueFrame(makeParameterChunkFrame(1, 1, middle));
-    loopAt(core, host, 2090, 2090000);
+    loopAt(core, host, 2171, 2171000);
     host.queueFrame(makeParameterChunkFrame(1, 2, first));
     host.queueFrame(makeParameterChunkFrame(1, 1, middle));
-    loopAt(core, host, 2100, 2100000);
-    loopAt(core, host, 2180, 2180000);
-    TEST_ASSERT_EQUAL_INT(5, countWrittenFrameType(host, 0x2C));
-    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2C, 4))[6]);
+    loopAt(core, host, 2172, 2172000);
+    loopAt(core, host, 2270, 2270000);
+    TEST_ASSERT_EQUAL_INT(4, countWrittenFrameType(host, 0x2C));
+    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2C, 3))[6]);
     host.queueFrame(makeParameterChunkFrame(1, 0, last));
-    for(unsigned long now = 2200; now <= 2820; now += 20) loopAt(core, host, now, now * 1000UL);
-    TEST_ASSERT_EQUAL_INT(1, countWrittenFrameType(host, 0x2D));
-    TEST_ASSERT_EQUAL_UINT8(2, (*findWrittenFrameType(host, 0x2D, 0))[6]);
+    loopAt(core, host, 2271, 2271000);
+    uint8_t values[3] = {0, 3, 0};
+    driveModuleReplies(core, host, values, 0, 2280, 4500);
+    TEST_ASSERT_EQUAL_UINT8(2, values[0]);
     TEST_ASSERT_TRUE(logsContain(host, "module settings apply complete"));
     TEST_ASSERT_FALSE(logsContain(host, "parameter scan timed out"));
 }
@@ -3071,9 +4043,9 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     ELRSCrsfCoreConfig config = defaultConfig();
 
     config.transport.packetRateHz = 50;
-    config.telemetryRatio = ELRS_TLM_RATIO_STD;
-    config.maxPower = ELRS_MAX_POWER_100MW;
-    config.dynamicPower = ELRS_DYNAMIC_POWER_OFF;
+    strcpy(config.radio.telemetry, "Std");
+    strcpy(config.radio.maxPower.label, "100");
+    strcpy(config.radio.dynamic, "Off");
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
@@ -3100,7 +4072,7 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     loopAt(core, host, 1460, 1460000);
 
     loopAt(core, host, 1560, 1560000);
-    host.queueFrame(makeTextSelectionEntryFrame(5, "Model Match", "Off;On", 0, 1));
+    host.queueFrame(modelMatchEntry(0, 5));
     loopAt(core, host, 1570, 1570000);
 
     loopAt(core, host, 1670, 1670000);
@@ -3108,7 +4080,7 @@ static void test_module_settings_apply_after_targets_are_found_without_full_scan
     loopAt(core, host, 1680, 1680000);
 
     loopAt(core, host, 1780, 1780000);
-    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5));
+    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5, "mW"));
     loopAt(core, host, 1790, 1790000);
 
     loopAt(core, host, 1890, 1890000);
@@ -3132,9 +4104,9 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     const std::vector<uint8_t> *frame = NULL;
 
     config.transport.packetRateHz = 500;
-    config.telemetryRatio = ELRS_TLM_RATIO_STD;
-    config.maxPower = ELRS_MAX_POWER_100MW;
-    config.dynamicPower = ELRS_DYNAMIC_POWER_OFF;
+    strcpy(config.radio.telemetry, "Std");
+    strcpy(config.radio.maxPower.label, "100");
+    strcpy(config.radio.dynamic, "Off");
 
     TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
     loopAt(core, host, 0, 0);
@@ -3161,7 +4133,7 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     loopAt(core, host, 1470, 1470000);
 
     loopAt(core, host, 1570, 1570000);
-    host.queueFrame(makeTextSelectionEntryFrame(5, "Model Match", "Off;On", 0, 1));
+    host.queueFrame(modelMatchEntry(0, 5));
     loopAt(core, host, 1580, 1580000);
 
     loopAt(core, host, 1680, 1680000);
@@ -3169,7 +4141,7 @@ static void test_module_settings_do_not_write_packet_rate_target_or_change_trans
     loopAt(core, host, 1690, 1690000);
 
     loopAt(core, host, 1790, 1790000);
-    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5));
+    host.queueFrame(makeTextSelectionEntryFrame(7, "Max Power", "25;50;100;250;500;1000", 2, 5, "mW"));
     loopAt(core, host, 1800, 1800000);
 
     loopAt(core, host, 1900, 1900000);
@@ -3210,6 +4182,197 @@ static void test_module_ping_keeps_rc_running_while_waiting_for_settings()
         }
         TEST_ASSERT_NOT_EQUAL(992, core.channelAt(2));
     }
+}
+
+
+class TransportReplySink : public ELRSCrsfTransportSink {
+    public:
+        std::vector<std::vector<uint8_t>> payloads;
+        bool onCrsfFrame(uint8_t, uint8_t type, const uint8_t *payload, size_t length, unsigned long) override {
+            TEST_ASSERT_EQUAL_HEX8(0x2B, type);
+            payloads.emplace_back(payload, payload + length);
+            return false;
+        }
+};
+
+class PreWriteRxHost : public FakeHost {
+    public:
+        std::vector<uint8_t> beforeWrite;
+        void setDriverEnabled(bool enabled) override {
+            FakeHost::setDriverEnabled(enabled);
+            if(enabled && !beforeWrite.empty()) {
+                queueFrame(beforeWrite);
+                beforeWrite.clear();
+            }
+        }
+};
+
+static void check_split_receiver_reply_echo(int echoMode, bool echoInPayload = false)
+{
+    PreWriteRxHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    transport.setSink(&sink);
+    beginAt(transport, host, config, 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    reply[0] = 0xEA;
+    if(echoInPayload) {
+        std::copy(host.writes[0].begin(), host.writes[0].end(), reply.begin() + 34);
+        reply.back() = ELRSCrsfTransport::crc8D5(reply.data() + 2, reply.size() - 3);
+        payload.assign(reply.begin() + 3, reply.end() - 1);
+    }
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 34));
+    transportAt(transport, host, 1, 1000);
+    TEST_ASSERT_TRUE(sink.payloads.empty());
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    if(echoMode == 4) {
+        uint16_t channels[16] = {};
+        channels[0] = 1200;
+        transport.setChannels(channels);
+    }
+    if(echoMode == 5 || echoMode == 6) {
+        const std::vector<uint8_t> requestPayload = echoMode == 6 ? std::vector<uint8_t>(58, 'a') : std::vector<uint8_t>{1, 0};
+        auto request = makeExtendedFrame(0xC8, 0x2C, 0xEC, 0xEA, requestPayload);
+        TEST_ASSERT_TRUE(transport.queueServiceFrame(request.data(), request.size()));
+    }
+    if(echoMode == 7) host.beforeWrite.assign(reply.begin() + 34, reply.begin() + 38);
+    host.loopbackWriteToRx = echoMode == 1 || echoMode == 5 || echoMode == 6 || echoMode == 7;
+    if(echoMode == 3)
+        host.rxAppendAfterWrite.assign(host.writes[0].begin(), host.writes[0].begin() + 10);
+    transportAt(transport, host, 4, 4000);
+    host.loopbackWriteToRx = false;
+    if(echoMode == 2) host.queueFrame(host.writes.back());
+    if(echoMode == 4) host.queueFrame(host.writes.front());
+    if(echoMode == 3) {
+        transportAt(transport, host, 4, 4500);
+        host.queueFrame(std::vector<uint8_t>(host.writes.back().begin() + 10, host.writes.back().end()));
+        transportAt(transport, host, 4, 4700);
+    }
+    host.queueFrame(std::vector<uint8_t>(reply.begin() + (echoMode == 7 ? 38 : 34), reply.end()));
+    transportAt(transport, host, 5, 5000);
+    transportAt(transport, host, 5, 5500);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT32(payload.size(), sink.payloads[0].size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload.data(), sink.payloads[0].data(), payload.size());
+    TEST_ASSERT_TRUE(transport.status().lastRawFrame.crcValid);
+    TEST_ASSERT_TRUE(transport.status().everReplied);
+    TEST_ASSERT_EQUAL_UINT32(2, host.writes.size());
+    TEST_ASSERT_EQUAL_UINT32(0, host.txStarts[0]);
+    TEST_ASSERT_EQUAL_UINT32(4000, host.txStarts[1]);
+}
+
+static void test_split_receiver_reply_survives_synchronous_rc_echo() { check_split_receiver_reply_echo(1); }
+static void test_split_receiver_reply_survives_delayed_rc_echo() { check_split_receiver_reply_echo(2); }
+static void test_split_receiver_reply_survives_fragmented_rc_echo() { check_split_receiver_reply_echo(3); }
+static void test_split_receiver_reply_survives_previous_rc_echo() { check_split_receiver_reply_echo(4); }
+static void test_split_receiver_reply_survives_service_echo() { check_split_receiver_reply_echo(5); }
+static void test_split_receiver_reply_survives_maximum_service_echo() { check_split_receiver_reply_echo(6); }
+static void test_split_receiver_reply_keeps_bytes_received_before_write() { check_split_receiver_reply_echo(7); }
+static void test_split_receiver_reply_without_echo_is_unchanged() { check_split_receiver_reply_echo(0); }
+static void test_valid_receiver_payload_at_tx_boundary_is_not_stripped() { check_split_receiver_reply_echo(0, true); }
+
+
+static void check_receiver_reply_across_multiple_echo_slots(int chunkSize)
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 250;
+    transport.setSink(&sink);
+    beginAt(transport, host, config, 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    reply[0] = 0xEA;
+    int slot = 0;
+    for(size_t start = 0; start < reply.size(); start += chunkSize, slot++) {
+        const size_t end = std::min(start + chunkSize, reply.size());
+        host.queueFrame(std::vector<uint8_t>(reply.begin() + start, reply.begin() + end));
+        transportAt(transport, host, 1 + slot * 4, 1000 + slot * 4000);
+        if(end < reply.size()) {
+            TEST_ASSERT_TRUE(sink.payloads.empty());
+            TEST_ASSERT_FALSE(transport.status().everReplied);
+            host.loopbackWriteToRx = true;
+            transportAt(transport, host, 4 + slot * 4, 4000 + slot * 4000);
+            host.loopbackWriteToRx = false;
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload.data(), sink.payloads[0].data(), payload.size());
+    TEST_ASSERT_TRUE(transport.status().lastRawFrame.crcValid);
+    TEST_ASSERT_EQUAL_UINT32(slot, host.writes.size());
+    for(int i = 0; i < slot; i++) TEST_ASSERT_EQUAL_UINT32(i * 4000, host.txStarts[i]);
+}
+
+static void test_receiver_reply_survives_two_interposed_rc_echoes() { check_receiver_reply_across_multiple_echo_slots(20); }
+static void test_receiver_reply_survives_six_interposed_rc_echoes() { check_receiver_reply_across_multiple_echo_slots(10); }
+
+static void test_echo_recovery_requires_valid_recovered_crc()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    transport.setSink(&sink);
+    beginAt(transport, host, ELRSCrsfTransportConfig(), 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    reply[0] = 0xEA;
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 34));
+    transportAt(transport, host, 1, 1000);
+    host.loopbackWriteToRx = true;
+    transportAt(transport, host, 4, 4000);
+    host.loopbackWriteToRx = false;
+    reply.back() ^= 1;
+    host.queueFrame(std::vector<uint8_t>(reply.begin() + 34, reply.end()));
+    transportAt(transport, host, 5, 5000);
+    TEST_ASSERT_TRUE(sink.payloads.empty());
+    TEST_ASSERT_FALSE(transport.status().everReplied);
+    auto next = makeFrame(0x2B, {0xEA, 0xEC, 2, 0, 0, 12, 'O', 'K', 0});
+    host.queueFrame(next);
+    transportAt(transport, host, 6, 6000);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT8(2, sink.payloads[0][2]);
+}
+
+
+static void test_echo_recovery_preserves_valid_resync_frame_in_damaged_input()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    TransportReplySink sink;
+    transport.setSink(&sink);
+    beginAt(transport, host, ELRSCrsfTransportConfig(), 0, 0);
+    transportAt(transport, host, 0, 0);
+    std::vector<uint8_t> payload(60, 'a');
+    payload[0] = 0xEA; payload[1] = 0xEC; payload[2] = 1;
+    payload[3] = 0; payload[4] = 0; payload[5] = 9;
+    auto reply = makeFrame(0x2B, payload);
+    const auto inner = makeFrame(0x2B, {0xEA, 0xEC, 2, 0, 0, 12, 'O', 'K', 0});
+    std::copy(host.writes[0].begin(), host.writes[0].end(), reply.begin() + 20);
+    std::copy(inner.begin(), inner.end(), reply.begin() + 46);
+    reply.back() = ELRSCrsfTransport::crc8D5(reply.data() + 2, reply.size() - 3) ^ 1;
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 20));
+    transportAt(transport, host, 1, 1000);
+    transportAt(transport, host, 4, 4000); // No physical echo; matching bytes belong to damaged input.
+    host.queueFrame(std::vector<uint8_t>(reply.begin() + 20, reply.end()));
+    host.queueFrame(std::vector<uint8_t>(26, 'a'));
+    transportAt(transport, host, 5, 5000);
+    transportAt(transport, host, 5, 5500);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.payloads.size());
+    TEST_ASSERT_EQUAL_UINT32(inner.size() - 4, sink.payloads[0].size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(inner.data() + 3, sink.payloads[0].data(), inner.size() - 4);
 }
 
 static void test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer()
@@ -3256,6 +4419,83 @@ static void test_service_probe_drain_preserves_following_module_reply_bytes()
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, host.serialReadCount, "transport never attempted to read echoed probe bytes");
     TEST_ASSERT_FALSE(host.rx.empty());
     TEST_ASSERT_EQUAL_HEX8(0xEE, host.rx.front());
+}
+
+static void test_service_probe_drain_preserves_immediate_c8_link_stats_without_echo()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.transport.packetRateHz = 500;
+
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    host.rxAppendAfterWrite = makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0});
+
+    loopAt(core, host, 1020, 1020000);
+    loopAt(core, host, 1022, 1022000);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_TRUE(statusOf(core).telemetryActive);
+}
+
+static void test_service_probe_drain_preserves_immediate_c8_device_info_without_echo()
+{
+    FakeHost host;
+    ELRSCrsfCore core;
+    ELRSCrsfCoreConfig config = defaultConfig();
+    config.transport.packetRateHz = 500;
+
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    loopAt(core, host, 0, 0);
+    loopAt(core, host, 1000, 1000000);
+    host.rxAppendAfterWrite = makeDeviceInfoFrame("ELRS", 3);
+    host.rxAppendAfterWrite[0] = 0xC8;
+
+    loopAt(core, host, 1020, 1020000);
+    loopAt(core, host, 1022, 1022000);
+
+    TEST_ASSERT_TRUE(statusOf(core).everReplied);
+    TEST_ASSERT_EQUAL_STRING("ELRS", statusOf(core).moduleName);
+}
+
+static void test_service_probe_drain_preserves_partial_shared_prefix_frame()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 500;
+    const std::vector<uint8_t> ping = makeExtendedFrame(0xC8, 0x28, 0x00, 0xEA, {});
+    const std::vector<uint8_t> reply = makeExtendedFrame(0xC8, 0x28, 0x00, 0xEE, {});
+
+    transport.begin(host, config, 0, 0);
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    host.rxAppendAfterWrite = reply;
+    transportAt(transport, host, 0, 0);
+    transportAt(transport, host, 2, 2000);
+    transportAt(transport, host, 4, 4000);
+
+    TEST_ASSERT_TRUE(transport.status().everReplied);
+}
+
+static void test_service_probe_drain_skips_when_rx_frame_is_already_partial()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSCrsfTransportConfig config;
+    config.packetRateHz = 500;
+    const std::vector<uint8_t> ping = makeExtendedFrame(0xC8, 0x28, 0x00, 0xEA, {});
+    const std::vector<uint8_t> reply = makeFrame(0x14, {0, 0, 88, 0, 0, 0, 0, 0, 0, 0});
+
+    transport.begin(host, config, 0, 0);
+    TEST_ASSERT_TRUE(transport.queueServiceFrame(ping.data(), ping.size()));
+    host.queueFrame(std::vector<uint8_t>(reply.begin(), reply.begin() + 3));
+    host.rxAppendAfterWrite.assign(reply.begin() + 3, reply.end());
+    transportAt(transport, host, 0, 0);
+    transportAt(transport, host, 2, 2000);
+
+    TEST_ASSERT_TRUE(transport.status().everReplied);
 }
 
 }
@@ -3345,7 +4585,7 @@ static void test_invalid_button_calibration_preserves_minimum_throttle()
     for(int i = 0; i < 9; i++) calibrationPress(core, host, now);
     TEST_ASSERT_FALSE(core.isCalibrating());
     TEST_ASSERT_EQUAL_INT(0, host.savedCalibrationCount);
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_failed_button_capture_does_not_advance_calibration()
@@ -3379,7 +4619,7 @@ static void test_valid_descending_button_calibration_is_saved()
     TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
     TEST_ASSERT_EQUAL_INT16(2047, host.calibration[AXIS_THROTTLE].minimum);
     TEST_ASSERT_EQUAL_INT16(0, host.calibration[AXIS_THROTTLE].maximum);
-    TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_failed_button_calibration_save_reports_error()
@@ -3397,7 +4637,7 @@ static void test_failed_button_calibration_save_reports_error()
     TEST_ASSERT_EQUAL_INT(4, host.savedCalibrationCount);
     TEST_ASSERT_FALSE(core.isCalibrating());
     TEST_ASSERT_EQUAL_STRING("ERR", host.displayText.c_str());
-    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(2));
 }
 
 static void test_transport_sends_across_micros_rollover()
@@ -3497,15 +4737,15 @@ static void test_oversized_parameter_restarts_from_chunk_zero_and_recovers()
     host.queueFrame(makeDeviceInfoFrame("ELRS", 1));
     loopAt(core, host, 1040, 1040000);
     loopAt(core, host, 1120, 1120000);
-    for(int chunk = 0; chunk < 4; chunk++) {
+    for(int chunk = 0; chunk < 5; chunk++) {
         const unsigned long now = 1130 + chunk * 110;
-        host.queueFrame(makeParameterChunkFrame(1, 4 - chunk, std::vector<uint8_t>(56, 0)));
+        host.queueFrame(makeParameterChunkFrame(1, 5 - chunk, std::vector<uint8_t>(56, 0)));
         loopAt(core, host, now, now * 1000UL);
         loopAt(core, host, now + 100, (now + 100) * 1000UL);
     }
     loopAt(core, host, 1860, 1860000);
     loopAt(core, host, 1960, 1960000);
-    const std::vector<uint8_t> *retry = findWrittenFrameType(host, 0x2C, 4);
+    const std::vector<uint8_t> *retry = findWrittenFrameType(host, 0x2C, 5);
     TEST_ASSERT_NOT_NULL(retry);
     TEST_ASSERT_EQUAL_UINT8(0, (*retry)[6]);
     host.queueFrame(makeParameterChunkFrame(1, 0, makeTextSelectionEntryData("Telem Ratio", "Std;1:2;1:4;1:8;Off", 0, 4)));
@@ -3601,8 +4841,10 @@ static void test_throttle_idle_band_handles_all_profile_directions()
             for(int offset = 0; offset <= 5; offset++) {
                 FakeHost host;
                 ELRSCrsfCore core;
-                host.axes[AXIS_THROTTLE] = idle + direction * offset;
+                host.axes[AXIS_THROTTLE] = profile.center;
                 beginAt(core, host, config, 0);
+                host.axes[AXIS_THROTTLE] = idle + direction * offset;
+                loopAtMs(core, host, 20, 0);
                 TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
             }
             FakeHost host;
@@ -3637,20 +4879,22 @@ static void test_throttle_idle_entry_bypasses_hysteresis()
                 int direction = (full > idle) ? 1 : -1;
                 FakeHost host;
                 ELRSCrsfCore core;
-                host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                host.axes[AXIS_THROTTLE] = profile.center;
                 beginAt(core, host, config, 0);
+                host.axes[AXIS_THROTTLE] = idle + direction * 10;
+                loopAtMs(core, host, 20, 0);
                 TEST_ASSERT_TRUE(core.channelAt(2) > 172);
                 host.axes[AXIS_THROTTLE] = idle + direction * (narrow ? 9 : 5);
-                for(unsigned long now = 20; now <= 60; now += 20) {
+                for(unsigned long now = 40; now <= 80; now += 20) {
                     loopAtMs(core, host, now, 0);
                     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                 }
                 if(!narrow) {
                     host.axes[AXIS_THROTTLE] = idle + direction * 10;
-                    loopAtMs(core, host, 80, 0);
+                    loopAtMs(core, host, 100, 0);
                     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
                     host.axes[AXIS_THROTTLE] = idle + direction * 11;
-                    loopAtMs(core, host, 100, 0);
+                    loopAtMs(core, host, 120, 0);
                     TEST_ASSERT_TRUE(core.channelAt(2) > 172);
                 }
             }
@@ -3682,8 +4926,10 @@ static void test_input_tolerances_are_adjustable_and_can_be_disabled()
     config.axisProfiles[AXIS_THROTTLE].minimum = 300;
     config.axisProfiles[AXIS_THROTTLE].center = 900;
     config.axisProfiles[AXIS_THROTTLE].maximum = 1500;
-    host.axes[AXIS_THROTTLE] = 305;
+    host.axes[AXIS_THROTTLE] = 900;
     beginAt(core, host, config, 100);
+    host.axes[AXIS_THROTTLE] = 305;
+    loopAtMs(core, host, 120, 0);
     TEST_ASSERT_EQUAL_UINT16(179, core.channelAt(2));
 }
 
@@ -4036,9 +5282,11 @@ static void test_none_frees_channels_for_other_input_types()
     config.inputRouting.throttleChannel = 5;
     config.switchRouting.channels[0] = 1;
     host.stop = true;
-    host.axes[AXIS_THROTTLE] = 2047;
+    host.axes[AXIS_THROTTLE] = 1024;
     TEST_ASSERT_TRUE(elrsIsValidInputRouting(config.inputRouting, config.switchRouting));
     TEST_ASSERT_TRUE(beginAt(core, host, config, 1000));
+    host.axes[AXIS_THROTTLE] = 2047;
+    loopAtMs(core, host, 1020, 0);
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(0));
     TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(2));
     TEST_ASSERT_EQUAL_UINT16(1811, core.channelAt(4));
@@ -4558,12 +5806,12 @@ static void test_mix_rejects_malformed_lines()
 static void test_logic_mix_core_chain_and_post_mix_limits()
 {
     FakeHost host; ELRSCrsfCore core; auto c=defaultConfig();
-    host.axes[AXIS_AILERON]=2047; host.axes[AXIS_THROTTLE]=0; host.packStates=1;
+    host.axes[AXIS_AILERON]=2047; host.axes[AXIS_THROTTLE]=1024; host.packStates=1;
     c.logic.rules[0]={2,4,0,-90,0}; c.logic.rules[1]={3,9,17,0,0};
     c.mixes.lines[0]={9,18,0,100,0,2}; c.mixes.lines[1]={10,18,0,100,0,2};
     c.mixes.lines[2]={1,1,17,50,0,2};
     c.outputLimits[AXIS_AILERON]={1200,1700};
-    TEST_ASSERT_TRUE(core.begin(host,c,0)); loopAt(core,host,20,20000);
+    TEST_ASSERT_TRUE(core.begin(host,c,0)); host.axes[AXIS_THROTTLE]=0; loopAt(core,host,20,20000);
     TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(8));
     TEST_ASSERT_EQUAL_UINT16(1811,core.channelAt(9));
     TEST_ASSERT_EQUAL_UINT16(1155,core.channelAt(0)); // Half input, then destination limits once.
@@ -4611,6 +5859,131 @@ static void test_mix_core_none_sources_calibration_and_prop_mode()
     }
 }
 
+static void test_throttle_stays_neutral_until_calibrated_center()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 0;
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1024;
+    loopAt(core, host, 20, 20000);
+    TEST_ASSERT_TRUE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1400;
+    loopAt(core, host, 40, 40000);
+    TEST_ASSERT_TRUE(core.channelAt(config.inputRouting.throttleChannel - 1) > 992);
+}
+
+static void test_throttle_unlock_requires_raw_and_filtered_center()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 1022; // Filtered lag appears inside the default center band.
+    host.useRawThrottleOverride = true;
+    host.rawThrottleOverride = 1280; // Completed physical ADC sample remains far from center.
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1024;
+    host.rawThrottleOverride = 1024;
+    loopAt(core, host, 20, 20000);
+    TEST_ASSERT_TRUE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+}
+
+static void test_throttle_lock_uses_profile_center_and_protects_mix_outputs()
+{
+    for(bool reverse : {false, true}) {
+        FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+        config.axisProfiles[AXIS_THROTTLE] = {100, 1100, 2000, (uint16_t)reverse, 12, 0};
+        config.inputRouting.throttleChannel = 5;
+        for(uint8_t &channel : config.switchRouting.channels) channel = 0;
+        config.mixes.lines[0] = {5, 25, 0, 100, 30, 2};
+        config.mixes.lines[1] = {7, 4, 0, 100, 20, 2};
+        host.axes[AXIS_THROTTLE] = reverse ? 2000 : 100;
+        TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+        TEST_ASSERT_FALSE(core.throttleReady());
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(4));
+        TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(6));
+
+        host.axes[AXIS_THROTTLE] = 1100;
+        loopAt(core, host, 20, 20000);
+        TEST_ASSERT_TRUE(core.throttleReady());
+        host.axes[AXIS_THROTTLE] = reverse ? 1400 : 800;
+        loopAt(core, host, 40, 40000);
+        TEST_ASSERT_TRUE(core.channelAt(4) > 992);
+        TEST_ASSERT_TRUE(core.channelAt(6) != 992);
+    }
+}
+
+static void test_throttle_relocks_after_service_gap_until_center_recovered()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 1024;
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_TRUE(core.throttleReady());
+
+    host.axesPending = true;
+    loopAt(core, host, 120, 120000);
+    TEST_ASSERT_FALSE(core.throttleReady());
+    host.axesPending = false;
+    host.axes[AXIS_THROTTLE] = 0;
+    loopAt(core, host, 140, 140000);
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(config.inputRouting.throttleChannel - 1));
+
+    host.axes[AXIS_THROTTLE] = 1024;
+    loopAt(core, host, 160, 160000);
+    TEST_ASSERT_TRUE(core.throttleReady());
+
+    FakeHost gapHost; ELRSCrsfCore gapCore;
+    gapHost.axes[AXIS_THROTTLE] = 1024;
+    TEST_ASSERT_TRUE(beginAt(gapCore, gapHost, config, 0, 0));
+    TEST_ASSERT_TRUE(gapCore.throttleReady());
+    gapHost.setTime(120, 120000);
+    TEST_ASSERT_FALSE(gapCore.throttleReady());
+    gapHost.axes[AXIS_THROTTLE] = 1500;
+    loopAt(gapCore, gapHost, 120, 120000);
+    TEST_ASSERT_FALSE(gapCore.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, gapCore.channelAt(config.inputRouting.throttleChannel - 1));
+
+    FakeHost errorHost; ELRSCrsfCore errorCore;
+    errorHost.axes[AXIS_THROTTLE] = 1024;
+    TEST_ASSERT_TRUE(beginAt(errorCore, errorHost, config, 0, 0));
+    TEST_ASSERT_TRUE(errorCore.throttleReady());
+    errorHost.axesAvailable = false;
+    loopAt(errorCore, errorHost, 20, 20000);
+    TEST_ASSERT_FALSE(errorCore.throttleReady());
+    errorHost.axesAvailable = true;
+    errorHost.axes[AXIS_THROTTLE] = 0;
+    loopAt(errorCore, errorHost, 40, 40000);
+    TEST_ASSERT_FALSE(errorCore.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, errorCore.channelAt(config.inputRouting.throttleChannel - 1));
+    errorHost.axes[AXIS_THROTTLE] = 1024;
+    loopAt(errorCore, errorHost, 60, 60000);
+    TEST_ASSERT_TRUE(errorCore.throttleReady());
+}
+
+static void test_throttle_self_test_keeps_direct_mixes_neutral_while_locked()
+{
+    FakeHost host; ELRSCrsfCore core; auto config = defaultConfig();
+    host.axes[AXIS_THROTTLE] = 0;
+    config.mixes.lines[0] = {5, 4, 0, 100, 0, 2};
+    config.mixes.lines[1] = {7, 4, 0, 100, 0, 2};
+    TEST_ASSERT_TRUE(beginAt(core, host, config, 0, 0));
+    TEST_ASSERT_FALSE(core.throttleReady());
+
+    core.startSelfTest(10);
+    loopAt(core, host, 20, 20000);
+    TEST_ASSERT_FALSE(core.throttleReady());
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(4));
+    TEST_ASSERT_EQUAL_UINT16(992, core.channelAt(6));
+    TEST_ASSERT_EQUAL_UINT16(172, core.channelAt(5)); // Unrelated switch output keeps self-test behavior.
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -4621,6 +5994,11 @@ int main(int argc, char **argv)
     RUN_TEST(test_logic_mix_core_chain_and_post_mix_limits);
     RUN_TEST(test_mix_core_stale_inputs_selftest_and_corrupt_config);
     RUN_TEST(test_mix_core_none_sources_calibration_and_prop_mode);
+    RUN_TEST(test_throttle_stays_neutral_until_calibrated_center);
+    RUN_TEST(test_throttle_unlock_requires_raw_and_filtered_center);
+    RUN_TEST(test_throttle_lock_uses_profile_center_and_protects_mix_outputs);
+    RUN_TEST(test_throttle_relocks_after_service_gap_until_center_recovered);
+    RUN_TEST(test_throttle_self_test_keeps_direct_mixes_neutral_while_locked);
     RUN_TEST(test_mix_weight_offset_order_and_limits);
     RUN_TEST(test_mix_sources_gates_and_unavailability);
     RUN_TEST(test_mix_rejects_malformed_lines);
@@ -4695,6 +6073,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_adc_debug_log_only_emits_on_axis_change);
     RUN_TEST(test_light_iir_filter_moves_quarter_step_toward_sample);
     RUN_TEST(test_light_iir_filter_converges_on_small_stable_changes);
+    RUN_TEST(test_one_euro_filter_suppresses_jitter_and_tracks_steps);
     RUN_TEST(test_output_limits_scale_each_side_of_neutral);
     RUN_TEST(test_output_limits_validate_and_clamp);
     RUN_TEST(test_output_limits_follow_axes_through_reverse_and_routing);
@@ -4734,12 +6113,18 @@ int main(int argc, char **argv)
     RUN_TEST(test_control_mapping_and_reversed_axis_calibration);
     RUN_TEST(test_axis_order_aileron_elevator_throttle_rudder_matches_runtime_banner);
     RUN_TEST(test_nondefault_axis_profile_changes_runtime_output_scaling);
-    RUN_TEST(test_legacy_normalized_axis_profile_is_sanitized_before_runtime_mapping);
+    RUN_TEST(test_out_of_range_axis_profile_is_sanitized_before_runtime_mapping);
     RUN_TEST(test_gimbal_routing_collision_uses_defaults);
     RUN_TEST(test_telemetry_parsing_and_bad_crc_rejection);
     RUN_TEST(test_non_c8_sync_frame_is_accepted);
     RUN_TEST(test_parser_recovers_after_garbage_before_valid_frame);
     RUN_TEST(test_parser_recovers_after_bad_crc_followed_by_valid_frame);
+    RUN_TEST(test_parser_resyncs_link_stats_inside_bad_crc_candidate);
+    RUN_TEST(test_parser_resyncs_device_info_inside_bad_crc_candidate);
+    RUN_TEST(test_parser_rejects_unsupported_sync_in_recovered_suffix);
+    RUN_TEST(test_parser_keeps_multiple_valid_embedded_frames);
+    RUN_TEST(test_parser_keeps_delayed_uart_remainder_of_valid_frame);
+    RUN_TEST(test_parser_bounds_rx_bytes_per_loop);
     RUN_TEST(test_comm_codes_show_no_sync_until_valid_frame);
     RUN_TEST(test_lost_telemetry_sets_los_until_valid_frame);
     RUN_TEST(test_crc_burst_sets_crc_comm_code);
@@ -4757,7 +6142,41 @@ int main(int argc, char **argv)
     RUN_TEST(test_comm_overlay_expires_across_millis_rollover);
     RUN_TEST(test_telemetry_received_at_millis_zero_is_fresh);
     RUN_TEST(test_self_test_expires_across_millis_rollover);
+    RUN_TEST(test_device_scan_routes_tx_and_rx);
+    RUN_TEST(test_chunk_retry_does_not_duplicate);
+    RUN_TEST(test_field_options_keep_empty_indices);
+    RUN_TEST(test_parameter_read_has_total_deadline_even_when_chunks_arrive);
+    RUN_TEST(test_descriptor_limits_and_hidden_types);
+    RUN_TEST(test_field_decoder_handles_signed_integer_and_family_options);
+    RUN_TEST(test_transport_service_queue_cannot_overwrite_and_reports_actual_send);
+    RUN_TEST(test_crsf_reply_is_not_rf_connection);
+    RUN_TEST(test_off_race_stale_status_blocks_mutation);
+    RUN_TEST(test_final_ch5_blocks_stop_named_safe);
+    RUN_TEST(test_unsafe_transition_cancels_unsent_write);
+    RUN_TEST(test_core_rechecks_fresh_radio_status_before_mutation_tx);
+    RUN_TEST(test_readback_rejection_is_not_success);
+    RUN_TEST(test_id_63_allowed_64_rejected);
+    RUN_TEST(test_module_swap_invalidates_pending_write);
+    RUN_TEST(test_module_swap_invalidates_cached_model_id);
+    RUN_TEST(test_band_change_refreshes_rate_antenna_and_power);
+    RUN_TEST(test_crossband_forced_gemini_is_not_overridden);
+    RUN_TEST(test_busy_write_cannot_change_inflight_value);
+    RUN_TEST(test_changed_descriptor_blocks_old_option_index);
+    RUN_TEST(test_non_elrs_device_cannot_supply_elrs_safety_status);
+    RUN_TEST(test_scalar_power_never_matches_a_composite_power_option);
+    RUN_TEST(test_command_confirmation_query_and_cancel_are_distinct);
+    RUN_TEST(test_command_lost_ack_does_not_repeat_start);
+    RUN_TEST(test_command_status_chunks_use_queries_without_resetting_command);
+    RUN_TEST(test_missing_backpack_command_never_guesses_a_field);
+    RUN_TEST(test_serial_mode_refreshes_sibling_outputs);
+    RUN_TEST(test_assign_rx_id_does_not_write_info_field);
+    RUN_TEST(test_rx_wifi_requires_connected_receiver);
+    RUN_TEST(test_pwm_capture_sweeps_each_pin_and_restores_cursor);
     RUN_TEST(test_module_settings_are_discovered_and_written);
+    RUN_TEST(test_startup_never_guesses_a_paired_band_power);
+    RUN_TEST(test_new_preferences_replace_pending_preferences);
+    RUN_TEST(test_verified_manual_preferences_do_not_restart_configuration);
+    RUN_TEST(test_manual_maintenance_suspends_automatic_configuration);
     RUN_TEST(test_module_settings_retry_without_blocking_rc_output);
     RUN_TEST(test_unanswered_module_probes_stop_until_reconnect_or_save);
     RUN_TEST(test_module_settings_request_remaining_chunks_before_advancing_field);
@@ -4774,7 +6193,24 @@ int main(int argc, char **argv)
     RUN_TEST(test_module_settings_apply_after_targets_are_found_without_full_scan);
     RUN_TEST(test_module_settings_do_not_write_packet_rate_target_or_change_transport_rate);
     RUN_TEST(test_module_ping_keeps_rc_running_while_waiting_for_settings);
+    RUN_TEST(test_split_receiver_reply_survives_synchronous_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_delayed_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_fragmented_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_previous_rc_echo);
+    RUN_TEST(test_split_receiver_reply_survives_service_echo);
+    RUN_TEST(test_split_receiver_reply_survives_maximum_service_echo);
+    RUN_TEST(test_split_receiver_reply_keeps_bytes_received_before_write);
+    RUN_TEST(test_split_receiver_reply_without_echo_is_unchanged);
+    RUN_TEST(test_valid_receiver_payload_at_tx_boundary_is_not_stripped);
+    RUN_TEST(test_receiver_reply_survives_two_interposed_rc_echoes);
+    RUN_TEST(test_receiver_reply_survives_six_interposed_rc_echoes);
+    RUN_TEST(test_echo_recovery_requires_valid_recovered_crc);
+    RUN_TEST(test_echo_recovery_preserves_valid_resync_frame_in_damaged_input);
     RUN_TEST(test_service_probe_drains_synchronous_loopback_echo_from_uart_buffer);
     RUN_TEST(test_service_probe_drain_preserves_following_module_reply_bytes);
+    RUN_TEST(test_service_probe_drain_preserves_immediate_c8_link_stats_without_echo);
+    RUN_TEST(test_service_probe_drain_preserves_immediate_c8_device_info_without_echo);
+    RUN_TEST(test_service_probe_drain_preserves_partial_shared_prefix_frame);
+    RUN_TEST(test_service_probe_drain_skips_when_rx_frame_is_already_partial);
     return UNITY_END();
 }

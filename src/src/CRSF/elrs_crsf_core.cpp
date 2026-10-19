@@ -135,9 +135,8 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _logHost = &host;
     _config.transport.packetRateHz = elrsPacketRateOrDefault(_config.transport.packetRateHz);
     _config.speedDisplayUnits = elrsSpeedUnitsOrDefault(_config.speedDisplayUnits);
-    _config.telemetryRatio = elrsTelemetryRatioOrDefault(_config.telemetryRatio);
-    _config.maxPower = elrsMaxPowerOrDefault(_config.maxPower);
-    _config.dynamicPower = elrsDynamicPowerOrDefault(_config.dynamicPower);
+    if(!elrsIsValidRadioPreferences(_config.radio)) return false;
+    _radioPreferences = _config.radio;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _axisProfiles[i] = elrsSanitizeInputAxisProfile(_config.axisProfiles[i]);
         _config.axisProfiles[i] = _axisProfiles[i];
@@ -182,6 +181,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _haveAds = false;
     _haveStableAxes = false;
     _haveGoodAxes = false;
+    _throttleReady = false;
     _axisSweepActive = false;
     _fakePowerOn = false;
     _selfTestActive = false;
@@ -212,6 +212,7 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
     memset(_moduleName, 0, sizeof(_moduleName));
     resetModuleConfigSession();
+    _deviceConfig.reset();
     _moduleConfigPending = true;
     _moduleConfigState = MODULECFG_WAIT_START;
     _moduleConfigNextAt = now + CRSF_MODULE_CONFIG_START_DELAY_MS;
@@ -223,10 +224,10 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     log(host, "ELRS/CRSF: full ELRS Lua/config menu unsupported");
     log(host, "ELRS/CRSF: TX=GPIO2 RX=GPIO34 OE=GPIO0");
     logf(host, "ELRS/CRSF: packet rate %uHz (module must match externally)", (unsigned)_config.transport.packetRateHz);
-    logf(host, "ELRS/CRSF: desired Telem Ratio=%s Max Power=%umW Dynamic=%s",
-         elrsTelemetryRatioLabel(_config.telemetryRatio),
-         (unsigned)elrsMaxPowerMilliwatts(_config.maxPower),
-         elrsDynamicPowerLabel(_config.dynamicPower));
+    logf(host, "ELRS/CRSF: desired Telem Ratio=%s Max Power=%s%s Dynamic=%s",
+         _radioPreferences.telemetry,
+         _radioPreferences.maxPower.label, _radioPreferences.maxPower.unit,
+         _radioPreferences.dynamic);
     logf(host,
          "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; all inputs configurable on CH1-CH16",
          (unsigned)_inputRouting.aileronChannel,
@@ -298,6 +299,7 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
         _calCapturePending = false;
         showOverlay("ADC", now, 1000);
     }
+    const bool sampleAfterTx = _transport.txTimeRemainingUs((uint32_t)host.microsNow()) == 0;
     const ELRSAxesResult axesResult = sampleAxes(host, now);
     now = host.millisNow();
     if(axesResult == ELRS_AXES_READY && _calCapturePending) finishCalibrationCapture(host, now);
@@ -329,6 +331,15 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
     _transport.setChannels(_channels);
     _transport.loop(host, now, nowUs);
     now = host.millisNow();
+    // Overdue RC slots must release time for ADC work instead of starving every sweep.
+    if(sampleAfterTx && axesResult != ELRS_AXES_READY) {
+        const ELRSAxesResult result = sampleAxes(host, now);
+        now = host.millisNow();
+        if(result == ELRS_AXES_READY && _calCapturePending) finishCalibrationCapture(host, now);
+        updateInputFaults(host, now);
+        updateChannels(now, fakePower, stopOn, buttonAOn, buttonBOn, packStates);
+        _transport.setChannels(_channels);
+    }
     if(!_config.propControls) {
         updateLocalSwitches(host, (packStates << 4) | (buttonBOn << 3) |
                            (buttonAOn << 2) | (fakePower << 1) | stopOn);
@@ -336,7 +347,8 @@ void ELRSCrsfCore::loop(ELRSCrsfHost &host, unsigned long now, unsigned long now
 
     // Module config runs after the transport loop; service frames queued here
     // are transmitted on the next scheduler pass.
-    updateModuleConfig(host, now);
+    if(!_deviceConfig.busy()) updateModuleConfig(host, now);
+    _deviceConfig.tick(_transport, configSafety((uint32_t)now), (uint32_t)now);
 
     if(!_config.propControls) updateBatteryWarning(host, now, battWarn, fakePower);
     updateBenchState(host, now);
@@ -382,6 +394,11 @@ bool ELRSCrsfCore::selfTestActive() const
 bool ELRSCrsfCore::isCalibrating() const
 {
     return (_calStage != CAL_IDLE) || _calCapturePending;
+}
+
+bool ELRSCrsfCore::throttleReady() const
+{
+    return _throttleReady && _logHost && !adcFaultActive(_logHost->millisNow());
 }
 
 bool ELRSCrsfCore::fakePowerOn() const
@@ -568,12 +585,13 @@ ELRSCrsfStatus ELRSCrsfCore::getStatus() const
     return status;
 }
 
-void ELRSCrsfCore::requestModuleConfigUpdate(uint8_t telemetryRatio, uint8_t maxPower, uint8_t dynamicPower, unsigned long now)
+bool ELRSCrsfCore::setRadioPreferences(const ELRSRadioPreferences &preferences, uint32_t now, bool radioReviewPending, bool scheduleApply)
 {
-    _config.telemetryRatio = elrsTelemetryRatioOrDefault(telemetryRatio);
-    _config.maxPower = elrsMaxPowerOrDefault(maxPower);
-    _config.dynamicPower = elrsDynamicPowerOrDefault(dynamicPower);
-    startModuleConfigSession(now);
+    if(!elrsIsValidRadioPreferences(preferences)) return false;
+    _radioPreferences = preferences;
+    _radioReviewPending = radioReviewPending;
+    if(scheduleApply) startModuleConfigSession(now); else pauseModuleConfigSession();
+    return true;
 }
 
 ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, bool force)
@@ -595,6 +613,7 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
     _axisSweepActive = false;
     if(result == ELRS_AXES_ERROR) {
         _haveStableAxes = false;
+        _throttleReady = false;
         if(_calCapturePending) {
             _calCapturePending = false;
             showOverlay("ADC", host.millisNow(), 1000);
@@ -602,6 +621,8 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
         return result;
     }
 
+    if(_haveGoodAxes && (uint32_t)(completedAt - _lastGoodAxesAt) > CRSF_INPUT_STALE_MS)
+        _throttleReady = false;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = axes[i];
         const ELRSInputAxisProfile &profile = _axisProfiles[i];
@@ -629,6 +650,18 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
     _haveGoodAxes = true;
     _lastGoodAxesAt = completedAt;
 
+    const int16_t rawThrottle = host.rawThrottleSample();
+    const int centerDelta = (int)axes[AXIS_THROTTLE] - _axisProfiles[AXIS_THROTTLE].center;
+    const int rawCenterDelta = (int)rawThrottle - _axisProfiles[AXIS_THROTTLE].center;
+    const int centerBand = (_config.adcHysteresis > _axisProfiles[AXIS_THROTTLE].deadband)
+        ? _config.adcHysteresis : _axisProfiles[AXIS_THROTTLE].deadband;
+    if(!_throttleReady && !isCalibrating() && axes[AXIS_THROTTLE] >= 0 &&
+       axes[AXIS_THROTTLE] <= 2047 && rawThrottle >= 0 && rawThrottle <= 2047 &&
+       centerDelta >= -centerBand && centerDelta <= centerBand &&
+       rawCenterDelta >= -centerBand && rawCenterDelta <= centerBand) {
+        _throttleReady = true;
+    }
+
     return ELRS_AXES_READY;
 }
 
@@ -655,6 +688,7 @@ uint8_t ELRSCrsfCore::samplePackStates(ELRSCrsfHost &host, unsigned long now)
 
 bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *payload, size_t payloadLen, unsigned long now)
 {
+    _deviceConfig.onFrame(type, payload, payloadLen, (uint32_t)now);
     (void)syncByte;
     bool supportedTelemetry = false;
     // ponytail: first reading from the latest RPM source; add source/index selection for multiple motors.
@@ -735,7 +769,12 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
         handleDeviceInfo(payload, payloadLen, now);
         break;
     case CRSF_FRAME_PARAMETER_SETTINGS_ENTRY:
-        handleParameterSettingsEntry(payload, payloadLen, now);
+        if(_deviceConfig.status().id == UINT32_MAX && _deviceConfig.status().state == ELRSOperationState::Complete &&
+           _moduleConfigState == MODULECFG_WAIT_PARAMETER) {
+            const auto *view = _deviceConfig.parameter();
+            if(view && view->device == 0xEE && view->field == _moduleFieldIndex)
+                finishParameterChunk(view->field, view->data, view->dataLength, now);
+        }
         break;
     default:
         break;
@@ -805,6 +844,7 @@ void ELRSCrsfCore::handleCalibrationShort(ELRSCrsfHost &host, unsigned long now,
 void ELRSCrsfCore::requestCalibrationCapture(ELRSCrsfHost &host, unsigned long now)
 {
     if(_calCapturePending) return;
+    _throttleReady = false;
     _calCaptureStage = _calStage;
     _calCaptureRequestedAt = (uint32_t)now;
     _calCapturePending = true;
@@ -929,6 +969,7 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     if(_selfTestActive) {
         writeGimbalChannels(true);
         writeFixedChannelIfUnclaimed(_config.switchRouting.channels[0], CRSF_CHANNEL_MAX);
+        clampLockedThrottleOutputs();
         return;
     }
 
@@ -948,6 +989,18 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
     }
     applyMixes(now, (uint16_t)(stopOn | (fakePowerOn << 1) | (buttonAOn << 2) |
                                (buttonBOn << 3) | ((uint16_t)packStates << 4)));
+    clampLockedThrottleOutputs();
+}
+
+void ELRSCrsfCore::clampLockedThrottleOutputs()
+{
+    if(_throttleReady) return;
+    if(_inputRouting.throttleChannel)
+        _channels[_inputRouting.throttleChannel - 1] = CRSF_CHANNEL_MID;
+    for(const auto &line : _config.mixes.lines) {
+        if(line.channel >= 1 && line.channel <= 16 && line.source == AXIS_THROTTLE + 1)
+            _channels[line.channel - 1] = CRSF_CHANNEL_MID;
+    }
 }
 
 void ELRSCrsfCore::resetChannels(uint16_t defaultTicks)
@@ -961,7 +1014,7 @@ void ELRSCrsfCore::writeGimbalChannels(bool safeOutputs)
 {
     writeGimbalChannel(_inputRouting.aileronChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_AILERON));
     writeGimbalChannel(_inputRouting.elevatorChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_ELEVATOR));
-    writeGimbalChannel(_inputRouting.throttleChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
+    writeGimbalChannel(_inputRouting.throttleChannel, (safeOutputs || !_throttleReady) ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
     writeGimbalChannel(_inputRouting.rudderChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_RUDDER));
 }
 
@@ -990,6 +1043,7 @@ bool ELRSCrsfCore::channelClaimedByGimbal(uint8_t channel) const
 int16_t ELRSCrsfCore::axisToUs(uint8_t axis) const
 {
     if(axis >= ELRS_GIMBAL_AXIS_COUNT) return ELRS_INPUT_US_MID;
+    if(axis == AXIS_THROTTLE && !_throttleReady) return ELRS_INPUT_US_MID;
     const ELRSInputAxisProfile &profile = _axisProfiles[axis];
     return axis == AXIS_THROTTLE
         ? elrsInputModelThrottleToUs(profile, _stableAxes[axis], _config.throttleIdleDeadband)
@@ -1101,6 +1155,7 @@ void ELRSCrsfCore::updateInputFaults(ELRSCrsfHost &host, unsigned long now)
         _faultFlags = (uint8_t)(_faultFlags & ~(ELRS_FAULT_ADC_MISSING | ELRS_FAULT_ADC_STALE));
     }
 
+    if(adcFault) _throttleReady = false;
     if(adcFault != _adcFaultActive) {
         _adcFaultActive = adcFault;
         if(adcFault) {
@@ -1261,18 +1316,9 @@ void ELRSCrsfCore::resetModuleParameters()
     _moduleWriteFieldId = 0;
     _moduleProbeRetryCount = 0;
     _moduleParameterRetryCount = 0;
-    _moduleChunkActive = false;
-    _moduleChunkFieldId = 0;
-    _moduleChunkNextIndex = 0;
-    _moduleChunksRemain = 0;
-    _moduleChunkLen = 0;
-    memset(_moduleChunkData, 0, sizeof(_moduleChunkData));
     _moduleTelemetryRatio = ModuleParameterInfo();
     _moduleMaxPower = ModuleParameterInfo();
     _moduleDynamicPower = ModuleParameterInfo();
-    memset(_moduleTelemetryRatio.options, 0, sizeof(_moduleTelemetryRatio.options));
-    memset(_moduleMaxPower.options, 0, sizeof(_moduleMaxPower.options));
-    memset(_moduleDynamicPower.options, 0, sizeof(_moduleDynamicPower.options));
 }
 
 void ELRSCrsfCore::resetModuleConfigSession()
@@ -1315,26 +1361,18 @@ bool ELRSCrsfCore::queueModulePing()
 
 bool ELRSCrsfCore::queueParameterRead(uint8_t fieldId, uint8_t chunkIndex)
 {
-    uint8_t frame[8];
-    uint8_t payload[2] = { fieldId, chunkIndex };
-
-    if(!buildExtendedFrame(CRSF_FRAME_PARAMETER_READ, CRSF_EXT_ADDR_CRSF_TRANSMITTER, CRSF_EXT_ADDR_HANDSET, payload, sizeof(payload), frame, sizeof(frame))) {
-        return false;
-    }
-
-    return _transport.queueServiceFrame(frame, sizeof(frame));
+    (void)chunkIndex; // The shared reader owns chunks and their retries.
+    const auto *device = _deviceConfig.deviceAt(0);
+    return device && _deviceConfig.read(0xEE, fieldId, device->generation, UINT32_MAX);
 }
 
 bool ELRSCrsfCore::queueParameterWrite(uint8_t fieldId, uint8_t value)
 {
-    uint8_t frame[8];
-    uint8_t payload[2] = { fieldId, value };
-
-    if(!buildExtendedFrame(CRSF_FRAME_PARAMETER_WRITE, CRSF_EXT_ADDR_CRSF_TRANSMITTER, CRSF_EXT_ADDR_HANDSET, payload, sizeof(payload), frame, sizeof(frame))) {
-        return false;
-    }
-
-    return _transport.queueServiceFrame(frame, sizeof(frame));
+    const auto *device = _deviceConfig.deviceAt(0);
+    const auto *target = _moduleTargetIndex == 0 ? &_moduleTelemetryRatio : _moduleTargetIndex == 1 ? &_moduleMaxPower : &_moduleDynamicPower;
+    ELRSParameterValue expected(9, target->currentValue);
+    expected.descriptorHash = target->descriptorHash;
+    return device && _deviceConfig.write(0xEE, fieldId, device->generation, expected, ELRSParameterValue(9, value), UINT32_MAX);
 }
 
 void ELRSCrsfCore::startModuleConfigSession(unsigned long now)
@@ -1348,8 +1386,6 @@ void ELRSCrsfCore::startModuleConfigSession(unsigned long now)
 
 void ELRSCrsfCore::pauseModuleConfigSession()
 {
-    _moduleChunkActive = false;
-    _moduleChunkLen = 0;
     // Leave desired settings pending, but retry only on reconnect or a save.
     _moduleConfigState = MODULECFG_IDLE;
     _moduleConfigDeadlineAt = 0;
@@ -1407,62 +1443,6 @@ void ELRSCrsfCore::handleDeviceInfo(const uint8_t *payload, size_t payloadLen, u
 
     _moduleConfigState = MODULECFG_READ_PARAMETER;
     _moduleConfigNextAt = now;
-}
-
-void ELRSCrsfCore::handleParameterSettingsEntry(const uint8_t *payload, size_t payloadLen, unsigned long now)
-{
-    const uint8_t *chunkData;
-    size_t chunkLen;
-    uint8_t fieldId;
-    uint8_t chunksRemain;
-
-    if(!payload || payloadLen < 4) {
-        return;
-    }
-    if(payload[1] != CRSF_EXT_ADDR_CRSF_TRANSMITTER) {
-        return;
-    }
-
-    fieldId = payload[2];
-    chunksRemain = payload[3];
-    chunkData = payload + 4;
-    chunkLen = payloadLen - 4;
-    if(!fieldId || !chunkLen) {
-        return;
-    }
-
-    if(_moduleConfigState != MODULECFG_WAIT_PARAMETER || fieldId != _moduleFieldIndex) {
-        return;
-    }
-    if(!_moduleChunkActive || _moduleChunkFieldId != fieldId) {
-        _moduleChunkActive = true;
-        _moduleChunkFieldId = fieldId;
-        _moduleChunkLen = 0;
-    } else if(!_moduleChunksRemain || chunksRemain != _moduleChunksRemain - 1) {
-        // Retried reads can return the same chunk after we have already accepted it.
-        return;
-    }
-
-    if(_moduleChunkLen + chunkLen > sizeof(_moduleChunkData)) {
-        _moduleChunkActive = false;
-        _moduleChunkNextIndex = 0;
-        _moduleChunkLen = 0;
-        return;
-    }
-
-    memcpy(_moduleChunkData + _moduleChunkLen, chunkData, chunkLen);
-    _moduleChunkLen += chunkLen;
-    _moduleChunksRemain = chunksRemain;
-
-    if(chunksRemain) {
-        _moduleChunkNextIndex++;
-        _moduleConfigState = MODULECFG_READ_PARAMETER;
-    } else {
-        finishParameterChunk(fieldId, _moduleChunkData, _moduleChunkLen, now);
-        _moduleChunkActive = false;
-        _moduleChunkNextIndex = 0;
-        _moduleChunkLen = 0;
-    }
 }
 
 void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, size_t len, unsigned long now)
@@ -1553,8 +1533,10 @@ void ELRSCrsfCore::applyDiscoveredParameter(uint8_t fieldId, const char *name, u
     target->found = true;
     target->fieldId = fieldId;
     target->currentValue = currentValue;
-    strncpy(target->options, options, sizeof(target->options) - 1);
-    target->options[sizeof(target->options) - 1] = 0;
+    const auto *view = _deviceConfig.parameter();
+    target->descriptorHash = view && view->field == fieldId ? view->value.descriptorHash : 0;
+    const uint8_t index = target == &_moduleTelemetryRatio ? 0 : target == &_moduleMaxPower ? 1 : 2;
+    target->supported = moduleSettingValueForTarget(index, options, &target->desiredValue);
 }
 
 bool ELRSCrsfCore::moduleSettingValueForTarget(uint8_t targetIndex, const char *options, uint8_t *value) const
@@ -1565,27 +1547,21 @@ bool ELRSCrsfCore::moduleSettingValueForTarget(uint8_t targetIndex, const char *
     if(!options || !value) {
         return false;
     }
+    if(targetIndex == 1) {
+        const auto *view = _deviceConfig.parameter();
+        return view && elrsMatchSelection(*view, _radioPreferences.maxPower, *value);
+    }
 
     for(uint8_t i = 0; readOptionAt(options, i, &optionStart, &optionLen); i++) {
         switch(targetIndex) {
         case 0:
-            if(optionEquals(optionStart, optionLen, elrsTelemetryRatioLabel(_config.telemetryRatio))) {
+            if(optionEquals(optionStart, optionLen, _radioPreferences.telemetry)) {
                 *value = i;
                 return true;
             }
             break;
-        case 1: {
-            uint16_t moduleMilliwatts = 0;
-
-            if(parseOptionTerminalMilliwatts(optionStart, optionLen, moduleMilliwatts) &&
-               moduleMilliwatts == elrsMaxPowerMilliwatts(_config.maxPower)) {
-                *value = i;
-                return true;
-            }
-            break;
-        }
         case 2:
-            if(optionEquals(optionStart, optionLen, elrsDynamicPowerLabel(_config.dynamicPower))) {
+            if(optionEquals(optionStart, optionLen, _radioPreferences.dynamic)) {
                 *value = i;
                 return true;
             }
@@ -1602,11 +1578,12 @@ bool ELRSCrsfCore::haveAllModuleTargets() const
 {
     return _moduleTelemetryRatio.found &&
            _moduleMaxPower.found &&
-           _moduleDynamicPower.found;
+           _moduleDynamicPower.found && _deviceConfig.modelIdKnown();
 }
 
 void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
 {
+    if(_configMaintenance || _settingsBusy || _radioReviewPending) return;
     const bool replyActive = _transport.status().replyActive;
 
     if(replyActive != _lastReplyActive) {
@@ -1659,7 +1636,7 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         if(_transport.hasPendingServiceFrame()) {
             return;
         }
-        if(queueParameterRead(_moduleFieldIndex, _moduleChunkNextIndex)) {
+        if(queueParameterRead(_moduleFieldIndex, 0)) {
             _moduleParameterRetryCount = 0;
             _moduleConfigState = MODULECFG_WAIT_PARAMETER;
             _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
@@ -1667,17 +1644,11 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         break;
 
     case MODULECFG_WAIT_PARAMETER:
-        if((int32_t)(now - _moduleConfigDeadlineAt) >= 0) {
-            if(_transport.hasPendingServiceFrame()) {
-                return;
-            }
-            const uint8_t retryChunkIndex = (_moduleChunkActive &&
-                                             _moduleChunkFieldId == _moduleFieldIndex) ? _moduleChunkNextIndex : 0;
-
-            if(_moduleParameterRetryCount < CRSF_MODULE_CONFIG_MAX_PARAMETER_RETRIES &&
-               queueParameterRead(_moduleFieldIndex, retryChunkIndex)) {
+        if(_deviceConfig.status().state == ELRSOperationState::Failed) {
+            const auto error = _deviceConfig.status().error;
+            if((error == ELRSDeviceError::Malformed || error == ELRSDeviceError::TooLarge) &&
+               _moduleParameterRetryCount < CRSF_MODULE_CONFIG_MAX_PARAMETER_RETRIES && queueParameterRead(_moduleFieldIndex, 0)) {
                 _moduleParameterRetryCount++;
-                _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_REPLY_TIMEOUT_MS;
             } else {
                 logf(host, "ELRS/CRSF: parameter scan timed out at field %u", (unsigned)_moduleFieldIndex);
                 pauseModuleConfigSession();
@@ -1709,11 +1680,12 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
             return;
         }
 
-        if(!moduleSettingValueForTarget(_moduleTargetIndex, targetInfo->options, &desiredValue)) {
+        if(!targetInfo->supported) {
             logf(host, "ELRS/CRSF: setting '%s' unsupported", targetName);
             _moduleTargetIndex++;
             return;
         }
+        desiredValue = targetInfo->desiredValue;
 
         if(targetInfo->currentValue == desiredValue) {
             _moduleTargetIndex++;
@@ -1724,6 +1696,10 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
             return;
         }
 
+        const auto radio = _deviceConfig.radioStatus((uint32_t)now);
+        if(!_deviceConfig.modelIdKnown() || _radioPreferences.modelId != _deviceConfig.modelId()) return;
+        if(!radio.armedKnown) { _deviceConfig.readRadioStatus(UINT32_MAX); return; }
+        if(radio.armed || _fakePowerOn || isCalibrating() || _selfTestActive || _channels[4] > 992 || _settingsBusy || _radioReviewPending) return;
         if(queueParameterWrite(targetInfo->fieldId, desiredValue)) {
             logf(host, "ELRS/CRSF: applying module setting '%s'", targetName);
             _moduleWriteFieldId = targetInfo->fieldId;
@@ -1734,11 +1710,12 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
     }
 
     case MODULECFG_WAIT_WRITE:
-        if((int32_t)(now - _moduleConfigDeadlineAt) >= 0) {
+        if(_deviceConfig.status().state == ELRSOperationState::Complete && _deviceConfig.status().id == UINT32_MAX) {
             _moduleTargetIndex++;
             _moduleConfigState = MODULECFG_APPLY_SETTING;
             _moduleConfigNextAt = now;
-        }
+        } else if(_deviceConfig.status().state == ELRSOperationState::Failed ||
+                  _deviceConfig.status().state == ELRSOperationState::OutcomeUnknown) pauseModuleConfigSession();
         break;
 
     case MODULECFG_DONE:
@@ -1746,6 +1723,20 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
     default:
         break;
     }
+}
+
+ELRSConfigSafety ELRSCrsfCore::configSafety(uint32_t now) const
+{
+    ELRSConfigSafety safety = _deviceConfig.radioStatus(now);
+    safety.maintenance = _configMaintenance;
+    safety.automaticPreferenceApply = _deviceConfig.status().id == UINT32_MAX && _moduleConfigState == MODULECFG_WAIT_WRITE;
+    safety.radioReviewPending = _radioReviewPending;
+    safety.fakePower = _fakePowerOn;
+    safety.calibrating = isCalibrating();
+    safety.selfTest = _selfTestActive;
+    safety.finalCh5Ticks = _channels[4];
+    safety.storageBusy = _settingsBusy;
+    return safety;
 }
 
 void ELRSCrsfCore::showOverlay(const char *text, unsigned long now, unsigned long durationMs)
@@ -1834,35 +1825,6 @@ size_t ELRSCrsfCore::copyToken(char *out, size_t outSize, const char *start, siz
 bool ELRSCrsfCore::optionEquals(const char *start, size_t len, const char *text)
 {
     return (text && strlen(text) == len && !strncmp(start, text, len));
-}
-
-bool ELRSCrsfCore::parseOptionTerminalMilliwatts(const char *start, size_t len, uint16_t &value)
-{
-    long parsed = 0;
-    bool haveDigit = false;
-
-    if(!start || !len) {
-        return false;
-    }
-
-    while(len && (start[len - 1] < '0' || start[len - 1] > '9')) {
-        len--;
-    }
-    while(len && start[len - 1] >= '0' && start[len - 1] <= '9') {
-        len--;
-    }
-
-    for(size_t i = len; start[i] >= '0' && start[i] <= '9'; i++) {
-        parsed = (parsed * 10) + (start[i] - '0');
-        haveDigit = true;
-    }
-
-    if(!haveDigit || parsed < 0 || parsed > 65535) {
-        return false;
-    }
-
-    value = (uint16_t)parsed;
-    return true;
 }
 
 bool ELRSCrsfCore::readOptionAt(const char *options, uint8_t index, const char **start, size_t *len)

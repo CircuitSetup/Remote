@@ -1,17 +1,38 @@
 # Compile the actual portal/migration callbacks; stub only UI and storage dependencies.
+import re
+
 from check_crsf_adc import ROOT, compile_and_run
+
+assert_error_mode = r'''
+#ifdef _WIN32
+#include <stdlib.h>
+struct TestAssertErrorMode { TestAssertErrorMode() { _set_error_mode(_OUT_TO_STDERR); } } testAssertErrorMode;
+#endif
+'''
 
 
 def function(path, signature):
     source = (ROOT / path).read_text()
-    if signature + '\n{' not in source:
+    match = re.search(re.escape(signature) + r'\s*\{', source)
+    if not match:
         signature = signature.replace('const char * const *', 'const char **')
-    start = source.index(signature + '\n{')
-    end = source.index('\n}', start) + 2
-    return source[start:end] + '\n'
+        match = re.search(re.escape(signature) + r'\s*\{', source)
+    if not match:
+        raise AssertionError(f'production function not found: {signature}')
+    start = match.start()
+    opening = source.index('{', match.start())
+    depth = 0
+    for offset in range(opening, len(source)):
+        if source[offset] == '{':
+            depth += 1
+        elif source[offset] == '}':
+            depth -= 1
+            if depth == 0:
+                return source[start:offset + 1] + '\n'
+    raise AssertionError(f'unterminated production function: {signature}')
 
 
-callbacks = function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
+callbacks = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
 callbacks += function('src/remote_settings.cpp', 'void moveSettings()')
 callbacks += function('src/remote_settings.cpp', 'static void reInstallFlashFS()')
 
@@ -22,7 +43,6 @@ fixture = r'''
 struct Settings {
     char crsfap[2] = "0", CfgOnSD[2] = "0";
     char elrsRollRev[2] = "0", elrsPitchRev[2] = "0", elrsThrRev[2] = "0", elrsYawRev[2] = "0";
-    char elrsTlmRatio[2] = "0", elrsMaxPower[2] = "0", elrsDynPower[2] = "0";
 } settings;
 struct WiFiManagerParameter {
     char value[2] = "0";
@@ -35,13 +55,12 @@ int mqttConfigHash = 0, mainConfigHash = 0, ipHash = 0;
 const char *haCfgName = "/mqtt", *secCfgName = "/secondary";
 struct { void println(const char *) {} } Serial;
 struct { void remove(const char *) {} } MYNVS;
-void requestELRSModuleConfigUpdate(uint8_t, uint8_t, uint8_t) {}
 void flushDelayedSave() {}
 void write_mqtt_settings() {}
 void saveSecSettings(bool) {}
 void deleteFileFromSD(const char *) {}
 void saveId() {}
-void write_settings() {}
+bool write_settings() {return true;}
 void writeIpSettings() {}
 int currentCrsf = 23, crsfFiles[2] = {23, -1};
 bool writeOk = true;
@@ -51,24 +70,19 @@ bool crsf_save_settings(bool useCache) {
     return true;
 }
 void formatFlashFS(bool) { crsfFiles[0] = -1; }
-char savedReverse[4];
-bool saveCRSFPortalInputSettings() {
-    const char *values[] = {settings.elrsRollRev, settings.elrsPitchRev, settings.elrsThrRev, settings.elrsYawRev};
-    for(int i = 0; i < 4; i++) savedReverse[i] = values[i][0];
-    return true;
-}
 '''
-# Use the actual checkbox-value conversion too.
-fixture += function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
-fixture = '#include <stdint.h>\n#include <cstdlib>\n#include "remote_global.h"\n' + fixture
+fixture = '#include <stdint.h>\n#include <cstdlib>\n#include "remote_global.h"\nbool remoteSettingsBusy() { return false; }\n' + fixture
 cases = r'''
 int main() {
     {
         WiFiManagerParameter *boxes[] = {&custom_crsfrr, &custom_crsfprv, &custom_crsftrv, &custom_crsfyrv};
         for(int mask = 0; mask < 16; mask++) {
             for(int i = 0; i < 4; i++) boxes[i]->value[0] = (mask & (1 << i)) ? '1' : '0';
-            assert(crsf_wifi_loop_settings());
-            for(int i = 0; i < 4; i++) assert(savedReverse[i] == ((mask & (1 << i)) ? '1' : '0'));
+            char *destinations[] = {settings.elrsRollRev, settings.elrsPitchRev, settings.elrsThrRev, settings.elrsYawRev};
+            for(int i = 0; i < 4; i++) {
+                evalCB(destinations[i], boxes[i]);
+                assert(destinations[i][0] == ((mask & (1 << i)) ? '1' : '0'));
+            }
         }
         puts("CRSF reverse checkbox check passed");
     }
@@ -94,7 +108,7 @@ int main() {
     }
 }
 '''
-compile_and_run(fixture + callbacks + cases, [])
+compile_and_run(assert_error_mode + fixture + callbacks + cases, [])
 
 # Keep binary migration and the rendered portal on the actual production code paths.
 source = (ROOT / 'src/src/CRSF/crsf_kludge.cpp').read_text()
@@ -103,18 +117,25 @@ stored_settings_with_files = stored_settings
 for signature in [
     'static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf, int &validBytes)',
     'static bool crsfLoadStoredSettings(uint8_t *buf, int &validBytes)',
-    'static bool crsfSaveStoredSettings(uint8_t *buf, int len)',
+    'static bool crsfSaveStoredSettings(uint8_t *buf, int len, bool requireSafe=false)',
 ]:
     stored_settings = stored_settings.replace(function('src/src/CRSF/crsf_kludge.cpp', signature), '')
 portal = (ROOT / 'src/src/CRSF/crsf_wifi.h').read_text()
 axis_buffers = portal[portal.index('struct CRSFAxisSettings {'):portal.index('static const char *wmBuildCRSFSelectField(')]
+# The legacy RF widgets must no longer be part of the ELRS page's parameter list.
+crsf_array_start = portal.index('WiFiManagerParameter * const crsfParmArray[] = {')
+crsf_param_array = portal[crsf_array_start:portal.index('\n};', crsf_array_start)]
+for legacy_rf_widget in ('custom_crsftr', 'custom_crsfmp', 'custom_crsfdp'):
+    assert not re.search(r'&' + re.escape(legacy_rf_widget) + r'\b', crsf_param_array), f'{legacy_rf_widget} remains in crsfParmArray'
 calibration_page = portal[portal.index('struct CRSFGimbalCalField {'):portal.index('static const char *wmBuildCRSFRC(const char *dest, int op)\n{')]
 portal_callbacks = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for signature in [
     'static uint8_t crsfRoutingChannel(const ELRSGimbalRouting &routing, uint8_t axis)',
     'static void crsfSetRoutingChannel(ELRSGimbalRouting &routing, uint8_t axis, uint8_t channel)',
     'static void syncCRSFPortalBuffers()',
-    'static bool saveCRSFPortalInputSettings()',
+    'static bool buildCRSFPortalInputSettings(ELRSCrsfSettingsBlob &candidate, RemoteTransferError &error)',
 ])
+portal_callbacks = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)') + portal_callbacks
+crsf_blob_validator = function('src/src/CRSF/crsf_model_files.cpp', 'bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &s)')
 switch_page = function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSwitchMap(const char *dest, int op)')
 limits_page = function('src/src/CRSF/crsf_wifi.h', 'static void wmAppendCRSFOutputLimits(String &html, uint8_t axis)')
 expo_post = function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadExpoParams()')
@@ -141,11 +162,8 @@ select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildC
 opmode_start = portal.rfind('\n', 0, portal.index('cOpModeCustHTMLSrc[')) + 1
 select_page += portal[opmode_start:channel_start]
 select_page += portal[portal.index('enum CRSFSelectFieldId'):portal.index('struct CRSFAxisSettings')]
+select_page += function('src/src/CRSF/crsf_wifi.h', 'static void wmAppendEscaped(String &html, const char *text)')
 select_page += function('src/src/CRSF/crsf_wifi.h', 'static const char *wmBuildCRSFSelectField(const char *dest, int op, uint8_t fieldId)')
-mode_json = function('src/remote_settings.cpp', 'static bool CopyCheckValidNumParm(const char *json, char *text, int lowerLim, int upperLim, int setDefault)')
-mode_line = next(line.strip() for line in (ROOT / 'src/remote_settings.cpp').read_text().splitlines() if 'CopyCheckValidNumParm(json["opMode"]' in line)
-mode_json += 'static bool loadOperationMode(const char *value) { bool wd = false; std::map<std::string, const char *> json = {{"opMode", value}};\n' + mode_line.replace('DEF_OPMODE', '0') + '\nreturn wd; }\n'
-select_page += mode_json
 logic_helpers = ''.join(function('src/src/CRSF/crsf_wifi.h', signature) for signature in [
     'static bool crsfParseLogicNumber(const String &value, int minimum, int maximum, long &number)',
     'static bool crsfReadLogicMixForm(bool mixes)',
@@ -165,17 +183,39 @@ post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadGimbalC
 post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsfReadOutputLimitParams()')
 post_parser += display_post
 post_parser += logic_helpers
-post_parser += function('src/src/CRSF/crsf_wifi.h', 'static void crsf_wifi_saveParamsCallback()')
-portal_http = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
-portal_http += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
+post_parser += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_saveParamsCallback()')
+portal_http = r'''
+bool saveCRSFPortalSettings(RemoteTransferError &error) {
+    const auto beforeSettings = settings;
+    if(!crsf_wifi_saveParamsCallback()) {
+        remoteTransferFail(error, RemoteTransferCode::Busy, "radio", "Conflicting radio fields");
+        settings = beforeSettings;
+        return false;
+    }
+    ELRSCrsfSettingsBlob candidate = snapshotELRSSettings();
+    if(!testBuildCRSFPortalCandidate(candidate, error)) {
+        if(error.code == RemoteTransferCode::None)
+            remoteTransferFail(error, RemoteTransferCode::InvalidValue, "crsf", "Invalid form");
+        settings = beforeSettings;
+        return false;
+    }
+    if(!testWriteCRSFPortalCandidate(candidate)) {
+        remoteTransferFail(error, RemoteTransferCode::WriteFailed, "crsf", "Fixture writer rejected candidate");
+        settings = beforeSettings;
+        return false;
+    }
+    return true;
+}
+'''
 portal_http += function('src/remote_wifi.cpp', 'static bool saveParamsCallback(int paramspage)')
 portal_http += function('src/src/WiFiManager/WiFiManager.cpp', 'void WiFiManager::_handleParamSave(int aidx, const char *title)')
-storage_moves = function('src/remote_settings.cpp', 'void moveSettings()')
+storage_moves = 'bool remoteSettingsBusy() { return false; }\n' + function('src/remote_settings.cpp', 'void moveSettings()')
 storage_moves += function('src/remote_settings.cpp', 'static void reInstallFlashFS()')
 style_source = (ROOT / 'src/src/WiFiManager/wm_strings_en.h').read_text()
 portal_style = '#define HTTP_BLUE "#4f529d"\n#define HTTP_RED "#be5c9c"\n#define HTTP_BUTTON_TEXT "#fff"\n'
 portal_style += style_source[style_source.index('static const char HTTP_STYLE[]'):style_source.index('\n#ifndef WM_50S_STYLE', style_source.index('static const char HTTP_STYLE[]'))].replace('PROGMEM', '')
 storage_fixture = r'''
+#include "src/CRSF/elrs_crsf_shared.h"
 #include <ArduinoJson.h>
 #include <cassert>
 #include <cstring>
@@ -188,20 +228,35 @@ storage_fixture = r'''
 #include "src/CRSF/crsf_settings.h"
 using std::min;
 using String = std::string;
+bool remoteSettingsBusy();
+bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &);
+bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &p) {
+    return p.modelId <= 63 && memchr(p.telemetry, 0, sizeof(p.telemetry)) &&
+        memchr(p.dynamic, 0, sizeof(p.dynamic)) && memchr(p.maxPower.label, 0, sizeof(p.maxPower.label)) &&
+        memchr(p.maxPower.unit, 0, sizeof(p.maxPower.unit));
+}
+enum class RemoteTransferCode { None, InvalidValue, Busy, WriteFailed };
+struct RemoteTransferError { RemoteTransferCode code = RemoteTransferCode::None; char path[96] = {}, message[128] = {}; };
+bool remoteTransferFail(RemoteTransferError &error, RemoteTransferCode code, const char *path, const char *message) {
+    error.code = code; snprintf(error.path, sizeof(error.path), "%s", path);
+    snprintf(error.message, sizeof(error.message), "%s", message); return false;
+}
 constexpr int WM_CP_DESTROY = 0, WM_CP_LEN = 1;
 size_t wmLenBuf;
 std::vector<uint8_t> stored;
 std::vector<uint8_t> media[2];
 bool configOnSD = false, haveSD = true, haveFS = true, FlashROMode = false;
 bool storageWriteOk = true;
+int storageWriteAttempts = 0, settingsChangedCalls = 0;
 bool crsfLoadStoredSettings(uint8_t *data, int &valid) {
-    valid = min(297, (int)stored.size());
+    valid = (int)stored.size();
     if(!valid) return false;
     memcpy(data, stored.data(), valid);
     return true;
 }
-bool crsfSaveStoredSettings(uint8_t *data, int size) {
-    if(!storageWriteOk) return false;
+bool crsfSaveStoredSettings(uint8_t *data, int size, bool = false) {
+    storageWriteAttempts++;
+    if(!storageWriteOk || crsfSettingsRecoveryBlocked) return false;
     stored.assign(data, data + size);
     media[configOnSD] = stored;
     return true;
@@ -215,7 +270,6 @@ struct {
     char opMode[2] = "1", elrsPktRate[2] = "3", elrsSpdUnit[2] = "0";
     char crsfap[2] = "0", CfgOnSD[2] = "0";
     char playTUT[2], musicFolder[2], refBut[2], oorst[2], ooTT[2], resAT[2];
-    char elrsTlmRatio[2] = "0", elrsMaxPower[2] = "3", elrsDynPower[2] = "0";
     char elrsRollCh[3] = "1", elrsPitchCh[3] = "2", elrsThrCh[3] = "3", elrsYawCh[3] = "4";
     char elrsRollRev[2] = "0", elrsPitchRev[2] = "0", elrsThrRev[2] = "0", elrsYawRev[2] = "0";
     char elrsRollLow[6], elrsRollCtr[6], elrsRollHigh[6];
@@ -268,7 +322,17 @@ WiFiManagerParameter custom_crsfap = {settings.crsfap}, custom_crsfrr = {setting
     custom_crsfprv = {settings.elrsPitchRev}, custom_crsftrv = {settings.elrsThrRev}, custom_crsfyrv = {settings.elrsYawRev};
 unsigned int wifiLoopSaveAction = 0;
 struct { void println(const char *) {} } Serial;
-void requestELRSModuleConfigUpdate(uint8_t, uint8_t, uint8_t) {}
+static bool testBuildCRSFPortalCandidate(ELRSCrsfSettingsBlob &, RemoteTransferError &);
+static bool testWriteCRSFPortalCandidate(const ELRSCrsfSettingsBlob &);
+static bool testBuildAndSaveCRSFPortalInputSettings();
+static void syncCRSFPortalBuffers();
+bool crsf_wifi_loop_settings() {
+    ELRSCrsfSettingsBlob candidate = snapshotELRSSettings();
+    RemoteTransferError error;
+    if(!testBuildCRSFPortalCandidate(candidate, error)) { wm.setParamSaveError(400); return false; }
+    if(!testWriteCRSFPortalCandidate(candidate)) { wm.setParamSaveError(500); syncCRSFPortalBuffers(); return false; }
+    return true;
+}
 int mainConfigHash = 0, ipHash = 0;
 const char *secCfgName = "/secondary";
 struct { void remove(const char *) {} } MYNVS;
@@ -276,25 +340,50 @@ void flushDelayedSave() {}
 void saveSecSettings(bool) {}
 void deleteFileFromSD(const char *) {}
 void saveId() {}
-void write_settings() {}
+bool write_settings() {return true;}
 void writeIpSettings() {}
+void remoteSettingsChanged() { settingsChangedCalls++; }
 void formatFlashFS(bool) { media[0].clear(); }
+'''
+test_writer_adapter = r'''
+// Fixture-only bridge from the pure portal candidate builder to the production
+// checked single-file writer. The paired settings transaction is covered elsewhere.
+static bool testBuildCRSFPortalCandidate(ELRSCrsfSettingsBlob &candidate, RemoteTransferError &error) {
+    if(!buildCRSFPortalInputSettings(candidate, error)) { syncCRSFPortalBuffers(); return false; }
+    return true;
+}
+static bool testWriteCRSFPortalCandidate(const ELRSCrsfSettingsBlob &candidate) {
+    return saveELRSInputConfig(candidate.axisProfile, ELRS_GIMBAL_AXIS_COUNT, &candidate.gimbalRouting,
+        &candidate.adcHysteresis, &candidate.throttleIdleDeadband, &candidate.switchRouting,
+        candidate.outputLimits, candidate.localActions, &candidate.displayConfig, &candidate.vehicleConfig,
+        &candidate.logic, &candidate.mixes);
+}
+static bool testBuildAndSaveCRSFPortalInputSettings() {
+    ELRSCrsfSettingsBlob candidate = snapshotELRSSettings();
+    RemoteTransferError error;
+    if(!testBuildCRSFPortalCandidate(candidate, error)) return false;
+    if(!testWriteCRSFPortalCandidate(candidate)) { syncCRSFPortalBuffers(); return false; }
+    return true;
+}
 '''
 storage_cases = r'''
 int main() {
-    // Display tail migration is atomic; the original 96 bytes remain intact.
+    const auto defaults = defaultCrsfSettings();
+    ELRSStoredSettings current = {defaults, {}};
+    current.portal.version = 1;
+    current.model.axisProfile[0].minimum = 300;
+    for(size_t length : {size_t(24), size_t(52), size_t(120), size_t(209), size_t(297)}) {
+        stored.assign((const uint8_t *)&current, (const uint8_t *)&current + length);
+        crsf_load_settings();
+        assert(!haveCRSFSettings && !memcmp(&crsfSettings, &defaults, sizeof(defaults)));
+    }
+    stored.clear();
     ELRSDisplayConfig display = {1,1,0.5f,-2};
     crsf_load_settings();
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
     auto fullDisplay = stored;
-    assert(fullDisplay.size() == 297 && offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
-    for(int length = 96; length <= 120; length++) {
-        stored = fullDisplay; stored.resize(length); crsf_load_settings();
-        auto loaded = loadELRSDisplayConfig();
-        assert(loaded.source == (length >= 106 ? 1 : 14));
-        assert(loaded.multiplier == (length >= 106 ? 0.5f : 1));
-        assert(!memcmp(&crsfSettings, fullDisplay.data(), 96));
-    }
+    assert(fullDisplay.size() == sizeof(ELRSStoredSettings) && sizeof(ELRSCrsfSettingsBlob) == 297);
+    assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
     stored = fullDisplay; ((ELRSCrsfSettingsBlob*)stored.data())->displayConfig.offset = NAN;
     crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14);
     const ELRSDisplayConfig corrupt[] = {{17,1,1,0},{1,3,1,0},{1,1,(float)INFINITY,0},{1,1,1001,0},{1,1,1,-1000}};
@@ -316,34 +405,23 @@ int main() {
     assert(saveELRSCalibration(cal, 4));
     crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14 && loadELRSDisplayConfig().multiplier == 0.5f);
     syncCRSFPortalBuffers(); server.args = {{"cdsrc","7"},{"cdmul","-0.001"},{"cdoff","20.5"},{"cddec","2"}};
-    crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings());
+    crsfReadDisplayParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
     display = loadELRSDisplayConfig(); assert(display.source == 7 && display.multiplier == -0.001f && display.offset == 20.5f && display.decimalPlaces == 2);
     auto validDisplay = stored;
     for(const char *field : {"cdsrc","cdmul","cdoff","cddec"}) {
         for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "0x1p2", "1junk", " 1", "999999999999999999999999999", std::string("1\0x",3)}) {
             server.args = {{field,bad}}; crsfReadDisplayParams();
-            assert(!saveCRSFPortalInputSettings() && stored == validDisplay);
+            assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == validDisplay);
         }
     }
     for(const auto &pair : std::map<std::string,std::string>{{"cdsrc","17"},{"cdmul","1001"},{"cdoff","1000"},{"cddec","3"}}) {
-        server.args = {pair}; crsfReadDisplayParams(); assert(!saveCRSFPortalInputSettings() && stored == validDisplay);
+        server.args = {pair}; crsfReadDisplayParams(); assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == validDisplay);
     }
-    server.args.clear(); crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings() && stored == validDisplay);
+    server.args.clear(); crsfReadDisplayParams(); assert(testBuildAndSaveCRSFPortalInputSettings() && stored == validDisplay);
     server.args = {{"cdsrc","16"},{"crpoles","8"},{"crgear","13.1"},{"crdiam","80"},{"crscale","7.5"},{"crrpmtype","1"}};
-    crsfReadDisplayParams(); assert(saveCRSFPortalInputSettings());
+    crsfReadDisplayParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
     const auto fullVehicle = stored;
     assert(!memcmp(fullVehicle.data(), validDisplay.data(), 96));
-    for(int length = 106; length <= 120; length++) {
-        stored = fullVehicle; stored.resize(length); crsf_load_settings();
-        const auto vehicle = loadELRSVehicleConfig();
-        assert(loadELRSDisplayConfig().source == 16);
-        assert(vehicle.motorPoles == (length >= 119 ? 8 : 4));
-        assert(vehicle.gearRatio == (length >= 119 ? 13.1f : 6.55f));
-        assert(vehicle.tireDiameterMm == (length >= 119 ? 80 : 64));
-        assert(vehicle.scaleFactor == (length >= 119 ? 7.5f : 10));
-        assert(vehicle.rpmType == (length == 120 ? ELRS_RPM_SHAFT : ELRS_RPM_ELECTRICAL));
-        assert(!memcmp(&crsfSettings, fullVehicle.data(), 106));
-    }
     stored = fullVehicle; crsf_load_settings(); const auto vehicleHash = crsfSettingsHash;
     auto changedVehicle = loadELRSVehicleConfig(); changedVehicle.gearRatio = 6.16f;
     storageWriteOk = false;
@@ -351,16 +429,16 @@ int main() {
     assert(stored == fullVehicle && loadELRSVehicleConfig().gearRatio == 13.1f && crsfSettingsHash == vehicleHash);
     storageWriteOk = true;
     server.args = {{"crgear","13.1"}}; crsfReadDisplayParams();
-    assert(crsfVehicleConfig.rpmType == ELRS_RPM_SHAFT && saveCRSFPortalInputSettings() && stored == fullVehicle);
+    assert(crsfVehicleConfig.rpmType == ELRS_RPM_SHAFT && testBuildAndSaveCRSFPortalInputSettings() && stored == fullVehicle);
     for(const char *field : {"crpoles","crgear","crdiam","crscale"}) {
         for(const auto &bad : std::vector<std::string>{"", "NaN", "inf", "1junk", " 1", std::string("1\0x",3), "0", "-1", "1001"}) {
             server.args = {{field,bad}}; crsfReadDisplayParams();
-            assert(!saveCRSFPortalInputSettings() && stored == fullVehicle);
+            assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == fullVehicle);
         }
     }
     for(const auto &bad : std::vector<std::string>{"", "-1", "2", "0.5", "NaN", "1junk", std::string("1\0x",3)}) {
         server.args = {{"crrpmtype",bad}}; crsfReadDisplayParams();
-        assert(!saveCRSFPortalInputSettings() && stored == fullVehicle);
+        assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == fullVehicle);
     }
     stored = fullVehicle; ((ELRSCrsfSettingsBlob*)stored.data())->vehicleConfig.rpmType = 2;
     crsf_load_settings(); assert(loadELRSVehicleConfig().rpmType == ELRS_RPM_ELECTRICAL && loadELRSDisplayConfig().source == 16);
@@ -368,25 +446,13 @@ int main() {
     crsf_load_settings(); assert(loadELRSVehicleConfig().tireDiameterMm == 64 && loadELRSDisplayConfig().source == 16);
     stored = fullVehicle; crsf_load_settings(); syncCRSFPortalBuffers();
     assert(crsfVehicleConfig.gearRatio == 13.1f && crsfVehicleConfig.scaleFactor == 7.5f);
-    puts("RPM vehicle settings round-trip, old/partial tails, atomic rollback and input validation passed");
-    struct OldBlob { ELRSInputAxisProfile axisProfile[4]; ELRSGimbalRouting gimbalRouting; } old = {};
-    for(int i = 0; i < 4; i++) old.axisProfile[i] = elrsDefaultInputAxisProfile();
-    old.axisProfile[0].minimum = 300;
-    old.axisProfile[0].center = 900;
-    old.axisProfile[0].maximum = 1500;
-    old.axisProfile[0].reverse = 1;
-    old.axisProfile[0].deadband = 12;
-    old.gimbalRouting = {2, 1, 3, 4};
-    stored.assign((uint8_t *)&old, (uint8_t *)&old + sizeof(old));
-    crsf_load_settings();
+    puts("RPM vehicle settings round-trip, atomic rollback and input validation passed");
     ELRSInputAxisProfile profiles[4];
-    ELRSGimbalRouting routing;
-    uint16_t hysteresis = 99, idle = 99;
-    loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle);
-    assert(hysteresis == 5 && idle == 5);
-    for(int i = 0; i < 4; i++) assert(profiles[i].expo == 0);
-    assert(profiles[0].minimum == 300 && profiles[0].reverse == 1 && profiles[0].deadband == 12);
-    assert(routing.aileronChannel == 2 && routing.elevatorChannel == 1);
+    for(auto &profile : profiles) profile = elrsDefaultInputAxisProfile();
+    profiles[0].minimum = 300; profiles[0].center = 900; profiles[0].maximum = 1500;
+    profiles[0].reverse = 1; profiles[0].deadband = 12;
+    ELRSGimbalRouting routing = {2, 1, 3, 4};
+    uint16_t hysteresis = 5, idle = 5;
     hysteresis = 0; idle = 32;
     assert(saveELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle));
     crsf_load_settings();
@@ -396,19 +462,8 @@ int main() {
     saveELRSCalibration(calibration, 4);
     loadELRSInputConfig(profiles, 4, nullptr, &hysteresis, &idle);
     assert(hysteresis == 0 && idle == 32 && profiles[0].reverse == 1);
-    auto complete = stored;
-    for(int extra = 1; extra <= 3; extra++) {
-        stored = complete;
-        stored.resize(sizeof(old) + extra);
-        crsf_load_settings();
-        loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
-        assert(hysteresis == (extra < 2 ? 5 : 0) && idle == 5);
-    }
-    stored = complete;
-    std::fill(stored.begin() + sizeof(old), stored.begin() + sizeof(old) + 4, 0xff);
-    crsf_load_settings();
-    loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle);
-    assert(hysteresis == 32 && idle == 32);
+    hysteresis = 32; idle = 32;
+    assert(saveELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle));
     const auto beforeToleranceSave = stored;
     const auto beforeToleranceInputs = crsfSettings;
     const auto beforeToleranceHash = crsfSettingsHash;
@@ -430,7 +485,7 @@ int main() {
     syncCRSFPortalBuffers();
     assert(strcmp(settings.elrsAdcHysteresis, "32") == 0 && strcmp(settings.elrsThrIdleDeadband, "32") == 0);
     strcpy(settings.elrsAdcHysteresis, "0"); strcpy(settings.elrsThrIdleDeadband, "7");
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle);
     assert(hysteresis == 0 && idle == 7 && profiles[0].deadband == 12 && profiles[0].reverse == 1);
@@ -440,35 +495,16 @@ int main() {
     assert(strstr(page, "max='32'") && strstr(page, "Filtered ADC"));
     assert(strstr(page, "max='2047' required"));
     free((void *)page);
-    stored.assign((const uint8_t *)calibration, (const uint8_t *)calibration + sizeof(calibration));
-    crsf_load_settings();
-    loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle);
-    assert(hysteresis == 5 && idle == 5 && profiles[0].minimum == 300 && profiles[0].center == 900);
-    assert(routing.aileronChannel == 1 && profiles[0].reverse == 0);
-    for(int i = 0; i < 4; i++) assert(profiles[i].expo == 0);
-    puts("CRSF tolerance persistence, legacy migration, and portal check passed");
-    // A previous firmware's full blob has profiles, gimbal routing and tolerances, but no switch map.
+    profiles[0].reverse = 0;
+    routing = elrsDefaultGimbalRouting();
+    assert(saveELRSInputConfig(profiles, 4, &routing));
+    puts("CRSF tolerance persistence and portal check passed");
     hysteresis = 8; idle = 7;
     assert(saveELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle));
-    stored.resize(sizeof(old) + 4);
-    auto previous = stored;
-    ELRSSwitchRouting switches;
-    crsf_load_settings();
-    loadELRSInputConfig(nullptr, 0, nullptr, &hysteresis, &idle, &switches);
-    for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
-    assert(hysteresis == 8 && idle == 7);
+    ELRSSwitchRouting switches = elrsDefaultSwitchRouting();
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     auto mapped = stored;
-    assert(previous.size() == 56 && mapped.size() == 297);
-    for(int partial = 0; partial < 12; partial++) {
-        stored = mapped;
-        stored.resize(previous.size() + partial);
-        crsf_load_settings();
-        loadELRSInputConfig(profiles, 4, &routing, &hysteresis, &idle, &switches);
-        assert(hysteresis == 8 && idle == 7 && profiles[0].minimum == 300);
-        for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
-    }
     stored = mapped;
     crsf_load_settings();
     saveELRSCalibration(calibration, 4);
@@ -486,7 +522,7 @@ int main() {
         loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &unchanged);
         assert(memcmp(&switches, &unchanged, sizeof(switches)) == 0);
         stored = validStored;
-        stored[previous.size()] = bad;
+        stored[offsetof(ELRSCrsfSettingsBlob, switchRouting)] = bad;
         crsf_load_settings();
         loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &unchanged);
         for(int i = 0; i < 12; i++) assert(unchanged.channels[i] == 5 + i);
@@ -504,7 +540,7 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches);
     assert(switches.channels[0] == 5);
-    puts("CRSF switch mapping migration, validation, calibration preservation and write retry check passed");
+    puts("CRSF switch mapping persistence, validation, calibration preservation and write retry check passed");
     for(int i = 0; i < 12; i++) switches.channels[i] = 16 - i;
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches));
     syncCRSFPortalBuffers();
@@ -553,7 +589,7 @@ int main() {
         server.value = bad;
         crsfReadSwitchParams();
         strcpy(settings.elrsRollLow, "500"); // Invalid routing must preserve valid calibration edits.
-        assert(saveCRSFPortalInputSettings());
+        assert(testBuildAndSaveCRSFPortalInputSettings());
         loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
         assert(profiles[0].minimum == 500 && switches.channels[0] == 5);
         assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
@@ -562,7 +598,7 @@ int main() {
     stored = validStored; crsf_load_settings();
     syncCRSFPortalBuffers();
     strcpy(settings.elrsSwitchCh[0], "15"); strcpy(settings.elrsSwitchCh[1], "16");
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, &switches);
     assert(switches.channels[0] == 15 && switches.channels[1] == 16 && switches.channels[2] == 14);
@@ -585,7 +621,7 @@ int main() {
     syncCRSFPortalBuffers();
     for(int i = 0; i < 4; i++) snprintf(settings.elrsAxisExpo[i], 4, "%u", strengths[i]);
     const size_t curveBlobSize = stored.size();
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(profiles, 4, &routing);
     assert(stored.size() == curveBlobSize);
@@ -609,7 +645,7 @@ int main() {
         for(int v = 0; v < 4; v++) {
             stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
             server.args = {{expoIds[axis], validExpo[v]}};
-            crsfReadExpoParams(); assert(saveCRSFPortalInputSettings());
+            crsfReadExpoParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
             loadELRSInputConfig(profiles, 4, nullptr);
             for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == axis ? wantExpo[v] : strengths[i]));
         }
@@ -624,29 +660,29 @@ int main() {
             for(int i = 0; i < 4; i++) server.args[expoIds[i]] = "99";
             server.args[expoIds[axis]] = bad;
             crsfReadExpoParams(); strcpy(settings.elrsRollLow, "500");
-            assert(saveCRSFPortalInputSettings());
+            assert(testBuildAndSaveCRSFPortalInputSettings());
             loadELRSInputConfig(profiles, 4, nullptr);
             for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == axis ? 0 : 99));
             assert(profiles[0].minimum == 500 && profiles[0].center == fourProfiles[0].center);
         }
     }
     stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
-    server.args.clear(); crsfReadExpoParams(); assert(saveCRSFPortalInputSettings());
+    server.args.clear(); crsfReadExpoParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
     assert(stored == fourStrengths);
     // Omit each identity while editing all its siblings.
     for(int missing = 0; missing < 4; missing++) {
         stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers(); server.args.clear();
         for(int i = 0; i < 4; i++) if(i != missing) server.args[expoIds[i]] = "75";
-        crsfReadExpoParams(); assert(saveCRSFPortalInputSettings()); loadELRSInputConfig(profiles, 4, nullptr);
+        crsfReadExpoParams(); assert(testBuildAndSaveCRSFPortalInputSettings()); loadELRSInputConfig(profiles, 4, nullptr);
         for(int i = 0; i < 4; i++) assert(profiles[i].expo == (i == missing ? strengths[i] : 75));
     }
     stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers();
     server.args.clear(); for(int i = 0; i < 4; i++) server.args[expoIds[i]] = "80";
     crsfReadExpoParams(); storageWriteOk = false;
-    assert(!saveCRSFPortalInputSettings()); assert(stored == fourStrengths);
+    assert(!testBuildAndSaveCRSFPortalInputSettings()); assert(stored == fourStrengths);
     loadELRSInputConfig(profiles, 4, nullptr);
     for(int i = 0; i < 4; i++) assert(profiles[i].expo == strengths[i]);
-    storageWriteOk = true; assert(saveCRSFPortalInputSettings());
+    storageWriteOk = true; crsfReadExpoParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
     loadELRSInputConfig(profiles, 4, nullptr);
     for(int i = 0; i < 4; i++) assert(profiles[i].expo == 80);
     stored = fourStrengths; crsf_load_settings(); syncCRSFPortalBuffers(); server.args.clear();
@@ -710,7 +746,7 @@ int main() {
         assert(memcmp(&crsfSettings, &validInputs, sizeof(validInputs)) == 0);
         syncCRSFPortalBuffers();
         strcpy(crsfAxisSettings[axis].low, crsfAxisSettings[axis].center);
-        assert(saveCRSFPortalInputSettings());
+        assert(testBuildAndSaveCRSFPortalInputSettings());
         ELRSInputAxisProfile defaulted[4]; loadELRSInputConfig(defaulted, 4);
         const int inputAxis = crsfAxisSettings[axis].axis;
         assert(defaulted[inputAxis].minimum == 0 && defaulted[inputAxis].center == 1024 && defaulted[inputAxis].maximum == 2047);
@@ -755,14 +791,14 @@ int main() {
     assert(!strcmp(settings.elrsRollCh, "15") && !strcmp(settings.elrsSwitchCh[0], "1"));
     strcpy(settings.elrsRollLow, "500");
     strcpy(settings.elrsSwitchCh[0], "15");
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
     assert(profiles[0].minimum == 500 && profiles[0].reverse == 1);
     assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
     for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
     for(int corruptGimbal = 0; corruptGimbal < 2; corruptGimbal++) {
         stored = mixedStored;
-        size_t offset = corruptGimbal ? sizeof(old.axisProfile) : sizeof(old) + 4;
+        size_t offset = corruptGimbal ? offsetof(ELRSCrsfSettingsBlob, gimbalRouting) : offsetof(ELRSCrsfSettingsBlob, switchRouting);
         stored[offset] = corruptGimbal ? 17 : 2;
         crsf_load_settings();
         loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
@@ -780,7 +816,7 @@ int main() {
     assert(profiles[0].minimum == 350 && profiles[0].reverse == 1);
     syncCRSFPortalBuffers();
     strcpy(settings.elrsRollCh, "1"); strcpy(settings.elrsSwitchCh[0], "15");
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches);
     assert(routing.aileronChannel == 1 && switches.channels[0] == 15);
@@ -814,7 +850,7 @@ int main() {
                 preparePost();
                 server.args[pointNames[axis][point]] = bad;
                 crsf_wifi_saveParamsCallback();
-                assert(saveCRSFPortalInputSettings());
+                assert(testBuildAndSaveCRSFPortalInputSettings());
                 crsf_load_settings(); loadELRSInputConfig(profiles, 4, nullptr);
                 const int inputAxis = crsfAxisSettings[axis].axis;
                 assert(profiles[inputAxis].minimum == 0 && profiles[inputAxis].center == 1024 && profiles[inputAxis].maximum == 2047);
@@ -829,7 +865,7 @@ int main() {
             preparePost();
             server.args[channelNames[axis]] = bad;
             crsf_wifi_saveParamsCallback();
-            assert(saveCRSFPortalInputSettings());
+            assert(testBuildAndSaveCRSFPortalInputSettings());
             crsf_load_settings(); loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches);
             assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
             for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
@@ -840,40 +876,15 @@ int main() {
     preparePost();
     server.args["crlch"] = "15"; server.args["csw1"] = "1";
     crsf_wifi_saveParamsCallback();
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches);
     assert(routing.aileronChannel == 16 && switches.channels[1] == 1);
     puts("CRSF actual POST defaults malformed calibration and channel maps, then accepts corrected CH16 swap");
-    // The unchanged 68-byte prefix is followed by four atomic endpoint pairs.
-    assert(sizeof(ELRSInputAxisProfile) == 12);
-    assert(offsetof(ELRSCrsfSettingsBlob, outputLimits) == 68);
-    assert(sizeof(ELRSCrsfSettingsBlob) == 297 && sizeof(ELRSOutputLimits) == 4);
     const ELRSOutputLimits limits[4] = {{1100,1700},{1200,1800},{1300,1900},{1400,1600}};
     ELRSOutputLimits loaded[4];
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, limits));
     const auto limitedBlob = stored;
-    for(int tail = 0; tail < 16; tail++) {
-        stored = limitedBlob;
-        stored.resize(68 + tail);
-        crsf_load_settings();
-        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
-        assert(memcmp(&crsfSettings, limitedBlob.data(), 68) == 0);
-        for(int axis = 0; axis < 4; axis++) {
-            assert(loaded[axis].minimumUs == (tail >= (axis+1)*4 ? limits[axis].minimumUs : 1000));
-            assert(loaded[axis].maximumUs == (tail >= (axis+1)*4 ? limits[axis].maximumUs : 2000));
-        }
-    }
-    for(int version = 0; version < 4; version++) {
-        if(version == 0) stored.assign((const uint8_t *)calibration, (const uint8_t *)calibration + sizeof(calibration));
-        else {
-            stored = limitedBlob;
-            stored.resize(version == 1 ? 52 : version == 2 ? 56 : 68);
-        }
-        crsf_load_settings();
-        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
-        for(int axis = 0; axis < 4; axis++) assert(loaded[axis].minimumUs == 1000 && loaded[axis].maximumUs == 2000);
-    }
     for(int corrupt = 0; corrupt < 4; corrupt++) {
         stored = limitedBlob;
         const uint16_t invalidMinimum = 1501;
@@ -920,7 +931,7 @@ int main() {
     assert(memcmp(loaded, limits, sizeof(limits)) == 0);
     assert(memcmp(&crsfSettings.switchRouting, &limitedSettings.switchRouting, sizeof(switches)) == 0);
     assert(crsfSettings.adcHysteresis == limitedSettings.adcHysteresis && crsfSettings.throttleIdleDeadband == limitedSettings.throttleIdleDeadband);
-    puts("CRSF output limits round trip, all legacy/partial tails, validation and calibration preservation passed");
+    puts("CRSF output limits round trip, validation and calibration preservation passed");
     syncCRSFPortalBuffers();
     const char *limitsPage = wmBuildCRSFCAL(nullptr, 2);
     assert(limitsPage && strstr(limitsPage, "Travel Limits"));
@@ -966,7 +977,7 @@ int main() {
                 preparePost();
                 server.args[name] = bad;
                 crsf_wifi_saveParamsCallback();
-                assert(saveCRSFPortalInputSettings());
+                assert(testBuildAndSaveCRSFPortalInputSettings());
                 crsf_load_settings(); loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
                 assert(loaded[axis].minimumUs == (side ? limits[axis].minimumUs : 1000));
                 assert(loaded[axis].maximumUs == (side ? 2000 : limits[axis].maximumUs));
@@ -977,7 +988,7 @@ int main() {
             preparePost();
             server.args[name] = side ? "1499" : "1501";
             crsf_wifi_saveParamsCallback();
-            assert(saveCRSFPortalInputSettings());
+            assert(testBuildAndSaveCRSFPortalInputSettings());
             loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
             assert(loaded[axis].minimumUs == (side ? limits[axis].minimumUs : 1000));
             assert(loaded[axis].maximumUs == (side ? 2000 : limits[axis].maximumUs));
@@ -988,7 +999,7 @@ int main() {
     memset(crsfOutputMin, 0, sizeof(crsfOutputMin));
     memset(crsfOutputMax, 0, sizeof(crsfOutputMax));
     crsf_wifi_saveParamsCallback(); // Absent fields must refresh saved limits, not stale buffers.
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
     assert(memcmp(loaded, limits, sizeof(limits)) == 0);
     preparePost();
@@ -996,10 +1007,11 @@ int main() {
     server.args["cout2hi"] = "1500";
     crsf_wifi_saveParamsCallback();
     storageWriteOk = false;
-    assert(!saveCRSFPortalInputSettings());
+    assert(!testBuildAndSaveCRSFPortalInputSettings());
     assert(stored == beforeLimitsPost && crsfSettingsHash == beforeLimitsHash);
     storageWriteOk = true;
-    assert(saveCRSFPortalInputSettings());
+    crsf_wifi_saveParamsCallback();
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, loaded);
     assert(loaded[2].minimumUs == 1500 && loaded[2].maximumUs == 1500);
@@ -1040,20 +1052,6 @@ int main() {
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, localActions));
     auto localBlob = stored;
     const auto localInputs = crsfSettings;
-    for(int length : {24, 52, 56, 68, 84}) {
-        stored = localBlob; stored.resize(length);
-        crsf_load_settings();
-        uint8_t loadedActions[12];
-        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, loadedActions);
-        for(uint8_t action : loadedActions) assert(action == 0);
-    }
-    stored = localBlob; crsf_load_settings();
-    for(int tail = 1; tail <= 12; tail++) {
-        stored = localBlob; stored.resize(84 + tail); crsf_load_settings();
-        uint8_t loadedActions[12];
-        loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, loadedActions);
-        for(int i = 0; i < 12; i++) assert(loadedActions[i] == (i < tail ? localActions[i] : 0));
-    }
     stored = localBlob; stored[84] = 255; crsf_load_settings();
     uint8_t recoveredActions[12];
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, recoveredActions);
@@ -1077,28 +1075,28 @@ int main() {
     server.args = {{"cslocal", "1"}}; server.name = "csa0";
     for(const std::string &bad : {std::string(""), std::string("0"), std::string("2"), std::string("-1"), std::string("15"), std::string("256"), std::string("1x"), std::string(" 1"), std::string("+1"), std::string("1\0", 2)}) {
         server.value = bad; crsfReadSwitchParams();
-        assert(!saveCRSFPortalInputSettings());
+        assert(!testBuildAndSaveCRSFPortalInputSettings());
         assert(stored == localBlob);
     }
     server.name.clear(); server.args.clear(); // Old-client POST recovers all saved values after rejection.
     crsfReadSwitchParams();
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     assert(stored == localBlob);
     server.name = "csa2"; server.value = "1"; // A POST without the new form marker cannot change enables.
-    crsfReadSwitchParams(); assert(saveCRSFPortalInputSettings() && stored == localBlob);
+    crsfReadSwitchParams(); assert(testBuildAndSaveCRSFPortalInputSettings() && stored == localBlob);
     server.name.clear();
     for(const std::string &bad : {std::string("bad"), std::string(""), std::string("1\0", 2)}) {
         server.args = {{"cslocal", bad}};
-        crsfReadSwitchParams(); assert(!saveCRSFPortalInputSettings() && stored == localBlob);
+        crsfReadSwitchParams(); assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == localBlob);
     }
     server.args = {{"cslocal", "1"}, {"csa1", "1"}};
     crsfReadSwitchParams(); storageWriteOk = false;
-    assert(!saveCRSFPortalInputSettings() && stored == localBlob);
+    assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == localBlob);
     storageWriteOk = true;
     server.args.clear(); crsfReadSwitchParams();
-    assert(saveCRSFPortalInputSettings() && stored == localBlob);
+    assert(testBuildAndSaveCRSFPortalInputSettings() && stored == localBlob);
     server.args = {{"cslocal", "1"}, {"csa1", "1"}}; crsfReadSwitchParams();
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, localActions);
     for(int i = 0; i < 12; i++) assert(localActions[i] == (i == 1 ? 1 : 0));
@@ -1108,7 +1106,7 @@ int main() {
     crsf_load_settings();
     loadELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, localActions);
     assert(localActions[0] == 0 && localActions[1] == 1);
-    puts("CRSF Settings-action checkboxes render, reject malformed POSTs, preserve old clients and survive calibration saves");
+    puts("CRSF Settings-action checkboxes render, reject malformed POSTs, survive partial edits and calibration saves");
     syncCRSFPortalBuffers();
     server.args.clear(); server.name.clear();
     for(int i = 0; i < 4; i++) {
@@ -1117,7 +1115,7 @@ int main() {
     }
     for(int i = 0; i < 12; i++) server.args["csw" + std::to_string(i)] = "0";
     crsfReadSwitchParams();
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings();
     loadELRSInputConfig(profiles, 4, &routing, nullptr, nullptr, &switches, nullptr, localActions);
     assert(routing.aileronChannel == 0 && routing.elevatorChannel == 0 && routing.throttleChannel == 0 && routing.rudderChannel == 0);
@@ -1137,7 +1135,7 @@ int main() {
             server.args.clear(); server.name = input ? "csw0" : "crlch"; server.value = bad;
             if(input) crsfReadSwitchParams();
             else crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
-            assert(saveCRSFPortalInputSettings());
+            assert(testBuildAndSaveCRSFPortalInputSettings());
             crsf_load_settings(); loadELRSInputConfig(nullptr, 0, &routing, nullptr, nullptr, &switches, nullptr, localActions);
             assert(routing.aileronChannel == 1 && routing.elevatorChannel == 2 && routing.throttleChannel == 3 && routing.rudderChannel == 4);
             for(int i = 0; i < 12; i++) assert(switches.channels[i] == 5 + i);
@@ -1147,9 +1145,10 @@ int main() {
     stored = noneStored; crsf_load_settings(); syncCRSFPortalBuffers(); server.name = "crlch"; server.value = "15";
     crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
     storageWriteOk = false;
-    assert(!saveCRSFPortalInputSettings() && stored == noneStored);
+    assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == noneStored);
     storageWriteOk = true;
-    assert(saveCRSFPortalInputSettings());
+    crsfReadGimbalChannelParam("crlch", settings.elrsRollCh);
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     crsf_load_settings(); loadELRSInputConfig(nullptr, 0, &routing);
     assert(routing.aileronChannel == 16 && routing.throttleChannel == 0);
     server.name.clear(); server.args.clear();
@@ -1164,13 +1163,11 @@ int main() {
         assert(strstr(modePage, selected));
         wmBuildCRSFSelectField(modePage, WM_CP_DESTROY, CRSF_SELECT_OPMODE);
         strcpy(settings.opMode, "9");
-        assert(!loadOperationMode(mode) && !strcmp(settings.opMode, mode));
     }
     for(const char *bad : {"-1", "3", "9", "x", ""}) {
         server.value = bad; crsf_wifi_saveParamsCallback();
         assert(!strcmp(settings.opMode, "0"));
     }
-    assert(loadOperationMode("3") && !strcmp(settings.opMode, "0"));
     server.name.clear(); strcpy(settings.opMode, "1");
     puts("CRSF operation-mode portal and settings reload preserve all three modes and default invalid values");
     const auto beforeMove = stored;
@@ -1199,53 +1196,17 @@ int main() {
     assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
     logic.rules[15]={3,17,133,0,0};mixes.lines[15]={16,33,154,-50,10,2};
     assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&logic,&mixes));
-    const auto extended=stored; assert(extended.size()==297 && extended[120]==2);
+    const auto extended=stored; assert(extended.size()==sizeof(ELRSStoredSettings) && extended[120]==2);
     assert(offsetof(ELRSCrsfSettingsBlob,logicVersion)==120);
     assert(offsetof(ELRSCrsfSettingsBlob,logic)==121 && offsetof(ELRSCrsfSettingsBlob,mixes)==201);
-    for(int length=120;length<297;length++) {
-        stored=extended; stored.resize(length); crsf_load_settings();
-        assert(!memcmp(&crsfSettings,extended.data(),120));
-        const ELRSLogicConfig offLogic={}; const ELRSMixConfig offMix={};
-        assert(!memcmp(&crsfSettings.logic,&offLogic,sizeof(offLogic)));
-        assert(!memcmp(&crsfSettings.mixes,&offMix,sizeof(offMix)));
-    }
     for(int bad=0;bad<3;bad++) {
         stored=extended;
         if(bad==0)stored[120]=3;
         if(bad==1)stored[121]=6;
         if(bad==2)stored[201]=17;
         crsf_load_settings();
-        assert(!memcmp(&crsfSettings,extended.data(),120));
-        assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
-    }
-    std::vector<uint8_t> oldV1(209,0);
-    memcpy(oldV1.data(),extended.data(),120);oldV1[120]=1;
-    ELRSLogicRule oldRules[8] = {}; ELRSMixLine oldMixes[8] = {};
-    oldRules[0]={2,4,0,-90,0};
-    for(uint8_t i=1;i<8;i++)oldRules[i]={3,(uint8_t)(16+i),133,0,0};
-    for(uint8_t i=0;i<8;i++)oldMixes[i]={9,(uint8_t)(i==7?25:17+i),(uint8_t)(i%2?145:0),(int8_t)(100-i*10),(int8_t)(i*3),(uint8_t)(i%3)};
-    memcpy(oldV1.data()+121,oldRules,sizeof(oldRules));memcpy(oldV1.data()+161,oldMixes,sizeof(oldMixes));
-    stored=oldV1;crsf_load_settings();
-    assert(crsfSettings.logicVersion==2 && stored==oldV1);
-    assert(!memcmp(&crsfSettings,oldV1.data(),120));
-    assert(!memcmp(crsfSettings.logic.rules,oldRules,sizeof(oldRules)));
-    assert(!memcmp(crsfSettings.mixes.lines,oldMixes,sizeof(oldMixes)));
-    const ELRSLogicRule disabledRule={};const ELRSMixLine disabledMix={};
-    for(int i=8;i<16;i++) {
-        assert(!memcmp(&crsfSettings.logic.rules[i],&disabledRule,sizeof(disabledRule)));
-        assert(!memcmp(&crsfSettings.mixes.lines[i],&disabledMix,sizeof(disabledMix)));
-    }
-    storageWriteOk=false;const auto migratedHash=crsfSettingsHash;
-    assert(!crsf_save_settings(false) && stored==oldV1 && crsfSettingsHash==migratedHash);
-    storageWriteOk=true;assert(crsf_save_settings(false));
-    assert(stored.size()==297 && stored[120]==2 && !memcmp(stored.data(),oldV1.data(),120));
-    crsf_load_settings();assert(!memcmp(crsfSettings.mixes.lines,oldMixes,sizeof(oldMixes)));
-    for(int length=121;length<209;length++) {
-        stored=oldV1;stored.resize(length);crsf_load_settings();
-        assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
-    }
-    for(uint8_t source : {26,33,34}) {
-        stored=oldV1;stored[162]=source;crsf_load_settings();
+        if(bad==0) assert(crsfSettingsRecoveryBlocked && !haveCRSFSettings);
+        else assert(!memcmp(&crsfSettings,extended.data(),120));
         assert(crsfSettings.logic.rules[0].function==0 && crsfSettings.mixes.lines[0].channel==0);
     }
     stored=extended; crsf_load_settings();
@@ -1267,10 +1228,13 @@ int main() {
     media[0]=stored; settings.CfgOnSD[0]='1'; configOnSD=false; moveSettings();
     assert(media[1]==goodExtended); reInstallFlashFS();
     assert(crsfSettings.logic.rules[0].threshold==-90 && crsfSettings.mixes.lines[0].weight==50);
-    puts("CRSF logic/mix complete-tail migration, prefix preservation, omitted saves and rollback/retry passed");
+    puts("CRSF logic/mix persistence, omitted saves and rollback/retry passed");
 
+    ELRSLogicConfig goodLogic={}; goodLogic.rules[0]={2,4,0,-90,0};
+    ELRSMixConfig goodMix={}; goodMix.lines[0]={9,17,0,50,0,2};
+    assert(elrsIsValidModelReferences(goodLogic, goodMix));
+    assert(saveELRSInputConfig(nullptr,0,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&goodLogic,&goodMix));
     syncCRSFPortalBuffers();
-    auto goodLogic=crsfLogicConfig; auto goodMix=crsfMixConfig;
     auto fillForm=[&]() {
         server.name.clear(); server.args.clear(); server.args["clform"]="1"; server.args["cmform"]="1";
         const char *logicalFields[]={"clfn","cla","clb","clx","cland"};
@@ -1281,28 +1245,28 @@ int main() {
             for(int j=0;j<6;j++)server.args[std::string(mixFields[j])+std::to_string(i)]=std::to_string(j==3||j==4?(int8_t)m[j]:m[j]);
         }
     };
-    fillForm(); crsfReadLogicParams(); crsfReadMixParams(); assert(saveCRSFPortalInputSettings());
+    fillForm(); crsfReadLogicParams(); crsfReadMixParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
     const auto beforeLogicForm=stored;
     for(const char *key:{"clfn0","cla0","cland0","cmch0","cmsrc0","cmsw0","cmwt0","cmmux0","clfn15","cla15","cmsrc15","cmwt15"}) {
         for(const char *bad:{"", "+1", " 1", "1.5", "99999", "x"}) {
             fillForm();server.args[key]=bad;crsfReadLogicParams();crsfReadMixParams();
-            assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+            assert(!testBuildAndSaveCRSFPortalInputSettings() && stored==beforeLogicForm);
         }
         fillForm();server.args.erase(key);crsfReadLogicParams();crsfReadMixParams();
-        assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+        assert(!testBuildAndSaveCRSFPortalInputSettings() && stored==beforeLogicForm);
     }
     fillForm();server.args["clform"]=std::string("1\0x",3);crsfReadLogicParams();crsfReadMixParams();
-    assert(!saveCRSFPortalInputSettings() && stored==beforeLogicForm);
-    server.args.clear();crsfReadLogicParams();crsfReadMixParams();assert(saveCRSFPortalInputSettings() && stored==beforeLogicForm);
+    assert(!testBuildAndSaveCRSFPortalInputSettings() && stored==beforeLogicForm);
+    server.args.clear();crsfReadLogicParams();crsfReadMixParams();assert(testBuildAndSaveCRSFPortalInputSettings() && stored==beforeLogicForm);
     syncCRSFPortalBuffers();
-    const auto previewLogic=crsfLogicConfig; const auto previewMix=crsfMixConfig;
+    const auto previewLogic=logic; const auto previewMix=mixes;
     for(int i=0;i<16;i++) {
         crsfLogicConfig.rules[i]={5,(uint8_t)(144+i+(i>8)),(uint8_t)(144+i+(i>8)),0,(uint8_t)(144+i+(i>8))};
         crsfMixConfig.lines[i]={16,161,161,-100,-100,2};
     }
     const char *worstPage=wmBuildCRSFLogicMix(nullptr,2);
     fprintf(stderr,"Worst-case additional Logic/Mixes markup: %zu bytes\n",strlen(worstPage));
-    assert(strlen(worstPage)<=7168);
+    assert(strlen(worstPage)<=8192);
     // Existing gimbal markup still sets WiFiManager's shared item-buffer size and peak builder scratch.
     assert(strlen(worstPage) <= existingGimbalMarkupLength);
     assert(sizeof(crsfLogicMixScript) + 1200 <= existingGimbalMarkupLength);
@@ -1310,7 +1274,7 @@ int main() {
     wmBuildCRSFLogicMix(worstPage,WM_CP_DESTROY);
     crsfLogicConfig=previewLogic;crsfMixConfig=previewMix;
     const char *logicPage=wmBuildCRSFLogicMix(nullptr,2);
-    assert(logicPage && strlen(logicPage)<=7168);
+    assert(logicPage && strlen(logicPage)<=8192);
     assert(strstr(logicPage,"Logical Switches") && strstr(logicPage,"Multiplex") && strstr(logicPage,"AND switch"));
     wmBuildCRSFLogicMix(nullptr,WM_CP_LEN);assert(wmLenBuf==strlen(logicPage)+1);
     if(const char *path=getenv("CRSF_LOGIC_PREVIEW")){FILE *f=fopen(path,"wb");assert(f);fputs("<!doctype html><title>ELRS Logic and Mixes</title><meta name='viewport' content='width=device-width'>",f);fputs(HTTP_STYLE,f);fputs("</style><form>",f);fputs(logicPage,f);fputs("<button>Save</button></form>",f);fclose(f);}
@@ -1324,10 +1288,52 @@ int main() {
     wmBuildCRSFLogicMix(retryPage,WM_CP_DESTROY);
     puts("CRSF logic/mix strict forms, omission preservation and compact builder passed");
 
+    ELRSCrsfSettingsBlob preferenceModel = snapshotELRSSettings();
+    ELRSPortalPreferences preference = snapshotELRSPortalPreferences();
+    preference.version = 1; preference.radioReview = 1;
+    strcpy(preference.radio.telemetry, "1:8"); strcpy(preference.radio.maxPower.label, "500"); strcpy(preference.radio.dynamic, "Dyn");
+    preference.opMode = 2; preference.connectWiFi = 0; preference.cadence = 4; preference.speedUnits = 1;
+    for(uint8_t modelId : {uint8_t(12), uint8_t(63)}) {
+        preference.radio.modelId = modelId;
+        preferenceModel.axisProfile[0].minimum = 300 + modelId;
+        assert(saveELRSSettings(preferenceModel, preference));
+        crsf_load_settings();
+        const auto loadedPreference = snapshotELRSPortalPreferences();
+        assert(loadedPreference.radio.modelId == modelId && loadedPreference.radioReview == 1);
+        assert(loadedPreference.opMode == 2 && loadedPreference.connectWiFi == 0);
+        assert(loadedPreference.cadence == 4 && loadedPreference.speedUnits == 1);
+        assert(snapshotELRSSettings().axisProfile[0].minimum == 300 + modelId);
+    }
+    const auto committedPreferenceModel = snapshotELRSSettings();
+    const auto committedPreference = snapshotELRSPortalPreferences();
+    const auto committedPreferenceBytes = stored;
+    const auto committedPreferenceHash = crsfSettingsHash;
+    auto rejectedPreferenceModel = committedPreferenceModel;
+    rejectedPreferenceModel.axisProfile[0].minimum++;
+    auto rejectedPreference = committedPreference; rejectedPreference.radio.modelId = 12;
+    const int changedBeforeFailure = settingsChangedCalls;
+    storageWriteOk = false;
+    assert(!saveELRSSettings(rejectedPreferenceModel, rejectedPreference));
+    assert(stored == committedPreferenceBytes && crsfSettingsHash == committedPreferenceHash);
+    assert(!memcmp(&crsfSettings, &committedPreferenceModel, sizeof(committedPreferenceModel)));
+    const auto afterFailedPreference = snapshotELRSPortalPreferences();
+    assert(!memcmp(&afterFailedPreference, &committedPreference, sizeof(committedPreference)));
+    assert(settingsChangedCalls == changedBeforeFailure);
+    const int attemptsAfterFailure = storageWriteAttempts;
+    storageWriteOk = true;
+    assert(crsf_save_settings(true));
+    assert(storageWriteAttempts == attemptsAfterFailure && stored == committedPreferenceBytes);
+    for(size_t length = sizeof(ELRSCrsfSettingsBlob) + 1; length < sizeof(ELRSStoredSettings); length++) {
+        stored = committedPreferenceBytes; stored.resize(length); crsf_load_settings();
+        assert(!haveCRSFSettings && !memcmp(&crsfSettings, &defaults, sizeof(defaults)));
+    }
+    stored = committedPreferenceBytes; crsf_load_settings();
+    assert(!crsfSettingsRecoveryBlocked);
+    puts("CRSF appended portal preferences round-trip IDs 12/63; failed candidate does not publish or poison cache");
 
 }
 '''
-compile_and_run(storage_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + logic_page + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
+compile_and_run(assert_error_mode + storage_fixture + stored_settings + axis_buffers + crsf_blob_validator + portal_callbacks + test_writer_adapter + expo_post + switch_post + switch_page + limits_page + select_page + calibration_page + post_parser + portal_http + storage_moves + portal_style + logic_page + storage_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
 
 # Exercise the actual HTTP handler and the application's reboot scheduling callback.
 save_signature = 'static bool saveParamsCallback(int paramspage)'
@@ -1371,21 +1377,26 @@ WiFiManager wm;
 struct {
     char playTUT[2], musicFolder[2], refBut[2], oorst[2], ooTT[2], resAT[2];
     char opMode[2] = "1", crsfap[2] = "0", elrsPktRate[2] = "3", elrsSpdUnit[2] = "0";
-    char elrsTlmRatio[2] = "0", elrsMaxPower[2] = "0", elrsDynPower[2] = "0";
 } settings;
 unsigned int wifiLoopSaveAction = 0;
 bool inputWriteOk = false;
 int inputSaveAttempts = 0, inputReads = 0;
-void getServerParam(const char *, char *, int, int, int, int) {}
-void crsf_wifi_saveParamsCallback() {
+void getServerParam(const char *, char *, size_t, int, int, int) {}
+enum class RemoteTransferCode { None, InvalidValue, Busy, WriteFailed };
+struct RemoteTransferError { RemoteTransferCode code = RemoteTransferCode::None; char path[96] = {}, message[128] = {}; };
+bool saveCRSFPortalSettings(RemoteTransferError &error) {
+    const auto before = settings;
     inputReads++;
     strcpy(settings.opMode, "0"); strcpy(settings.crsfap, "1"); strcpy(settings.elrsPktRate, "4");
-    strcpy(settings.elrsSpdUnit, "1"); strcpy(settings.elrsTlmRatio, "2");
-    strcpy(settings.elrsMaxPower, "5"); strcpy(settings.elrsDynPower, "1");
+    strcpy(settings.elrsSpdUnit, "1");
+    inputSaveAttempts++;
+    if(!inputWriteOk) { settings = before; error.code = RemoteTransferCode::WriteFailed; return false; }
+    return true;
 }
-bool crsfLogicParamsValid=true, crsfMixParamsValid=true;
+bool crsfLogicParamsValid = true, crsfMixParamsValid = true;
 void syncCRSFPortalBuffers() {}
-bool crsf_wifi_loop_settings() { inputSaveAttempts++; return inputWriteOk; }
+bool crsf_wifi_saveParamsCallback() { RemoteTransferError error; return saveCRSFPortalSettings(error); }
+bool crsf_wifi_loop_settings() { return true; }
 '''
 http_callbacks = function('src/remote_wifi.cpp', save_signature)
 http_callbacks += function('src/src/WiFiManager/WiFiManager.cpp', 'void WiFiManager::_handleParamSave(int aidx, const char *title)')
@@ -1428,7 +1439,7 @@ int main() {
     puts("CRSF HTTP save response and reboot scheduling check passed");
 }
 '''
-compile_and_run(http_fixture + http_callbacks + http_cases, [])
+compile_and_run(assert_error_mode + http_fixture + http_callbacks + http_cases, [])
 
 # Exercise the real framed-file writer too: FILE_WRITE truncates its target.
 file_fixture = r'''
@@ -1445,7 +1456,20 @@ file_fixture = r'''
 using std::min;
 using String = std::string;
 bool haveSD = true, haveFS = true, configOnSD = false, FlashROMode = false;
-struct { char CfgOnSD[2] = "0"; } settings;
+struct {
+    char CfgOnSD[2] = "0", opMode[2] = "1", crsfap[2] = "0";
+    char elrsPktRate[2] = "3", elrsSpdUnit[2] = "0";
+} settings;
+enum class RemoteTransferCode { None, WriteFailed };
+struct RemoteTransferError { RemoteTransferCode code = RemoteTransferCode::None; };
+bool remoteFileActivationSafe(RemoteTransferError &) { return true; }
+bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &) { return true; }
+bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &p) {
+    return p.modelId <= 63 && memchr(p.telemetry, 0, sizeof(p.telemetry)) &&
+        memchr(p.dynamic, 0, sizeof(p.dynamic)) && memchr(p.maxPower.label, 0, sizeof(p.maxPower.label)) &&
+        memchr(p.maxPower.unit, 0, sizeof(p.maxPower.unit));
+}
+void remoteSettingsChanged() {}
 struct File {
     std::vector<uint8_t> *bytes = nullptr;
     size_t allowedWrite = 999;
@@ -1505,6 +1529,12 @@ fs::FS SD, MYNVS;
 #define LittleFS MYNVS
 #define FILE_READ "r"
 #define FILE_WRITE "w"
+bool remoteSettingsBusy() { return false; }
+// Checked stage/activation faults run against the production helper in check_crsf_restore.py.
+bool remoteCheckedSettingsWrite(const char *path,const uint8_t *bytes,size_t len,bool useSD) {
+    File f=(useSD?SD:MYNVS).open(path,"w");
+    bool ok=f && f.write(const_cast<uint8_t*>(bytes),len)==len;f.close();return ok;
+}
 '''
 file_functions = ''.join(function('src/remote_settings.cpp', signature) for signature in [
     'static bool writeFile(File& myFile, uint8_t *buf, int len)',
@@ -1517,7 +1547,7 @@ file_functions = ''.join(function('src/remote_settings.cpp', signature) for sign
 file_cases = r'''
 int main() {
     const char *name = "/crsfcfg";
-    uint8_t payload[96] = {}, loaded[96];
+    uint8_t payload[sizeof(ELRSStoredSettings)] = {}, loaded[sizeof(ELRSStoredSettings)];
     // A valid checksum does not make a mismatched length header safe to read.
     assert(saveConfigFile(name, payload, sizeof(payload)));
     auto malformed = MYNVS.files[name];
@@ -1532,8 +1562,8 @@ int main() {
     assert(!crsfLoadStoredSettings(loaded, valid));
     for(int length : {24, 52, 56, 68, 69, 70, 71, 72, 83, 84, 85, 95, 96}) {
         assert(saveConfigFile(name, payload, length));
-        assert(crsfLoadStoredSettings(loaded, valid));
-        assert(valid == length && !memcmp(payload, loaded, length));
+        assert(!crsfLoadStoredSettings(loaded, valid));
+        assert(valid == 0);
     }
     puts("Binary settings reject checksum-valid mismatched length headers");
 
@@ -1554,31 +1584,16 @@ int main() {
         other.files["/crsfcfg.tmp"] = {0, 0};
         other.failRemovePath = "/crsfcfg.tmp";
         crsfSettings = defaultCrsfSettings(); crsfSettingsHash = 0;
-        std::vector<uint8_t> versionOne(209,0);memcpy(versionOne.data(),&crsfSettings,120);versionOne[120]=1;
-        ELRSLogicRule v1Rules[8]={};ELRSMixLine v1Mixes[8]={};
-        for(uint8_t i=0;i<8;i++) {
-            v1Rules[i]={(uint8_t)(i?3:1),(uint8_t)(i?16+i:1),(uint8_t)(i?133:0),0,0};
-            v1Mixes[i]={9,(uint8_t)(i==7?25:17+i),145,(int8_t)(100-i*10),(int8_t)i,(uint8_t)(i%3)};
-        }
-        memcpy(versionOne.data()+121,v1Rules,sizeof(v1Rules));memcpy(versionOne.data()+161,v1Mixes,sizeof(v1Mixes));
-        assert(saveConfigFile(name,versionOne.data(),versionOne.size()));const auto oldFramed=storage.files[name];
-        assert(oldFramed.size()==212);crsf_load_settings();
-        assert(!memcmp(&crsfSettings,versionOne.data(),120));
-        assert(!memcmp(crsfSettings.logic.rules,v1Rules,sizeof(v1Rules)));
-        assert(!memcmp(crsfSettings.mixes.lines,v1Mixes,sizeof(v1Mixes)));
-        assert(crsfSettings.logicVersion==2 && crsfSettings.logic.rules[15].function==0 && crsfSettings.mixes.lines[15].channel==0);
-        storage.allowedWrite=212;
-        assert(!crsf_save_settings(false) && storage.files[name]==oldFramed);
-        storage.allowedWrite=999;crsf_load_settings();assert(crsf_save_settings(false));
-        assert(storage.files[name].size()==300);crsf_load_settings();
-        assert(!memcmp(crsfSettings.mixes.lines,v1Mixes,sizeof(v1Mixes)));
+        crsf_load_settings();
+        assert(crsf_save_settings(false));
+        assert(storage.files[name].size()==sizeof(ELRSStoredSettings)+3);
         assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, original));
         assert(other.files["/crsfcfg.tmp"] == std::vector<uint8_t>({0, 0}));
         assert(storage.files.size() == 1); // Clean up only this attempt's stage.
         other = fs::FS();
         const auto before = storage.files[name];
         const auto originalHash = crsfSettingsHash;
-    assert(before.size() == 300);
+    assert(before.size() == sizeof(ELRSStoredSettings)+3);
         for(int count : {0, 3, 86, 98}) {
             storage.allowedWrite = count;
             assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, changed));
@@ -1659,7 +1674,7 @@ int main() {
         assert(SD.exists(name) == (available && toSD));
         assert(MYNVS.exists(name) == (available && !toSD));
         assert(crsfLoadStoredSettings(loaded, valid) == available);
-        if(available) assert(valid == 96 && !memcmp(payload, loaded, sizeof(payload)));
+        if(available) assert(valid == sizeof(payload) && !memcmp(payload, loaded, sizeof(payload)));
     }
     haveSD = haveFS = true; configOnSD = true; FlashROMode = false;
     settings.CfgOnSD[0] = '1';
@@ -1686,13 +1701,11 @@ int main() {
     puts("CRSF file recovery retains selected-medium priority and survives a failed repair");
 }
 '''
-compile_and_run(file_fixture + file_functions + stored_settings_with_files + file_cases, ['elrs_input_model.cpp'])
+compile_and_run(assert_error_mode + file_fixture + file_functions + stored_settings_with_files + file_cases, ['elrs_input_model.cpp'])
 
 # Couple the actual raw request reader, transactional save, HTTP handler, and reboot callback.
-integration_fixture = storage_fixture + '#define STRLEN(s) (sizeof(s)-1)\n'
-integration_callbacks = function('src/remote_wifi.cpp', 'static void evalCB(char *sv, WiFiManagerParameter *el)')
-integration_callbacks += function('src/src/CRSF/crsf_wifi.h', 'static bool crsf_wifi_loop_settings()')
-integration_callbacks += post_parser
+integration_fixture = storage_fixture + 'bool remoteSettingsBusy() { return false; }\n#define STRLEN(s) (sizeof(s)-1)\n'
+integration_callbacks = post_parser
 integration_cases = r'''
 // Submit required input fields while allowing curve fields to be omitted.
 void submitCurveRequest(WiFiManager &manager, bool includeTolerances = true, bool includeRequired = true) {
@@ -1851,7 +1864,7 @@ void test_failed_curve_write_preserves_saved_omissions(WiFiManager &manager) {
 int main() {
     crsf_load_settings();
     syncCRSFPortalBuffers();
-    assert(saveCRSFPortalInputSettings());
+    assert(testBuildAndSaveCRSFPortalInputSettings());
     auto before = stored;
     ELRSInputAxisProfile oldProfiles[4], profiles[4];
     loadELRSInputConfig(oldProfiles, 4, nullptr);
@@ -1913,4 +1926,4 @@ int main() {
     puts("CRSF display form save, missing-source persistence, malformed HTTP rejection and write retry passed");
 }
 '''
-compile_and_run(integration_fixture + stored_settings + axis_buffers + portal_callbacks + expo_post + switch_post + integration_callbacks + http_callbacks + integration_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
+compile_and_run(assert_error_mode + integration_fixture + stored_settings + axis_buffers + crsf_blob_validator + portal_callbacks + test_writer_adapter + expo_post + switch_post + integration_callbacks + portal_http + integration_cases, ['elrs_input_model.cpp'], ['-I' + str(ROOT / '.pio/libdeps/esp32dev/ArduinoJson/src')])
