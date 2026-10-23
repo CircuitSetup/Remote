@@ -42,7 +42,8 @@ class ELRSCrsfMode : private ELRSCrsfHost {
             const ELRSDisplayConfig *displayConfig = NULL,
             const ELRSVehicleConfig *vehicleConfig = NULL,
             const ELRSLogicConfig *logicConfig = NULL,
-            const ELRSMixConfig *mixConfig = NULL
+            const ELRSMixConfig *mixConfig = NULL,
+            const ELRSTimeTravelConfig *timeTravel = NULL
         );
 
         void loop(int battWarn);
@@ -95,6 +96,10 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         bool readCalibrationButton() override;
         bool samplePackStates(uint8_t &states) override;
         void scanLocalSwitches(uint16_t states, uint16_t validMask) override;
+        void requestTimeTravelSound(bool start) override;
+        bool timeTravelSoundPending() const override;
+        bool timeTravelSoundPlaying() const override;
+        float propSpeed() const override;
 
         void displayOn() override;
         void displaySetText(const char *text) override;

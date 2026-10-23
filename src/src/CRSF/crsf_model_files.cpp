@@ -50,7 +50,8 @@ bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &s) {
     for(uint8_t a:s.localActions) if(a>1) return false;
     return s.logicVersion==2 && s.adcHysteresis<=32 && s.throttleIdleDeadband<=32 &&
         elrsIsValidInputRouting(s.gimbalRouting,s.switchRouting) && elrsIsValidDisplayConfig(s.displayConfig) &&
-        elrsIsValidVehicleConfig(s.vehicleConfig) && elrsIsValidModelReferences(s.logic,s.mixes);
+        elrsIsValidVehicleConfig(s.vehicleConfig) && elrsIsValidModelReferences(s.logic,s.mixes) &&
+        elrsIsValidTimeTravelConfig(s.timeTravel,s.gimbalRouting,s.mixes);
 #endif
 }
 namespace {
@@ -124,6 +125,7 @@ bool remoteEncodeModel(JsonObject o,const RemoteSettingsSnapshot &s,RemoteTransf
     auto d=o.createNestedObject("display"); d["source"]=s.crsf.displayConfig.source; d["decimalPlaces"]=s.crsf.displayConfig.decimalPlaces; encodeFloat(d,"multiplier",s.crsf.displayConfig.multiplier); encodeFloat(d,"offset",s.crsf.displayConfig.offset);
     auto v=o.createNestedObject("vehicle"); v["motorPoles"]=s.crsf.vehicleConfig.motorPoles; encodeFloat(v,"gearRatio",s.crsf.vehicleConfig.gearRatio); encodeFloat(v,"tireDiameterMm",s.crsf.vehicleConfig.tireDiameterMm); encodeFloat(v,"scaleFactor",s.crsf.vehicleConfig.scaleFactor); v["rpmType"]=s.crsf.vehicleConfig.rpmType;
 #ifdef HAVE_CRSF
+    auto tt=o.createNestedObject("timeTravel"); tt["enabled"]=bool(s.crsf.timeTravel.enabled); tt["channel"]=s.crsf.timeTravel.channel;
     o["speedUnits"]=s.settings.elrsSpdUnit[0]=='1'?"mph":"kmh";
     auto r=o.createNestedObject("radio"); encodeRadio(r,s.radio,false); const uint16_t rates[]={50,100,150,250,500}; r["crsfUpdateHz"]=rates[atoi(s.settings.elrsPktRate)];
     JsonArray required;for(unsigned i=0;i<s.rfChoiceCount;i++) {const auto &choice=s.rfChoices[i];if(!strcmp(choice.role,"power") || !strcmp(choice.role,"telemetry") || !strcmp(choice.role,"dynamic"))continue;
@@ -136,7 +138,7 @@ static bool decodeModel(JsonObjectConst o,const RemoteSettingsSnapshot &target,R
 #ifndef HAVE_CRSF
     return remoteTransferFail(e,RemoteTransferCode::UnsupportedBehavior,"model","CRSF is not compiled");
 #else
-    if(!keys(o,"format|schemaVersion|sourceContractVersion|source|inputs|routing|tolerances|localActions|logical|mixes|display|vehicle|speedUnits|radio")) return remoteTransferFail(e,RemoteTransferCode::UnsupportedBehavior,"model","Unknown model section");
+    if(!keys(o,"format|schemaVersion|sourceContractVersion|source|inputs|routing|tolerances|localActions|logical|mixes|display|vehicle|speedUnits|radio|timeTravel")) return remoteTransferFail(e,RemoteTransferCode::UnsupportedBehavior,"model","Unknown model section");
     int n;
     if(!integer(o["sourceContractVersion"],2,2,n)) return remoteTransferFail(e,RemoteTransferCode::UnsupportedSchema,"sourceContractVersion","Requires source contract 2");
     auto bad=[&e](const char *path){return remoteTransferFail(e,RemoteTransferCode::InvalidValue,path,"Missing, unsupported or invalid value");};
@@ -183,6 +185,13 @@ static bool decodeModel(JsonObjectConst o,const RemoteSettingsSnapshot &target,R
     if(!number(v["gearRatio"],f)) return bad("vehicle.gearRatio"); s.crsf.vehicleConfig.gearRatio=f;
     if(!number(v["tireDiameterMm"],f)) return bad("vehicle.tireDiameterMm"); s.crsf.vehicleConfig.tireDiameterMm=f;
     if(!number(v["scaleFactor"],f)) return bad("vehicle.scaleFactor"); s.crsf.vehicleConfig.scaleFactor=f;
+    s.crsf.timeTravel = {};
+    if(o.containsKey("timeTravel")) {
+        JsonObjectConst tt=o["timeTravel"];
+        if(!keys(tt,"enabled|channel") || !tt["enabled"].is<bool>() || !integer(tt["channel"],0,16,n)) return bad("timeTravel");
+        s.crsf.timeTravel = {(uint8_t)tt["enabled"].as<bool>(),(uint8_t)n};
+        if(!elrsIsValidTimeTravelConfig(s.crsf.timeTravel,s.crsf.gimbalRouting,s.crsf.mixes)) return bad("timeTravel.channel");
+    }
     if(!elrsIsValidCrsfSettingsBlob(s.crsf)) return bad("inputs/routing/display/vehicle");
     if(!target.newBoard) return remoteTransferFail(e,RemoteTransferCode::UnsupportedBehavior,"inputs","Target has no CRSF inputs");
 #ifdef HAVE_CRSF

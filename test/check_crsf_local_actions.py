@@ -15,7 +15,7 @@ COMPILER = shutil.which('g++') or str(Path.home() / '.platformio/packages/toolch
 
 
 def function(source, name):
-    match = re.search(r'^(?:static )?(?:void|bool) ' + name + r'\([^;]*?\)\s*\{', source, re.M)
+    match = re.search(r'^(?:static )?(?:void|bool|float) ' + name + r'\([^;]*?\)\s*\{', source, re.M)
     assert match, f'CRSF Settings dispatch missing: {name}'
     return block(source, match.start())
 
@@ -52,6 +52,7 @@ STUBS = r'''
 #define PA_ALLOWSD 1
 #define PA_INTRMUS 2
 #define PA_DYNVOL 4
+#define PA_TIMETRAVEL 0x80000
 #define BTTFN_REMCMD_PING 1
 #define BTTFN_REMCMD_COMBINED 3
 unsigned long now = 100, volchgtimer = 0, brichgtimer = 0, offDisplayNow = 0;
@@ -71,6 +72,10 @@ bool opModePropCRSF = false, crsfStarted = false;
 uint16_t crsfLocalStates = 0, crsfLocalValidMask = 0;
 uint16_t crsfLocalInvalidMask = 0;
 bool crsfLocalPending = false;
+bool extTT = false;
+int8_t crsfTimeTravelRequest = 0;
+bool audioInitDone = true, timeTravelPlaying = false;
+bool timeTravelAudioPlaying() { return timeTravelPlaying; }
 int battWarn = 5, crsfTicks = 0, sampledPosition = 0;
 bool sampledValid = false, rawAxesValid = true;
 void serviceCRSF(bool withLocalActions = true);
@@ -115,7 +120,7 @@ uint8_t configuredLocalActions[12] = {};
 void loadELRSInputConfig(void*,int,void*,void*,void*,void*,void*,uint8_t *flags) { memcpy(flags, configuredLocalActions, 12); }
 const char *powerOnSnd = "/poweron.mp3", *powerOffSnd = "/poweroff.mp3";
 const char *brakeOnSnd = "/brakeon.mp3", *brakeOffSnd = "/brakeoff.mp3";
-void play_file(const char *path, int) { sounds.emplace_back(path); }
+void play_file(const char *path, int flags) { sounds.emplace_back(path); timeTravelPlaying = (flags & PA_TIMETRAVEL) != 0; }
 void play_bad() { sounds.emplace_back("bad"); }
 void play_key(int key, bool longPress=false, bool stopOnly=false) {
     sounds.emplace_back(std::to_string(key) + (longPress ? "long" : stopOnly ? "stop" : "short"));
@@ -124,7 +129,7 @@ void mp_prev(bool) { prevCount++; }
 void mp_next(bool) { nextCount++; }
 void mp_stop(bool=false) { mpActive = false; stopCount++; }
 void mp_play() { mpActive = true; playCount++; }
-void stopAudio() { audioStops++; }
+void stopAudio() { audioStops++; timeTravelPlaying = false; }
 void mp_makeShuffle(bool active) { aud_state.mpShuffle = active; }
 void increaseVolume() { volume++; volchgnow = now; }
 void decreaseVolume() { volume--; volchgnow = now; }
@@ -369,7 +374,24 @@ int main() {
         followP0(); assert(currSpeedF == 137 && remdisplay.visible == "137");
         now += 500; followP0(); assert(remdisplay.visible == "137");
     }
-    puts("CRSF controls, telemetry ownership, P0, and persistence checks passed");
+    // Starts outside the CRSF core, stops only its own sound, and shares the prop sequence.
+    opModePropCRSF = false; crsfStarted = true; crsfLocalPending = false;
+    sounds.clear(); queueCRSFTimeTravelSound(true); serviceCRSF(false);
+    assert(sounds.empty() && crsfTimeTravelSoundPending());
+    serviceCRSF(); assert(sounds.size() == 1 && sounds[0] == "/timetravel.mp3" && crsfTimeTravelSoundPlaying());
+    queueCRSFTimeTravelSound(false); serviceCRSF(); assert(!crsfTimeTravelSoundPlaying());
+    opModePropCRSF = true; elrsMode.assigned = false; csf = CSF_TT;
+    sounds.clear(); queueCRSFTimeTravelSound(true); serviceCRSF();
+    assert(sounds.empty() && crsfTimeTravelSoundPending());
+    play_file("/timetravel.mp3", PA_TIMETRAVEL); serviceCRSF();
+    assert(sounds.size() == 1 && !crsfTimeTravelSoundPending() && crsfTimeTravelSoundPlaying());
+    stopAudio(); serviceCRSF(); assert(sounds.size() == 1);
+    queueCRSFTimeTravelSound(true); serviceCRSF(); csf = 0; serviceCRSF();
+    assert(!crsfTimeTravelSoundPending() && sounds.size() == 1); // Aborted sequence.
+    extTT = true; csf = CSF_TT; sounds.clear();
+    queueCRSFTimeTravelSound(true); serviceCRSF();
+    assert(sounds.size() == 1 && crsfTimeTravelSoundPlaying()); // TCD sequences do not play the local clip themselves.
+    puts("CRSF controls, telemetry ownership, P0, persistence and time-travel sound checks passed");
 }
 '''
 
@@ -395,7 +417,7 @@ if __name__ == '__main__':
              'butPackKeyLongPressed', 'butPackKeyLongPressStop',
              'powKeyPressed', 'powKeyLongPressStop', 'brakeKeyPressed', 'brakeKeyLongPressStop',
              'processCRSFLocalSwitches', 'crsfLocalActionsEnabled', 'serviceCRSF',
-             'queueCRSFLocalSwitches', 'myloop', 'mydelay',
+             'queueCRSFLocalSwitches', 'queueCRSFTimeTravelSound', 'crsfTimeTravelSoundPending', 'crsfTimeTravelSoundPlaying', 'crsfPropSpeed', 'myloop', 'mydelay',
              'crsf_standalone_keepalive', 'crsf_handle_bttfn_update',
              'bttfn_remote_send_combined', 'crsfTelemetryOwnsDisplay', 'showNormalSpeed']
     production = '\n\n'.join(function(source, name) for name in names)

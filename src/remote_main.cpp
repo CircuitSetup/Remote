@@ -2104,7 +2104,7 @@ void main_loop()
                     csf |= CSF_TTP2; 
 
                     //if(playTTsounds) {
-                        play_file("/timetravel.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL);
+                        play_file("/timetravel.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL|PA_TIMETRAVEL);
                     //}
     
                     TTstart = now;

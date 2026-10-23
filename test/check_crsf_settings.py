@@ -353,10 +353,7 @@ static bool testBuildCRSFPortalCandidate(ELRSCrsfSettingsBlob &candidate, Remote
     return true;
 }
 static bool testWriteCRSFPortalCandidate(const ELRSCrsfSettingsBlob &candidate) {
-    return saveELRSInputConfig(candidate.axisProfile, ELRS_GIMBAL_AXIS_COUNT, &candidate.gimbalRouting,
-        &candidate.adcHysteresis, &candidate.throttleIdleDeadband, &candidate.switchRouting,
-        candidate.outputLimits, candidate.localActions, &candidate.displayConfig, &candidate.vehicleConfig,
-        &candidate.logic, &candidate.mixes);
+    return saveELRSSettings(candidate, snapshotELRSPortalPreferences());
 }
 static bool testBuildAndSaveCRSFPortalInputSettings() {
     ELRSCrsfSettingsBlob candidate = snapshotELRSSettings();
@@ -382,7 +379,7 @@ int main() {
     crsf_load_settings();
     assert(saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
     auto fullDisplay = stored;
-    assert(fullDisplay.size() == sizeof(ELRSStoredSettings) && sizeof(ELRSCrsfSettingsBlob) == 297);
+    assert(fullDisplay.size() == sizeof(ELRSStoredSettings) && sizeof(ELRSCrsfSettingsBlob) == 299);
     assert(offsetof(ELRSCrsfSettingsBlob, displayConfig) == 96);
     stored = fullDisplay; ((ELRSCrsfSettingsBlob*)stored.data())->displayConfig.offset = NAN;
     crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14);
@@ -392,7 +389,19 @@ int main() {
         crsf_load_settings(); assert(loadELRSDisplayConfig().source == 14);
         assert(!memcmp(&crsfSettings, fullDisplay.data(), 96));
     }
-    stored = fullDisplay; crsf_load_settings();
+    stored = fullDisplay; crsf_load_settings(); syncCRSFPortalBuffers();
+    server.args = {{"cttform","1"},{"cttenabled","1"},{"cttch","16"}};
+    crsfReadDisplayParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
+    crsf_load_settings(); assert(snapshotELRSSettings().timeTravel.enabled == 1 && snapshotELRSSettings().timeTravel.channel == 16);
+    const auto withLights = stored;
+    for(const char *bad : {"0","1","3","17","-1","1x","","256"}) {
+        server.args = {{"cttform","1"},{"cttenabled","1"},{"cttch",bad}};
+        crsfReadDisplayParams(); assert(!testBuildAndSaveCRSFPortalInputSettings() && stored == withLights);
+    }
+    server.args = {{"cttform","1"},{"cttch","16"}};
+    crsfReadDisplayParams(); assert(testBuildAndSaveCRSFPortalInputSettings());
+    crsf_load_settings(); assert(!snapshotELRSSettings().timeTravel.enabled && snapshotELRSSettings().timeTravel.channel == 16);
+    stored = fullDisplay; crsf_load_settings(); syncCRSFPortalBuffers(); server.args.clear();
     const auto displayHash = crsfSettingsHash;
     storageWriteOk = false; display.source = 13;
     assert(!saveELRSInputConfig(nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &display));
@@ -1566,6 +1575,22 @@ int main() {
         assert(valid == 0);
     }
     puts("Binary settings reject checksum-valid mismatched length headers");
+    // PR15 records ended the model before timeTravel; portal bytes must not shift on upgrade.
+    ELRSStoredSettings previous = {defaultCrsfSettings(), {}};
+    previous.model.axisProfile[0].center = 1111;
+    previous.portal.radio.modelId = 63; previous.portal.opMode = 2;
+    const size_t oldModelSize = offsetof(ELRSCrsfSettingsBlob, timeTravel);
+    std::vector<uint8_t> oldBytes(oldModelSize + sizeof(ELRSPortalPreferences));
+    memcpy(oldBytes.data(), &previous.model, oldModelSize);
+    memcpy(oldBytes.data() + oldModelSize, &previous.portal, sizeof(previous.portal));
+    assert(saveConfigFile(name, oldBytes.data(), oldBytes.size()));
+    crsf_load_settings();
+    assert(haveCRSFSettings && !crsfSettingsRecoveryBlocked);
+    assert(crsfSettings.axisProfile[0].center == 1111 && remoteRadioPreferences.modelId == 63);
+    assert(settings.opMode[0] == '2' && !crsfSettings.timeTravel.enabled && !crsfSettings.timeTravel.channel);
+    crsfSettings.timeTravel = {1,16}; assert(crsf_save_settings(false));
+    crsf_load_settings(); assert(crsfSettings.timeTravel.enabled && crsfSettings.timeTravel.channel == 16);
+    assert(crsfSettings.axisProfile[0].center == 1111 && remoteRadioPreferences.modelId == 63);
 
     const ELRSOutputLimits original[4] = {{1200,1800},{1200,1800},{1200,1800},{1200,1800}};
     const ELRSOutputLimits changed[4] = {{1300,1700},{1300,1700},{1300,1700},{1300,1700}};

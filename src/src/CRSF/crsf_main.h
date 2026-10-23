@@ -68,6 +68,11 @@ static uint16_t crsfLocalStates = 0;
 static uint16_t crsfLocalValidMask = 0;
 static uint16_t crsfLocalInvalidMask = 0;
 static bool crsfLocalPending = false;
+static int8_t crsfTimeTravelRequest = 0;
+void queueCRSFTimeTravelSound(bool start) { crsfTimeTravelRequest = start ? 1 : -1; }
+bool crsfTimeTravelSoundPending() { return crsfTimeTravelRequest > 0; }
+bool crsfTimeTravelSoundPlaying() { return timeTravelAudioPlaying(); }
+float crsfPropSpeed() { return (csf & CSF_OFF) ? 0.0f : currSpeedF * 0.1f; }
 
 static bool crsfTelemetryOwnsDisplay()
 {
@@ -185,6 +190,17 @@ void serviceCRSF(bool withLocalActions)
         const uint16_t validMask = crsfLocalValidMask & ~crsfLocalInvalidMask;
         crsfLocalInvalidMask = 0;
         processCRSFLocalSwitches(crsfLocalStates, validMask);
+    }
+    if(withLocalActions && crsfTimeTravelRequest) {
+        // Normal prop speed already starts the sound through the time-travel sequence.
+        if(crsfTimeTravelRequest > 0 && opModePropCRSF && !extTT && !elrsMode.telemetryDisplayAssigned() && (csf & CSF_TT)) {
+            crsfTimeTravelRequest = timeTravelAudioPlaying() ? 0 : 2;
+        } else {
+            const int8_t request = crsfTimeTravelRequest;
+            crsfTimeTravelRequest = 0;
+            if(request == 1 && audioInitDone) play_file("/timetravel.mp3", PA_INTRMUS|PA_ALLOWSD|PA_DYNVOL|PA_TIMETRAVEL);
+            else if(request < 0 && timeTravelAudioPlaying()) stopAudio();
+        }
     }
 }
 

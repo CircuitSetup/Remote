@@ -64,12 +64,14 @@ bool ELRSCrsfMode::begin(
     const ELRSDisplayConfig *displayConfig,
     const ELRSVehicleConfig *vehicleConfig,
     const ELRSLogicConfig *logicConfig,
-    const ELRSMixConfig *mixConfig)
+    const ELRSMixConfig *mixConfig,
+    const ELRSTimeTravelConfig *timeTravel)
 {
     ELRSCrsfCoreConfig config;
     config.propControls = propControls;
     if(logicConfig) config.logic = *logicConfig;
     if(mixConfig) config.mixes = *mixConfig;
+    if(timeTravel) config.timeTravel = *timeTravel;
     if(displayConfig) config.displayConfig = *displayConfig;
     if(vehicleConfig) config.vehicleConfig = *vehicleConfig;
     _speedDisplayUnits = elrsSpeedUnitsOrDefault(speedDisplayUnits);
@@ -172,6 +174,11 @@ void ELRSCrsfMode::loop(int battWarn)
 {
     _core.loop(*this, millis(), micros(), battWarn);
 }
+
+void ELRSCrsfMode::requestTimeTravelSound(bool start) { queueCRSFTimeTravelSound(start); }
+bool ELRSCrsfMode::timeTravelSoundPending() const { return crsfTimeTravelSoundPending(); }
+bool ELRSCrsfMode::timeTravelSoundPlaying() const { return crsfTimeTravelSoundPlaying(); }
+float ELRSCrsfMode::propSpeed() const { return crsfPropSpeed(); }
 
 void ELRSCrsfMode::scanLocalSwitches(uint16_t states, uint16_t validMask)
 {

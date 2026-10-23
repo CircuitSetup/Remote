@@ -137,6 +137,7 @@ static void sanitizeCrsfSettings(ELRSCrsfSettingsBlob &settings)
         settings.outputLimits[i] = elrsSanitizeOutputLimits(settings.outputLimits[i]);
     }
     elrsSanitizeInputRouting(settings.gimbalRouting, settings.switchRouting);
+    if(!elrsIsValidTimeTravelConfig(settings.timeTravel, settings.gimbalRouting, settings.mixes)) settings.timeTravel = {};
     for(uint8_t &action : settings.localActions) {
         if(action > 1) action = 0;
     }
@@ -170,7 +171,8 @@ static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf
     if(!file) return false;
     const size_t size = file.size();
     // Existing binary framing: uint16_t payload length, payload, checksum.
-    uint8_t *data = size == sizeof(ELRSStoredSettings)+3 ? (uint8_t *)malloc(size) : NULL;
+    const size_t oldSize = sizeof(ELRSStoredSettings) - sizeof(ELRSTimeTravelConfig);
+    uint8_t *data = (size == sizeof(ELRSStoredSettings)+3 || size == oldSize+3) ? (uint8_t *)malloc(size) : NULL;
     bool ret = data && file.read(data, size) == size;
     file.close();
     if(ret) {
@@ -182,7 +184,15 @@ static bool crsfReadSettingsFile(fs::FS &storage, const char *path, uint8_t *buf
         ret = payloadBytes == size - 3 && data[size - 1] == (uint8_t)~checksum;
         if(ret) {
             validBytes = payloadBytes;
-            if(buf) memcpy(buf, data + 2, validBytes);
+            if(buf) {
+                if(size == oldSize + 3) {
+                    const size_t oldModelSize = sizeof(ELRSCrsfSettingsBlob) - sizeof(ELRSTimeTravelConfig);
+                    memcpy(buf, data + 2, oldModelSize);
+                    memset(buf + oldModelSize, 0, sizeof(ELRSTimeTravelConfig));
+                    memcpy(buf + sizeof(ELRSCrsfSettingsBlob), data + 2 + oldModelSize, sizeof(ELRSPortalPreferences));
+                } else memcpy(buf, data + 2, validBytes);
+            }
+            validBytes = sizeof(ELRSStoredSettings);
         }
     }
     if(data) free(data);
@@ -520,7 +530,8 @@ bool crsf_begin(
             &displayConfig,
             &vehicleConfig,
             &logic,
-            &mixes
+            &mixes,
+            &crsfSettings.timeTravel
         );
     if(started) elrsMode.setRadioPreferences(remoteRadioPreferences,remoteRadioReviewPending());
     if(started) elrsMode.setDeviceConfigAccess(false,remoteSettingsBusy(),remoteRadioReviewPending());

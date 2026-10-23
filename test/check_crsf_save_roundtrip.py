@@ -48,6 +48,8 @@ int main(int argc, char **argv) {
         assert(remoteDecodeTransfer(importedDoc.as<JsonVariantConst>(), RemoteTransferKind::ModelProfile,
                                     source, converted, error));
         assert(converted.radio.modelId == ids[i - 1]);
+        assert(!converted.crsf.timeTravel.enabled); // Old profiles omit this optional section.
+        converted.crsf.timeTravel = {1,16};
 
         DynamicJsonDocument modelDoc(16384);
         assert(remoteEncodeModel(modelDoc.to<JsonObject>(), converted, error));
@@ -68,6 +70,13 @@ int main(int argc, char **argv) {
             fprintf(stderr, "portable round trip rejected: %u %s %s\n", (unsigned)error.code, error.path, error.message);
             return 1;
         }
+        assert(portableRestored.crsf.timeTravel.enabled && portableRestored.crsf.timeTravel.channel == 16);
+        for(int bad : {0,1,3,17}) {
+            modelDoc["timeTravel"]["channel"] = bad;
+            assert(!remoteDecodeTransfer(modelDoc.as<JsonVariantConst>(), RemoteTransferKind::ModelProfile, portableTarget, portableRestored, error));
+        }
+        modelDoc["timeTravel"]["channel"] = 16;
+        assert(remoteDecodeTransfer(modelDoc.as<JsonVariantConst>(), RemoteTransferKind::ModelProfile, portableTarget, portableRestored, error));
         assert(portableRestored.crsf.axisProfile[0].minimum == 333);
         assert(portableRestored.crsf.axisProfile[0].center == 1111);
         assert(portableRestored.crsf.axisProfile[1].minimum == 444);
@@ -84,6 +93,7 @@ int main(int argc, char **argv) {
         assert(remoteDecodeTransfer(backupDoc.as<JsonVariantConst>(), RemoteTransferKind::DeviceBackup,
                                     backupTarget, backupRestored, error));
         assert(backupRestored.radio.modelId == ids[i - 1]);
+        assert(backupRestored.crsf.timeTravel.enabled && backupRestored.crsf.timeTravel.channel == 16);
         assert(backupRestored.crsf.axisProfile[0].minimum == 101);
         assert(backupRestored.crsf.axisProfile[0].center == 1024);
         assert(backupRestored.crsf.axisProfile[0].maximum == 1900);
