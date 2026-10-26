@@ -1855,6 +1855,21 @@ static void test_self_test_emits_known_frame()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, host.writes[0].data(), 26);
 }
 
+static void test_channel_packing_matches_wire_bytes_and_respects_buffer_size()
+{
+    const uint16_t channels[16] = {0,172,992,1811,2047,65535,2048,1024,1,2,3,4,5,6,7,8};
+    const uint8_t expected[26] = {0xc8,0x18,0x16,0x00,0x60,0x05,0xf8,0x26,0xfe,0xff,0xff,
+        0x03,0x00,0x80,0x01,0x10,0xc0,0x00,0x08,0x50,0x00,0x03,0x1c,0x00,0x01,0x3f};
+    uint8_t buffer[28];
+    memset(buffer, 0xa5, sizeof(buffer));
+    TEST_ASSERT_EQUAL_UINT32(0, ELRSCrsfTransport::packRcChannelsFrame(channels, buffer + 1, 25));
+    for(uint8_t byte : buffer) TEST_ASSERT_EQUAL_HEX8(0xa5, byte);
+    TEST_ASSERT_EQUAL_UINT32(26, ELRSCrsfTransport::packRcChannelsFrame(channels, buffer + 1, 26));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, buffer + 1, sizeof(expected));
+    TEST_ASSERT_EQUAL_HEX8(0xa5, buffer[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xa5, buffer[27]);
+}
+
 static void test_adc_missing_at_boot_sets_fault_and_safe_channels()
 {
     FakeHost host;
@@ -3318,6 +3333,57 @@ static void test_command_confirmation_query_and_cancel_are_distinct()
     TEST_ASSERT_EQUAL((int)ELRSOperationState::Cancelled, (int)device.status().state);
 }
 
+static void check_duplicate_descriptor_before_mutation(bool command)
+{
+    for(bool probeWait : {false, true}) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSDeviceConfig device;
+        auto expected = preparePowerWrite(device, transport, host);
+        if(!probeWait) feedRadioStatus(device, 700);
+        if(command) TEST_ASSERT_TRUE(device.command(0xEE, 1, expected.generation, 1, 3));
+        else TEST_ASSERT_TRUE(device.write(0xEE, 1, expected.generation, expected.value, ELRSParameterValue(9, 1), 3));
+        const auto reply = command ? commandEntry("Bind", 0) :
+            makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 0, 1);
+        deviceStep(device, transport, host, 800, maintenanceSafety());
+        TEST_ASSERT_TRUE(feedDevice(device, reply, 801));
+        if(probeWait) {
+            device.tick(transport, maintenanceSafety(), 802);
+            TEST_ASSERT_TRUE(transport.hasPendingServiceFrame());
+        }
+        TEST_ASSERT_FALSE(feedDevice(device, reply, 803));
+        TEST_ASSERT_EQUAL((int)ELRSOperationState::Queued, (int)device.status().state);
+        deviceStep(device, transport, host, 900, maintenanceSafety());
+        if(probeWait) {
+            TEST_ASSERT_EQUAL_HEX8(0x2D, host.writes.back()[2]);
+            TEST_ASSERT_EQUAL_UINT8(0, host.writes.back()[5]);
+            feedRadioStatus(device, 901);
+            deviceStep(device, transport, host, 1000, maintenanceSafety());
+        }
+        int mutations = 0;
+        for(const auto &frame : host.writes)
+            if(frame[2] == 0x2D && frame[5] == 1 && frame[6] == 1) ++mutations;
+        TEST_ASSERT_EQUAL_INT(1, mutations);
+        if(command) TEST_ASSERT_TRUE(feedDevice(device, reply, 1001));
+        else {
+            deviceStep(device, transport, host, 1100, maintenanceSafety());
+            TEST_ASSERT_TRUE(feedDevice(device,
+                makeTextSelectionEntryFrame(1, "Max Power", "250;2000", 1, 1), 1101));
+        }
+        TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    }
+}
+
+static void test_duplicate_descriptor_cannot_complete_unsent_command()
+{
+    check_duplicate_descriptor_before_mutation(true);
+}
+
+static void test_duplicate_descriptor_cannot_reject_unsent_write()
+{
+    check_duplicate_descriptor_before_mutation(false);
+}
+
 static void test_command_lost_ack_does_not_repeat_start()
 {
     for(const char *name : {"Bind", "BLE Joystick", "Enable Rx WiFi"}) {
@@ -3437,6 +3503,50 @@ static void test_rx_wifi_requires_connected_receiver()
     deviceStep(device, transport, host, 900, maintenanceSafety());
     TEST_ASSERT_EQUAL((int)ELRSDeviceError::Unsafe, (int)device.status().error);
     TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+}
+
+static void test_receiver_model_field_must_be_rediscovered()
+{
+    for(bool rediscover : {false, true}) {
+        FakeHost host;
+        ELRSCrsfTransport transport;
+        ELRSDeviceConfig device;
+        discoverDevice(device, transport, host);
+        auto rx = makeDeviceInfoFrame("Connected RX", 3); rx[4] = 0xEC;
+        TEST_ASSERT_TRUE(feedDevice(device, rx, 502));
+        TEST_ASSERT_TRUE(device.read(0xEC, 2, device.deviceAt(1)->generation, 2));
+        deviceStep(device, transport, host, 600);
+        auto info = makeParameterChunkFrame(2, 0, {0, 12, 'M', 'o', 'd', 'e', 'l', ' ', 'I', 'd', 0, '3', 0});
+        info[4] = 0xEC;
+        TEST_ASSERT_TRUE(feedDevice(device, info, 601));
+        if(rediscover) {
+            TEST_ASSERT_TRUE(device.discover(3));
+            deviceStep(device, transport, host, 700);
+            TEST_ASSERT_TRUE(feedDevice(device, makeDeviceInfoFrame("Any ELRS manufacturer", 3), 701));
+            deviceStep(device, transport, host, 1201);
+        }
+        else { rx = makeDeviceInfoFrame("Replacement RX", 3); rx[4] = 0xEC; }
+        TEST_ASSERT_TRUE(feedDevice(device, rx, 1202));
+        TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 3));
+        deviceStep(device, transport, host, 1300);
+        TEST_ASSERT_TRUE(feedDevice(device, modelMatchEntry(7), 1301));
+        TEST_ASSERT_FALSE(device.assignReceiver(0xEC, 7, device.deviceAt(0)->generation, 4));
+        TEST_ASSERT_EQUAL_INT(0, countWrittenFrameType(host, 0x2D));
+        // The replacement moved Model Id from field 2 to field 3.
+        TEST_ASSERT_TRUE(device.read(0xEC, 3, device.deviceAt(1)->generation, 5));
+        deviceStep(device, transport, host, 1400);
+        info[5] = 3;
+        TEST_ASSERT_TRUE(feedDevice(device, info, 1401));
+        TEST_ASSERT_TRUE(device.assignReceiver(0xEC, 7, device.deviceAt(0)->generation, 6));
+        deviceStep(device, transport, host, 1500, maintenanceSafety());
+        TEST_ASSERT_TRUE(feedDevice(device, modelMatchEntry(7), 1501));
+        feedRadioStatus(device, 1502, 5);
+        deviceStep(device, transport, host, 1600, maintenanceSafety());
+        deviceStep(device, transport, host, 1700, maintenanceSafety());
+        TEST_ASSERT_EQUAL_HEX8(0x2C, host.writes.back()[2]);
+        TEST_ASSERT_EQUAL_HEX8(0xEC, host.writes.back()[3]);
+        TEST_ASSERT_EQUAL_UINT8(3, host.writes.back()[5]);
+    }
 }
 
 static std::vector<uint8_t> rxNumber(uint8_t field, const char *name, uint8_t value, uint8_t minimum, uint8_t maximum)
@@ -6284,6 +6394,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_500hz_shared_bus_uses_longer_reply_window);
     RUN_TEST(test_shared_bus_driver_turnaround_guards_are_nonzero);
     RUN_TEST(test_self_test_emits_known_frame);
+    RUN_TEST(test_channel_packing_matches_wire_bytes_and_respects_buffer_size);
     RUN_TEST(test_adc_missing_at_boot_sets_fault_and_safe_channels);
     RUN_TEST(test_adc_stale_after_valid_samples_uses_safe_fallback);
     RUN_TEST(test_button_pack_stale_holds_last_valid_states);
@@ -6344,12 +6455,15 @@ int main(int argc, char **argv)
     RUN_TEST(test_non_elrs_device_cannot_supply_elrs_safety_status);
     RUN_TEST(test_scalar_power_never_matches_a_composite_power_option);
     RUN_TEST(test_command_confirmation_query_and_cancel_are_distinct);
+    RUN_TEST(test_duplicate_descriptor_cannot_complete_unsent_command);
+    RUN_TEST(test_duplicate_descriptor_cannot_reject_unsent_write);
     RUN_TEST(test_command_lost_ack_does_not_repeat_start);
     RUN_TEST(test_command_status_chunks_use_queries_without_resetting_command);
     RUN_TEST(test_missing_backpack_command_never_guesses_a_field);
     RUN_TEST(test_serial_mode_refreshes_sibling_outputs);
     RUN_TEST(test_assign_rx_id_does_not_write_info_field);
     RUN_TEST(test_rx_wifi_requires_connected_receiver);
+    RUN_TEST(test_receiver_model_field_must_be_rediscovered);
     RUN_TEST(test_pwm_capture_sweeps_each_pin_and_restores_cursor);
     RUN_TEST(test_module_settings_are_discovered_and_written);
     RUN_TEST(test_startup_never_guesses_a_paired_band_power);

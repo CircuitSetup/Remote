@@ -784,7 +784,6 @@ uint8_t ELRSCrsfTransport::crc8D5(const uint8_t *data, size_t len)
 
 size_t ELRSCrsfTransport::packRcChannelsFrame(const uint16_t channels[16], uint8_t *frame, size_t frameSize)
 {
-    uint8_t payload[22];
     uint32_t bitbuf = 0;
     uint8_t bits = 0;
     uint8_t idx = 0;
@@ -793,25 +792,19 @@ size_t ELRSCrsfTransport::packRcChannelsFrame(const uint16_t channels[16], uint8
         return 0;
     }
 
-    memset(payload, 0, sizeof(payload));
-
+    // Sixteen 11-bit channels fill all 22 payload bytes.
     for(int i = 0; i < 16; i++) {
         bitbuf |= ((uint32_t)(channels[i] & 0x07ff)) << bits;
         bits += 11;
         while(bits >= 8) {
-            payload[idx++] = bitbuf & 0xff;
+            frame[3 + idx++] = bitbuf & 0xff;
             bitbuf >>= 8;
             bits -= 8;
         }
     }
-    if(idx < sizeof(payload)) {
-        payload[idx++] = bitbuf & 0xff;
-    }
-
     frame[0] = CRSF_SYNC_BYTE;
     frame[1] = 24;
     frame[2] = CRSF_FRAME_RC_CHANNELS_PACKED;
-    memcpy(frame + 3, payload, sizeof(payload));
     frame[25] = crc8D5(frame + 2, 23);
 
     return 26;

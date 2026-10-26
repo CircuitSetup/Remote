@@ -102,14 +102,10 @@ bool ELRSCrsfMode::begin(
     memset(_stagingAxes, 0, sizeof(_stagingAxes));
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _adcFilters[i].reset();
-        _rawAxes[i] = 1024;
-        _filteredAxes[i] = 1024;
         #ifdef REMOTE_DBG
         _lastLoggedAxes[i] = 1024;
         #endif
     }
-
-    _fpOnWifiHandler = fpOnWifiHandler;
 
     pinMode(FPOWER_IO_PIN, INPUT_PULLUP);
     pinMode(STOPS_IO_PIN, INPUT);
@@ -404,20 +400,19 @@ ELRSAxesResult ELRSCrsfMode::sampleAxes(int16_t axes[ELRS_GIMBAL_AXIS_COUNT], ui
     const uint32_t completedAtUs = (uint32_t)micros();
     completedAt = (uint32_t)millis();
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        _filteredAxes[i] = _adcFilters[i].update(_stagingAxes[i], completedAtUs);
-        _rawAxes[i] = axes[i] = _filteredAxes[i];
+        axes[i] = _adcFilters[i].update(_stagingAxes[i], completedAtUs);
     }
     _haveFilteredAxes = true;
 
     #ifdef REMOTE_DBG
     const uint32_t now = millis();
     if(!_haveLoggedAxes || ((uint32_t)(now - _lastAxesLogAt) >= ADS_LOG_INTERVAL_MS &&
-       elrsAxesChanged(_rawAxes, _lastLoggedAxes, ELRS_GIMBAL_AXIS_COUNT, ADS_LOG_DELTA_THRESHOLD))) {
-        memcpy(_lastLoggedAxes, _rawAxes, sizeof(_lastLoggedAxes));
+       elrsAxesChanged(axes, _lastLoggedAxes, ELRS_GIMBAL_AXIS_COUNT, ADS_LOG_DELTA_THRESHOLD))) {
+        memcpy(_lastLoggedAxes, axes, sizeof(_lastLoggedAxes));
         _haveLoggedAxes = true;
         _lastAxesLogAt = now;
         Serial.printf("ELRS/CRSF ADC raw: A0=%d A1=%d A2=%d A3=%d\n",
-                      _rawAxes[0], _rawAxes[1], _rawAxes[2], _rawAxes[3]);
+                      axes[0], axes[1], axes[2], axes[3]);
     }
     #endif
 

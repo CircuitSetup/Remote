@@ -104,9 +104,9 @@ ELRSCrsfCore::ELRSCrsfCore()
         _axisCal[i].minimum = 0;
         _axisCal[i].center = 1024;
         _axisCal[i].maximum = 2047;
-        _axisProfiles[i] = defaultProfile;
+        _config.axisProfiles[i] = defaultProfile;
     }
-    _inputRouting = elrsDefaultGimbalRouting();
+    _config.inputRouting = elrsDefaultGimbalRouting();
 
     memset(_overlayText, 0, sizeof(_overlayText));
     memset(_commOverlayText, 0, sizeof(_commOverlayText));
@@ -141,11 +141,9 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     if(!elrsIsValidRadioPreferences(_config.radio)) return false;
     _radioPreferences = _config.radio;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-        _axisProfiles[i] = elrsSanitizeInputAxisProfile(_config.axisProfiles[i]);
-        _config.axisProfiles[i] = _axisProfiles[i];
+        _config.axisProfiles[i] = elrsSanitizeInputAxisProfile(_config.axisProfiles[i]);
         _config.outputLimits[i] = elrsSanitizeOutputLimits(_config.outputLimits[i]);
     }
-    _inputRouting = _config.inputRouting;
     _transport = ELRSCrsfTransport();
     _transport.setSink(this);
 
@@ -155,7 +153,6 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
     _lastGoodAxesAt = 0;
     _lastGoodPackAt = 0;
     _lastDisplay = 0;
-    _lastTelemetry = 0;
     _lastLinkStats = 0;
     _lastGpsSpeed = 0;
     _lastAirspeed = 0;
@@ -233,15 +230,15 @@ bool ELRSCrsfCore::begin(ELRSCrsfHost &host, const ELRSCrsfCoreConfig &config, u
          _radioPreferences.dynamic);
     logf(host,
          "ELRS/CRSF: gimbals Aileron CH%u Elevator CH%u Throttle CH%u Rudder CH%u; all inputs configurable on CH1-CH16",
-         (unsigned)_inputRouting.aileronChannel,
-         (unsigned)_inputRouting.elevatorChannel,
-         (unsigned)_inputRouting.throttleChannel,
-         (unsigned)_inputRouting.rudderChannel);
+         (unsigned)_config.inputRouting.aileronChannel,
+         (unsigned)_config.inputRouting.elevatorChannel,
+         (unsigned)_config.inputRouting.throttleChannel,
+         (unsigned)_config.inputRouting.rudderChannel);
 #ifdef REMOTE_DBG
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         logf(host, "ELRS/CRSF A%d calibration: low=%d center=%d high=%d reverse=%u", i,
-             _axisProfiles[i].minimum, _axisProfiles[i].center, _axisProfiles[i].maximum,
-             (unsigned)_axisProfiles[i].reverse);
+             _config.axisProfiles[i].minimum, _config.axisProfiles[i].center, _config.axisProfiles[i].maximum,
+             (unsigned)_config.axisProfiles[i].reverse);
     }
     logf(host, "ELRS/CRSF ADC tolerance=%u throttle idle=%u", (unsigned)_config.adcHysteresis, (unsigned)_config.throttleIdleDeadband);
 #endif
@@ -629,7 +626,7 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
         _throttleReady = false;
     for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
         _rawAxes[i] = axes[i];
-        const ELRSInputAxisProfile &profile = _axisProfiles[i];
+        const ELRSInputAxisProfile &profile = _config.axisProfiles[i];
         int16_t low = (profile.minimum < profile.maximum) ? profile.minimum : profile.maximum;
         int16_t high = (profile.minimum > profile.maximum) ? profile.minimum : profile.maximum;
         int delta = (int)axes[i] - _stableAxes[i];
@@ -655,10 +652,10 @@ ELRSAxesResult ELRSCrsfCore::sampleAxes(ELRSCrsfHost &host, unsigned long now, b
     _lastGoodAxesAt = completedAt;
 
     const int16_t rawThrottle = host.rawThrottleSample();
-    const int centerDelta = (int)axes[AXIS_THROTTLE] - _axisProfiles[AXIS_THROTTLE].center;
-    const int rawCenterDelta = (int)rawThrottle - _axisProfiles[AXIS_THROTTLE].center;
-    const int centerBand = (_config.adcHysteresis > _axisProfiles[AXIS_THROTTLE].deadband)
-        ? _config.adcHysteresis : _axisProfiles[AXIS_THROTTLE].deadband;
+    const int centerDelta = (int)axes[AXIS_THROTTLE] - _config.axisProfiles[AXIS_THROTTLE].center;
+    const int rawCenterDelta = (int)rawThrottle - _config.axisProfiles[AXIS_THROTTLE].center;
+    const int centerBand = (_config.adcHysteresis > _config.axisProfiles[AXIS_THROTTLE].deadband)
+        ? _config.adcHysteresis : _config.axisProfiles[AXIS_THROTTLE].deadband;
     if(!_throttleReady && !isCalibrating() && axes[AXIS_THROTTLE] >= 0 &&
        axes[AXIS_THROTTLE] <= 2047 && rawThrottle >= 0 && rawThrottle <= 2047 &&
        centerDelta >= -centerBand && centerDelta <= centerBand &&
@@ -777,7 +774,7 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
            _moduleConfigState == MODULECFG_WAIT_PARAMETER) {
             const auto *view = _deviceConfig.parameter();
             if(view && view->device == 0xEE && view->field == _moduleFieldIndex)
-                finishParameterChunk(view->field, view->data, view->dataLength, now);
+                finishParameterChunk(*view, now);
         }
         break;
     default:
@@ -790,9 +787,6 @@ bool ELRSCrsfCore::onCrsfFrame(uint8_t syncByte, uint8_t type, const uint8_t *pa
         _haveRpm = true;
         _receivedFamilies |= 16;
         supportedTelemetry = true;
-    }
-    if(supportedTelemetry) {
-        _lastTelemetry = now;
     }
 
     return supportedTelemetry;
@@ -904,7 +898,7 @@ void ELRSCrsfCore::finishCalibrationCapture(ELRSCrsfHost &host, unsigned long no
         _axisCal[AXIS_AILERON].maximum = _rawAxes[AXIS_AILERON];
         _calStage = CAL_IDLE;
         for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-            ELRSInputAxisProfile profile = _axisProfiles[i];
+            ELRSInputAxisProfile profile = _config.axisProfiles[i];
             profile.minimum = _axisCal[i].minimum;
             profile.center = _axisCal[i].center;
             profile.maximum = _axisCal[i].maximum;
@@ -918,9 +912,9 @@ void ELRSCrsfCore::finishCalibrationCapture(ELRSCrsfHost &host, unsigned long no
             return;
         }
         for(int i = 0; i < ELRS_GIMBAL_AXIS_COUNT; i++) {
-            _axisProfiles[i].minimum = _axisCal[i].minimum;
-            _axisProfiles[i].center = _axisCal[i].center;
-            _axisProfiles[i].maximum = _axisCal[i].maximum;
+            _config.axisProfiles[i].minimum = _axisCal[i].minimum;
+            _config.axisProfiles[i].center = _axisCal[i].center;
+            _config.axisProfiles[i].maximum = _axisCal[i].maximum;
             _stableAxes[i] = _rawAxes[i];
         }
         showOverlay("CAL", now, 1000);
@@ -1039,8 +1033,8 @@ void ELRSCrsfCore::updateChannels(unsigned long now, bool fakePowerOn, bool stop
 void ELRSCrsfCore::clampLockedThrottleOutputs()
 {
     if(_throttleReady) return;
-    if(_inputRouting.throttleChannel)
-        _channels[_inputRouting.throttleChannel - 1] = CRSF_CHANNEL_MID;
+    if(_config.inputRouting.throttleChannel)
+        _channels[_config.inputRouting.throttleChannel - 1] = CRSF_CHANNEL_MID;
     for(const auto &line : _config.mixes.lines) {
         if(line.channel >= 1 && line.channel <= 16 && line.source == AXIS_THROTTLE + 1)
             _channels[line.channel - 1] = CRSF_CHANNEL_MID;
@@ -1056,10 +1050,10 @@ void ELRSCrsfCore::resetChannels(uint16_t defaultTicks)
 
 void ELRSCrsfCore::writeGimbalChannels(bool safeOutputs)
 {
-    writeGimbalChannel(_inputRouting.aileronChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_AILERON));
-    writeGimbalChannel(_inputRouting.elevatorChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_ELEVATOR));
-    writeGimbalChannel(_inputRouting.throttleChannel, (safeOutputs || !_throttleReady) ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
-    writeGimbalChannel(_inputRouting.rudderChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_RUDDER));
+    writeGimbalChannel(_config.inputRouting.aileronChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_AILERON));
+    writeGimbalChannel(_config.inputRouting.elevatorChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_ELEVATOR));
+    writeGimbalChannel(_config.inputRouting.throttleChannel, (safeOutputs || !_throttleReady) ? CRSF_CHANNEL_MID : axisToTicks(AXIS_THROTTLE));
+    writeGimbalChannel(_config.inputRouting.rudderChannel, safeOutputs ? CRSF_CHANNEL_MID : axisToTicks(AXIS_RUDDER));
 }
 
 void ELRSCrsfCore::writeGimbalChannel(uint8_t channel, uint16_t ticks)
@@ -1078,17 +1072,17 @@ void ELRSCrsfCore::writeFixedChannelIfUnclaimed(uint8_t channel, uint16_t ticks)
 
 bool ELRSCrsfCore::channelClaimedByGimbal(uint8_t channel) const
 {
-    return _inputRouting.aileronChannel == channel ||
-           _inputRouting.elevatorChannel == channel ||
-           _inputRouting.throttleChannel == channel ||
-           _inputRouting.rudderChannel == channel;
+    return _config.inputRouting.aileronChannel == channel ||
+           _config.inputRouting.elevatorChannel == channel ||
+           _config.inputRouting.throttleChannel == channel ||
+           _config.inputRouting.rudderChannel == channel;
 }
 
 int16_t ELRSCrsfCore::axisToUs(uint8_t axis) const
 {
     if(axis >= ELRS_GIMBAL_AXIS_COUNT) return ELRS_INPUT_US_MID;
     if(axis == AXIS_THROTTLE && !_throttleReady) return ELRS_INPUT_US_MID;
-    const ELRSInputAxisProfile &profile = _axisProfiles[axis];
+    const ELRSInputAxisProfile &profile = _config.axisProfiles[axis];
     return axis == AXIS_THROTTLE
         ? elrsInputModelThrottleToUs(profile, _stableAxes[axis], _config.throttleIdleDeadband)
         : elrsInputModelAxisToUs(profile, _stableAxes[axis]);
@@ -1111,8 +1105,8 @@ void ELRSCrsfCore::applyMixes(unsigned long now, uint16_t switchStates)
     inputs.axesValid = !adcFaultActive(now);
     inputs.switchStates = switchStates;
     inputs.validSwitches = 0x000f | (_localPackSampleValid ? 0x0ff0 : 0);
-    const uint8_t gimbals[] = {_inputRouting.aileronChannel, _inputRouting.elevatorChannel,
-                              _inputRouting.rudderChannel, _inputRouting.throttleChannel};
+    const uint8_t gimbals[] = {_config.inputRouting.aileronChannel, _config.inputRouting.elevatorChannel,
+                              _config.inputRouting.rudderChannel, _config.inputRouting.throttleChannel};
     int16_t base[16];
     for(auto &value : base) value = ELRS_INPUT_US_MIN;
     uint16_t claimed = 0;
@@ -1357,7 +1351,6 @@ void ELRSCrsfCore::resetModuleParameters()
     _moduleFieldCount = 0;
     _moduleFieldIndex = 0;
     _moduleTargetIndex = 0;
-    _moduleWriteFieldId = 0;
     _moduleProbeRetryCount = 0;
     _moduleParameterRetryCount = 0;
     _moduleTelemetryRatio = ModuleParameterInfo();
@@ -1489,56 +1482,31 @@ void ELRSCrsfCore::handleDeviceInfo(const uint8_t *payload, size_t payloadLen, u
     _moduleConfigNextAt = now;
 }
 
-void ELRSCrsfCore::finishParameterChunk(uint8_t fieldId, const uint8_t *data, size_t len, unsigned long now)
+void ELRSCrsfCore::finishParameterChunk(const ELRSParameterView &view, unsigned long now)
 {
-    const char *name;
-    const char *options;
-    size_t nameLen;
-    size_t optionsLen;
-    uint8_t type;
-    uint8_t currentValue;
-
-    if(!data || len < 4) {
-        return;
-    }
-
-    type = data[1] & 0x3f;
-    name = (const char *)(data + 2);
-    nameLen = strnlen(name, len - 2);
-    if(nameLen >= len - 2) {
-        return;
-    }
-
-    if(type == CRSF_PARAM_TEXT_SELECTION) {
-        options = name + nameLen + 1;
-        if((size_t)(options - (const char *)data) >= len) {
-            return;
-        }
-        optionsLen = strnlen(options, len - (size_t)(options - (const char *)data));
-        if((size_t)(options - (const char *)data) + optionsLen + 5 > len) {
-            return;
-        }
-        currentValue = (uint8_t)options[optionsLen + 1];
+    // DeviceConfig already validated and decoded the complete descriptor.
+    const uint8_t fieldId = view.field;
+    if(view.type == CRSF_PARAM_TEXT_SELECTION) {
 #ifdef REMOTE_DBG
         const char *currentOption = NULL;
         size_t currentOptionLen = 0;
-        if(!readOptionAt(options, currentValue, &currentOption, &currentOptionLen)) {
+        if(!view.optionAt(view.value.raw, currentOption, currentOptionLen)) {
             currentOption = NULL;
             currentOptionLen = 0;
         }
         debugLogf("ELRS/CRSF resp: field=%u name=\"%s\" current=\"%.*s\"",
                   (unsigned)fieldId,
-                  name,
+                  view.name(),
                   (int)currentOptionLen,
                   currentOption ? currentOption : "");
 #endif
-        applyDiscoveredParameter(fieldId, name, type, options, currentValue);
+        applyDiscoveredParameter(fieldId, view.name(), view.type, view.options(), view.value.raw);
     } else {
         debugLogf("ELRS/CRSF resp: field=%u name=\"%s\" type=%u len=%u",
                   (unsigned)fieldId,
-                  name,
-                  (unsigned)type,
-                  (unsigned)len);
+                  view.name(),
+                  (unsigned)view.type,
+                  (unsigned)view.dataLength);
     }
 
     if(_moduleConfigState == MODULECFG_WAIT_PARAMETER && fieldId == _moduleFieldIndex) {
@@ -1746,7 +1714,6 @@ void ELRSCrsfCore::updateModuleConfig(ELRSCrsfHost &host, unsigned long now)
         if(radio.armed || _fakePowerOn || isCalibrating() || _selfTestActive || _channels[4] > 992 || _settingsBusy || _radioReviewPending) return;
         if(queueParameterWrite(targetInfo->fieldId, desiredValue)) {
             logf(host, "ELRS/CRSF: applying module setting '%s'", targetName);
-            _moduleWriteFieldId = targetInfo->fieldId;
             _moduleConfigState = MODULECFG_WAIT_WRITE;
             _moduleConfigDeadlineAt = now + CRSF_MODULE_CONFIG_WRITE_DELAY_MS;
         }

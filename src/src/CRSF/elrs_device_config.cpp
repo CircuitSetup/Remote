@@ -56,6 +56,7 @@ void ELRSDeviceConfig::reset()
     _status = ELRSOperationStatus();
     _haveRadio = _modelIdKnown = false;
     _modelMatchField = 0;
+    memset(_receiverModelFields, 0, sizeof(_receiverModelFields));
     memset(_parents, 0, sizeof(_parents));
     memset(_parentKnown, 0, sizeof(_parentKnown));
 }
@@ -242,6 +243,7 @@ void ELRSDeviceConfig::invalidateDescriptors()
 {
     _generation++;
     for(uint8_t i = 0; i < _deviceCount; i++) _devices[i].generation = _generation;
+    memset(_receiverModelFields, 0, sizeof(_receiverModelFields));
     memset(_parentKnown, 0, sizeof(_parentKnown));
     _view.generation = _status.generation = _generation;
 }
@@ -382,6 +384,7 @@ bool ELRSDeviceConfig::deviceInfo(const uint8_t *payload, size_t length)
         _haveRadio = false;
         if(next.address == 0xEE) { _modelIdKnown = false; _modelMatchField = 0; }
         for(uint8_t i = 0; i < _deviceCount; i++) _devices[i].generation = _generation;
+        memset(_receiverModelFields, 0, sizeof(_receiverModelFields));
         memset(_parentKnown, 0, sizeof(_parentKnown));
         if(busy() && _request != Discover) fail(ELRSDeviceError::Stale);
     }
@@ -412,7 +415,7 @@ bool ELRSDeviceConfig::onFrame(uint8_t type, const uint8_t *payload, size_t leng
         return true;
     }
     if(type != 0x2B || !busy() || (_request != Read && _request != Write && _request != SelectModel && _request != Command && _request != AssignReceiver) || length < 5 ||
-       payload[1] != _status.device || payload[2] != _status.field || _queuedMutation ||
+       payload[1] != _status.device || payload[2] != _status.field || _phase == 1 || _queuedMutation ||
        (_request == Command && _phase == 3 ? _lastSentType != 0x2D : _lastSentType != 0x2C) || _lastSentChunk != _chunk) return false;
     if(_chunkActive && payload[3] != (uint8_t)(_chunksRemain - 1)) return false;
     if(_queued) {
