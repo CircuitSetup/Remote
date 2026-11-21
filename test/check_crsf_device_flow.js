@@ -211,6 +211,9 @@ async function sessionRenewal(){
  staleMutation.replaceRemoteSession();const mutationStart=staleMutation.calls.length;await staleMutation.elements.txSave.onclick();
  assert(!staleMutation.calls.slice(mutationStart).some(c=>c.path==='/remote/action'),'replaced session aborts stale radio mutation without replay');
  assert.match(staleMutation.elements.message.textContent,/session changed/i);
+ assert.equal(staleMutation.elements.txSave.disabled,true,'a replaced session must discard drafts from its old readback');
+ await staleMutation.elements.txSave.onclick();
+ assert.equal(staleMutation.radio.appliedWrites.length,0);
 }
 async function liveControls(){
  const f=fixture({absentTX:true});await settle();assert.equal(f.elements.txDevice.textContent,'Device: Not discovered');await f.elements.txRefresh.onclick();
@@ -279,6 +282,13 @@ async function truthfulFailuresAndSupport(){
  for(const changed of [{type:0},{writable:false},{hash:999}]){const stale=fixture();await settle();await stale.elements.txRefresh.onclick();stage(stale,'txFields','TX Power',2);stale.radio.changedPreview=changed;await stale.elements.txSave.onclick();assert.equal(stale.radio.appliedWrites.length,0,'backend must reject changed field before mutation');}
  const partial=fixture();await settle();partial.radio.failRead='238:4';await partial.elements.txRefresh.onclick();assert(inputFor(partial,'txFields','TX Power'));assert.equal(inputFor(partial,'txFields','Packet Rate'),undefined);assert.doesNotMatch(partial.elements.message.textContent,/verified/i);
  const missingReview=fixture({transform:params=>params.find(p=>p.role==='dynamic').role=''});await settle();await missingReview.elements.review.onclick();assert(!missingReview.calls.some(c=>c.path==='/remote/review'));
+ const cancelled=fixture();await settle();await cancelled.elements.txRefresh.onclick();
+ stage(cancelled,'txFields','TX Power',2);cancelled.radio.confirm=false;
+ const beforeReview=cancelled.calls.length;await cancelled.elements.review.onclick();
+ assert(!cancelled.calls.slice(beforeReview).some(c=>c.action||c.path==='/remote/review'),'cancelled refresh must stop radio review');
+ const partialReview=fixture();await settle();partialReview.radio.failRead='238:4';
+ await partialReview.elements.review.onclick();
+ assert(partialReview.calls.some(c=>c.path==='/remote/review'),'unrelated field failure must not prevent review of verified preferences');
  const rx=fixture();await settle();await rx.elements.rxRefresh.onclick();rx.radio.failRead='236:2';const selector=inputFor(rx,'rxFields','Physical PWM output');selector.value='2';await selector.onchange();assert.equal(inputFor(rx,'rxFields','Incoming RC channel'),undefined);assert.doesNotMatch(rx.elements.message.textContent,/Readback verified/i);
 }
 
@@ -289,9 +299,21 @@ async function genericTextReadback(){
 }
 
 async function filesAndFooter(){
+ for(const changed of ['file','kind']){
+  const f=fixture();await settle();
+  f.elements.file.files=[new Blob(['A'])];f.elements.kind.value='model';
+  await f.elements.preview.onclick();
+  if(changed==='file')f.elements.file.files=[new Blob(['B'])];else f.elements.kind.value='backup';
+  f.elements[changed].onchange?.();
+  assert.equal(f.elements.apply.disabled,true,'changing '+changed+' requires a new preview');
+  assert(!f.elements.previewText.textContent.includes('fileHash'));
+  await f.elements.apply.onclick();
+  assert(!f.calls.some(c=>c.path==='/remote/apply'));
+ }
  for(const localAP of [true,false])for(const crsfActive of [true,false]){
   const f=fixture({localAP,crsfActive});await settle();
-  for(const id of ['backup','model','file','kind','preview','review'])assert.equal(f.elements[id].disabled,false,id+' works over AP or LAN without password');
+  for(const id of ['backup','model','file','kind','preview'])assert.equal(f.elements[id].disabled,false,id+' works over AP or LAN without password');
+  assert.equal(f.elements.review.disabled,!crsfActive,'radio review requires an active radio');
   assert.equal(f.elements.apply.disabled,true,'activation requires an exact preview');
   await f.elements.backup.onclick();await f.elements.model.onclick();assert.equal(f.calls.filter(c=>c.path==='/remote/export'&&c.headers['X-Remote-Nonce']).length,2,'downloads retain the session nonce');
   f.elements.file.files=[new Blob(['{}'])];f.elements.kind.value='backup';await f.elements.preview.onclick();
@@ -299,8 +321,7 @@ async function filesAndFooter(){
   assert(f.calls.some(c=>c.path==='/remote/upload'&&c.headers['X-Remote-Nonce']));
   assert(f.calls.some(c=>c.path==='/remote/apply'&&c.fileHash==='b'.repeat(64)&&c.confirmed==='1'));
   assert.equal(f.elements.apply.disabled,true);
-  await f.elements.review.onclick();
-  assert(f.calls.some(c=>c.path==='/remote/review'));
+  if(crsfActive){await f.elements.review.onclick();assert(f.calls.some(c=>c.path==='/remote/review'));}
   if(!crsfActive)assert(!f.calls.some(c=>c.action==='status'),'inactive radio file operations skip RF status');
  }
  for(const formAction of ['param3save','/param3save']){

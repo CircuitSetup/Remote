@@ -92,13 +92,16 @@ static void remotePortalSession() {
     StaticJsonDocument<128> doc;doc["nonce"]=remotePortalNonce;remotePortalJson(doc);
 }
 static void remotePortalRadioStatus(JsonObject doc) {
-    doc["crsfActive"]=false;doc["throttleReady"]=false;doc["rfKnown"]=false;doc["connected"]=false;doc["modelMatched"]=false;doc["armedKnown"]=false;doc["armed"]=false;doc["statusAgeMs"]=0;doc["ch5"]=0;
-#ifdef HAVE_CRSF
-    doc["crsfActive"]=opModeCRSF;
-    if(opModeCRSF) {
-        auto safety=elrsMode.deviceConfig().radioStatus(millis());doc["throttleReady"]=elrsMode.throttleReady();doc["rfKnown"]=safety.rfConnectionKnown;doc["connected"]=safety.rfConnected;doc["modelMatched"]=safety.modelMatched;doc["armedKnown"]=safety.armedKnown;doc["armed"]=safety.armed;doc["statusAgeMs"]=safety.statusAgeMs;doc["ch5"]=elrsMode.finalChannel5();
-    }
-#endif
+    const auto safety = opModeCRSF ? elrsMode.deviceConfig().radioStatus(millis()) : ELRSConfigSafety{};
+    doc["crsfActive"] = opModeCRSF;
+    doc["throttleReady"] = opModeCRSF && elrsMode.throttleReady();
+    doc["rfKnown"] = safety.rfConnectionKnown;
+    doc["connected"] = safety.rfConnected;
+    doc["modelMatched"] = safety.modelMatched;
+    doc["armedKnown"] = safety.armedKnown;
+    doc["armed"] = safety.armed;
+    doc["statusAgeMs"] = opModeCRSF ? safety.statusAgeMs : 0;
+    doc["ch5"] = opModeCRSF ? elrsMode.finalChannel5() : 0;
 }
 static void remotePortalDevices() {
     StaticJsonDocument<1536> doc;auto devices=doc.createNestedArray("devices");remotePortalRadioStatus(doc.as<JsonObject>());doc["localAP"]=remotePortalLocalAP();doc["maintenance"]=remoteMaintenanceActive();doc["radioReviewPending"]=remoteRadioReviewPending();doc["importAvailable"]=remoteUploadAvailable()&&!crsfSettingsRecoveryBlocked;
@@ -223,8 +226,7 @@ static void remotePortalUploadDone() {
         const ELRSCrsfSettingsBlob *models[]={&remotePortalPreview.currentCrsf,&remotePortalPreview.proposedCrsf};
         const ELRSRadioPreferences *radios[]={&remotePortalPreview.currentRadio,&remotePortalPreview.proposedRadio};
         for(unsigned side=0;side<2;side++){auto x=doc.createNestedObject(side?"proposed":"current");const auto &m=*models[side];auto inputs=x.createNestedArray("inputs");for(unsigned i=0;i<4;i++){auto a=inputs.createNestedArray();a.add((bool)m.axisProfile[i].reverse);a.add(m.axisProfile[i].deadband);a.add(m.axisProfile[i].expo);a.add(m.outputLimits[i].minimumUs);a.add(m.outputLimits[i].maximumUs);}
-            auto logic=x.createNestedArray("logical");for(const auto &r:m.logic.rules){auto a=logic.createNestedArray();a.add(r.function);a.add(r.sourceA);a.add(r.sourceB);a.add(r.threshold);a.add(r.andSwitch);}
-            auto mixes=x.createNestedArray("mixes");for(const auto &r:m.mixes.lines){auto a=mixes.createNestedArray();a.add(r.channel);a.add(r.source);a.add(r.switchSource);a.add(r.weight);a.add(r.offset);a.add(r.multiplex);}
+            remoteEncodeModelBehavior(x, m);
             const auto &prefs=side?remotePortalPreview.proposedSettings:remotePortalPreview.currentSettings;
             auto calibration=x.createNestedArray("calibration");for(const auto &p:m.axisProfile){auto a=calibration.createNestedArray();a.add(p.minimum);a.add(p.center);a.add(p.maximum);}
             x["inputFiltering"]=m.adcHysteresis;x["mode"]=atoi(prefs.opMode);x["connectWiFi"]=prefs.crsfap[0]!='0';x["speedUnits"]=prefs.elrsSpdUnit[0]=='0'?"kmh":"mph";

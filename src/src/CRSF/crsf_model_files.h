@@ -40,6 +40,7 @@ bool remoteTransferFail(RemoteTransferError &,RemoteTransferCode,const char *,co
 void remoteSha256(const uint8_t *,size_t,char[65]);
 ELRSCrsfSettingsBlob remoteDefaultCrsfSettings();
 bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &);
+void remoteEncodeModelBehavior(JsonObject, const ELRSCrsfSettingsBlob &);
 bool remoteEncodeModel(JsonObject,const RemoteSettingsSnapshot &,RemoteTransferError &);
 bool remoteEncodeBackup(JsonObject,const RemoteSettingsSnapshot &,RemoteTransferError &);
 bool remoteDecodeTransfer(JsonVariantConst,RemoteTransferKind,const RemoteSettingsSnapshot &,RemoteSettingsSnapshot &,RemoteTransferError &);
