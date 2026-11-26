@@ -123,7 +123,6 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         remLED *_powerLed = NULL;
         remLED *_levelMeter = NULL;
         remLED *_stopLed = NULL;
-        void (*_fpOnWifiHandler)(bool) = NULL;
 
         bool _haveButtonPack = false;
         bool _usePowerLed = false;
@@ -142,8 +141,6 @@ class ELRSCrsfMode : private ELRSCrsfHost {
         int16_t _stagingAxes[ELRS_GIMBAL_AXIS_COUNT] = {};
         ELRSOneEuroFilter _adcFilters[ELRS_GIMBAL_AXIS_COUNT];
 
-        int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
-        int16_t _filteredAxes[ELRS_GIMBAL_AXIS_COUNT] = { 1024, 1024, 1024, 1024 };
         #ifdef REMOTE_DBG
         bool _haveLoggedAxes = false;
         uint32_t _lastAxesLogAt = 0;

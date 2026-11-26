@@ -15,8 +15,8 @@ if(typeof document!=='undefined'){
  function unknownStatus(){$('safety').textContent='RF unknown · arm state unknown · Model Match unknown';}
  function enable(){
   $('remote-controls').dataset.busy=busy?'1':'0';
-  for(const id of ['maintenance','backup','model','file','kind','preview','review'])$(id).disabled=!nonce||busy;
-  for(const id of ['status','assign','txRefresh','rxRefresh'])$(id).disabled=!nonce||busy||!radioActive;
+  for(const id of ['maintenance','backup','model','file','kind','preview'])$(id).disabled=!nonce||busy;
+  for(const id of ['status','assign','txRefresh','rxRefresh','review'])$(id).disabled=!nonce||busy||!radioActive;
   $('apply').disabled=!nonce||busy||!preview;$('modelId').disabled=!nonce||busy||!radioActive||modelId===null;
   for(const[id,address]of[['txSave',238],['rxSave',236]])$(id).disabled=!nonce||busy||!radioActive||!pending(address).length;
   for(const id of ['txFields','rxFields'])for(const e of $(id).querySelectorAll('button,select,input'))e.disabled=!nonce||busy||!radioActive;
@@ -26,8 +26,8 @@ if(typeof document!=='undefined'){
  function clearDrafts(address){for(const[k,d]of drafts)if(d.p.device===address)drafts.delete(k);}
  function stage(p,input,label){const value=number(input);if(value===p.value)drafts.delete(key(p));else drafts.set(key(p),{p:{...p},value,label});enable();}
  async function api(path,values=null){const headers=nonce?{'X-Remote-Nonce':nonce}:{},o={headers,credentials:'same-origin',cache:'no-store'};if(values){o.method='POST';o.body=values instanceof FormData?values:new URLSearchParams(values);}for(let attempt=0;;attempt++){let response,r;try{response=await fetch('/remote/'+path,o);r=await response.json();}catch(e){if(values){const error=new Error(e.message||'Request failed');error.transport=true;throw error;}if(!['operation','devices'].includes(path)||attempt)throw e;continue;}if(!response.ok)throw Error((r.code||'REQUEST_FAILED')+' '+(r.path||'')+': '+(r.message||'Rejected'));return r;}}
- async function renewSession(){const previous=nonce,s=await api('session',{});nonce=s.nonce;const replaced=!!previous&&previous!==nonce;if(replaced){preview=null;menus={};$('previewText').textContent='';renderViews();}return replaced;}
- async function guarded(fn){if(busy)return;busy=true;enable();try{if(await renewSession()){message('Session changed. Refresh before saving.',true);return;}await fn();}catch(e){preview=null;message(e.message,true);}finally{busy=false;enable();}}
+ async function renewSession(){const previous=nonce,s=await api('session',{});nonce=s.nonce;const replaced=!!previous&&previous!==nonce;if(replaced){menus={};roster=[];modelId=null;drafts.clear();clearOperation();clearPreview();renderViews();}return replaced;}
+ async function guarded(fn){if(busy)return;busy=true;enable();try{if(await renewSession()){message('Session changed. Refresh before saving.',true);return;}await fn();}catch(e){clearPreview();message(e.message,true);}finally{busy=false;enable();}}
  function clearOperation(){operation=null;$('confirm').hidden=true;$('cancel').hidden=true;}
  async function run(action,values={}){let accepted;try{accepted=await api('action',{action,...values,...(['read','status'].includes(action)?{wait:1}:{})});}catch(e){if(!e.transport||action!=='command'||!values.operationId)throw e;let s;try{s=await api('operation');}catch(readError){clearOperation();throw Error('Lost command response; unreadable status: '+readError.message);}if(s.id!==Number(values.operationId)){clearOperation();throw Error('Operation ownership changed; refresh/readback required');}operation=s;$('confirm').hidden=s.state!=='confirmation';$('cancel').hidden=!['confirmation','running'].includes(s.state);throw Error('Command response lost; state: '+s.state);}operation=accepted;let s=accepted;for(;;){if(!['complete','cancelled','failed','unknown','confirmation'].includes(s.state)){try{s=await api('operation');}catch(e){clearOperation();throw Error('Status read failed: '+e.message);}}if(s.id!==operation.id){clearOperation();throw Error('Operation ownership changed; refresh/readback required');}operation=s;if(action==='status'&&s.state==='complete'&&s.radioStatus)showStatus(s.radioStatus);$('confirm').hidden=s.state!=='confirmation';$('cancel').hidden=!['confirmation','running'].includes(s.state);message(s.state+': '+(s.message||''));if(['complete','cancelled'].includes(s.state)){const p=s.parameter;if(s.state==='complete'&&action==='command'&&['Bind','Enter Bind Mode'].includes(p?.name)){menus={};await run('discover');await run('status');const link=await devices(false);if(!bindingVerified(link))throw Error('Bind acknowledged; verify receiver link and Model Match');message('Receiver connection and Model Match verified.');}return s.state==='complete'?p:null;}if(['failed','unknown'].includes(s.state))throw Error(s.message||s.error||s.state);if(s.state==='confirmation')return null;await sleep(180);s={id:s.id,state:'queued'};}}
  async function devices(render=true,owned=false){const s=await api('devices');if(owned)for(const d of drafts.values()){const previous=owner(d.p.device);if(previous&&(previous.generation===d.p.generation||previous.generation===d.ownedGeneration))d.ownedGeneration=s.devices.find(p=>p.address===d.p.device)?.generation;}radioActive=!!s.crsfActive;roster=s.devices;modelId=Number.isInteger(s.modelId)?s.modelId:null;for(const address of Object.keys(menus)){const d=owner(address);if(!d||menus[address].some(p=>p.generation!==d.generation))delete menus[address];}if(render)showStatus(s);renderViews();enable();return s;}
@@ -39,7 +39,7 @@ if(typeof document!=='undefined'){
   if(errors.length)message('Readback incomplete; refresh. '+errors.join('; '),true);return !errors.length;
  }
  async function refresh(address){
-  if(pending(address).length){if(!confirm('Discard unsaved '+(address===238?'transmitter':'receiver')+' changes and refresh?'))return false;clearDrafts(address);}
+  if(pending(address).length){if(!confirm('Discard unsaved '+(address===238?'transmitter':'receiver')+' changes and refresh?'))return null;clearDrafts(address);}
   await devices();if(!owner(address)){await run('discover');await devices();}
   const loaded=await loadMenu(owner(address)),readbackMessage=$('message').textContent;let statusError='';
   try{await run('status');}catch(e){statusError=e.message;unknownStatus();}
@@ -100,8 +100,18 @@ if(typeof document!=='undefined'){
  function saveFile(blob,name){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  async function download(kind,name){const r=await fetch('/remote/export?kind='+kind,{headers:{'X-Remote-Nonce':nonce},cache:'no-store'});if(!r.ok){const e=await r.json();throw Error(e.message||'Export failed');}saveFile(await r.blob(),name);}
  $('backup').onclick=()=>guarded(()=>download('backup','remote.crsf-backup.json'));$('model').onclick=()=>guarded(()=>download('model','remote.remote-model.json'));
+ function clearPreview(){preview=null;$('previewText').textContent='';$('apply').disabled=true;}
+ $('file').onchange=$('kind').onchange=clearPreview;
  $('preview').onclick=()=>guarded(async()=>{const file=$('file').files[0];if(!file)throw Error('Choose a native CRSF file');const kind=$('kind').value;if(file.size>16384)throw Error('File exceeds its size limit');const form=new FormData();form.append('file',file);preview=await api('upload?kind='+kind,form);$('previewText').textContent=JSON.stringify(preview,null,2);message('Review the preview before activation.');});
  $('apply').onclick=()=>guarded(async()=>{if(pending().length)throw Error('Save pending radio settings first');if(!preview||!confirm('Activate this exact preview and restart? '+preview.calibration))return;await devices();if(radioActive)await run('status');await api('apply',{fileHash:preview.fileHash,confirmed:1});preview=null;message('Settings saved. Reconnect after restart.');});
- $('review').onclick=()=>guarded(async()=>{await devices();if(radioActive){await refresh(238);for(const role of ['power','telemetry','dynamic']){const p=one(fields(238),'role',role);if(!p||p.hidden||p.type!==9)throw Error('TX radio review unavailable; refresh/readback required');await read(p);}await run('status');}await api('review',{confirmed:1});message('Review verified.');});
+ $('review').onclick=()=>guarded(async()=>{
+  if(await refresh(238)===null)return;
+  for(const role of ['power','telemetry','dynamic']){
+   const p=one(fields(238),'role',role);
+   if(!p||p.hidden||p.type!==9)throw Error('TX radio review unavailable; refresh/readback required');
+   await read(p);
+  }
+  await run('status');await api('review',{confirmed:1});message('Review verified.');
+ });
  (async()=>{enable();try{await renewSession();await devices();$('access').textContent='Connected.';message('Ready. Refresh to load.');}catch(e){$('access').textContent='Read only. Session unavailable.';message(e.message);}enable();})();
 }

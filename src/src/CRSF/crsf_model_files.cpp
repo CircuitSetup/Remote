@@ -106,6 +106,47 @@ void encodeFloat(JsonObject o,const char *key,float value) {
     o[key]=serialized(decimal);
 }
 }
+void remoteEncodeModelBehavior(JsonObject object, const ELRSCrsfSettingsBlob &model) {
+    auto routing = object.createNestedObject("routing");
+    auto gimbals = routing.createNestedArray("gimbals");
+    gimbals.add(model.gimbalRouting.aileronChannel);
+    gimbals.add(model.gimbalRouting.elevatorChannel);
+    gimbals.add(model.gimbalRouting.rudderChannel);
+    gimbals.add(model.gimbalRouting.throttleChannel);
+    auto switches = routing.createNestedArray("switches");
+    for(uint8_t channel : model.switchRouting.channels) switches.add(channel);
+    object.createNestedObject("tolerances")["throttleIdleDeadband"] = model.throttleIdleDeadband;
+    auto actions = object.createNestedArray("localActions");
+    for(uint8_t action : model.localActions) actions.add(action);
+
+    auto logic = object.createNestedArray("logical");
+    for(const auto &rule : model.logic.rules) {
+        auto row = logic.createNestedArray();
+        const int16_t values[] = {rule.function, rule.sourceA, rule.sourceB, rule.threshold, rule.andSwitch};
+        for(int16_t value : values) row.add(value);
+    }
+    auto mixes = object.createNestedArray("mixes");
+    for(const auto &line : model.mixes.lines) {
+        auto row = mixes.createNestedArray();
+        const int16_t values[] = {line.channel, line.source, line.switchSource, line.weight, line.offset, line.multiplex};
+        for(int16_t value : values) row.add(value);
+    }
+
+    auto display = object.createNestedObject("display");
+    display["source"] = model.displayConfig.source;
+    display["decimalPlaces"] = model.displayConfig.decimalPlaces;
+    encodeFloat(display, "multiplier", model.displayConfig.multiplier);
+    encodeFloat(display, "offset", model.displayConfig.offset);
+    auto vehicle = object.createNestedObject("vehicle");
+    vehicle["motorPoles"] = model.vehicleConfig.motorPoles;
+    encodeFloat(vehicle, "gearRatio", model.vehicleConfig.gearRatio);
+    encodeFloat(vehicle, "tireDiameterMm", model.vehicleConfig.tireDiameterMm);
+    encodeFloat(vehicle, "scaleFactor", model.vehicleConfig.scaleFactor);
+    vehicle["rpmType"] = model.vehicleConfig.rpmType;
+    auto travel = object.createNestedObject("timeTravel");
+    travel["enabled"] = bool(model.timeTravel.enabled);
+    travel["channel"] = model.timeTravel.channel;
+}
 bool remoteEncodeModel(JsonObject o,const RemoteSettingsSnapshot &s,RemoteTransferError &e) {
 #ifndef HAVE_CRSF
     return remoteTransferFail(e,RemoteTransferCode::UnsupportedBehavior,"model","CRSF is not compiled");
@@ -115,22 +156,11 @@ bool remoteEncodeModel(JsonObject o,const RemoteSettingsSnapshot &s,RemoteTransf
     auto provenance=o.createNestedObject("source"); provenance["firmware"]="Remote"; provenance["mapping"]="Remote physical inputs";
     auto inputs=o.createNestedArray("inputs");
     for(unsigned i=0;i<4;i++) {auto a=inputs.createNestedObject(); const auto &p=s.crsf.axisProfile[i]; a["reverse"]=(bool)p.reverse; a["deadband"]=p.deadband; a["expo"]=p.expo; auto limits=a.createNestedArray("limits"); limits.add(s.crsf.outputLimits[i].minimumUs); limits.add(s.crsf.outputLimits[i].maximumUs);}
-    auto routing=o.createNestedObject("routing"); auto g=routing.createNestedArray("gimbals");
-    g.add(s.crsf.gimbalRouting.aileronChannel); g.add(s.crsf.gimbalRouting.elevatorChannel); g.add(s.crsf.gimbalRouting.rudderChannel); g.add(s.crsf.gimbalRouting.throttleChannel);
-    auto sw=routing.createNestedArray("switches"); for(uint8_t c:s.crsf.switchRouting.channels) sw.add(c);
-    o.createNestedObject("tolerances")["throttleIdleDeadband"]=s.crsf.throttleIdleDeadband;
-    auto actions=o.createNestedArray("localActions"); for(uint8_t c:s.crsf.localActions) actions.add(c);
-    auto logic=o.createNestedArray("logical"); for(const auto &r:s.crsf.logic.rules) {auto a=logic.createNestedArray(); a.add(r.function); a.add(r.sourceA); a.add(r.sourceB); a.add(r.threshold); a.add(r.andSwitch);}
-    auto mixes=o.createNestedArray("mixes"); for(const auto &r:s.crsf.mixes.lines) {auto a=mixes.createNestedArray(); a.add(r.channel); a.add(r.source); a.add(r.switchSource); a.add(r.weight); a.add(r.offset); a.add(r.multiplex);}
-    auto d=o.createNestedObject("display"); d["source"]=s.crsf.displayConfig.source; d["decimalPlaces"]=s.crsf.displayConfig.decimalPlaces; encodeFloat(d,"multiplier",s.crsf.displayConfig.multiplier); encodeFloat(d,"offset",s.crsf.displayConfig.offset);
-    auto v=o.createNestedObject("vehicle"); v["motorPoles"]=s.crsf.vehicleConfig.motorPoles; encodeFloat(v,"gearRatio",s.crsf.vehicleConfig.gearRatio); encodeFloat(v,"tireDiameterMm",s.crsf.vehicleConfig.tireDiameterMm); encodeFloat(v,"scaleFactor",s.crsf.vehicleConfig.scaleFactor); v["rpmType"]=s.crsf.vehicleConfig.rpmType;
-#ifdef HAVE_CRSF
-    auto tt=o.createNestedObject("timeTravel"); tt["enabled"]=bool(s.crsf.timeTravel.enabled); tt["channel"]=s.crsf.timeTravel.channel;
+    remoteEncodeModelBehavior(o, s.crsf);
     o["speedUnits"]=s.settings.elrsSpdUnit[0]=='1'?"mph":"kmh";
     auto r=o.createNestedObject("radio"); encodeRadio(r,s.radio,false); const uint16_t rates[]={50,100,150,250,500}; r["crsfUpdateHz"]=rates[atoi(s.settings.elrsPktRate)];
     JsonArray required;for(unsigned i=0;i<s.rfChoiceCount;i++) {const auto &choice=s.rfChoices[i];if(!strcmp(choice.role,"power") || !strcmp(choice.role,"telemetry") || !strcmp(choice.role,"dynamic"))continue;
         if(required.isNull())required=r.createNestedArray("requirements");auto p=required.createNestedObject();p["role"]=choice.role;p["label"]=choice.label;p["unit"]=choice.unit;}
-#endif
     return true;
 #endif
 }

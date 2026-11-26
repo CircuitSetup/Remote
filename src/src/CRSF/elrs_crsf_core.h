@@ -220,7 +220,7 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         void pauseModuleConfigSession();
         void noteModuleConfigResponse();
         void handleDeviceInfo(const uint8_t *payload, size_t payloadLen, unsigned long now);
-        void finishParameterChunk(uint8_t fieldId, const uint8_t *data, size_t len, unsigned long now);
+        void finishParameterChunk(const ELRSParameterView &view, unsigned long now);
         void applyDiscoveredParameter(uint8_t fieldId, const char *name, uint8_t type, const char *options, uint8_t currentValue);
         bool moduleSettingValueForTarget(uint8_t targetIndex, const char *options, uint8_t *value) const;
         bool haveAllModuleTargets() const;
@@ -280,7 +280,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         unsigned long _lastGoodAxesAt = 0;
         unsigned long _lastGoodPackAt = 0;
         unsigned long _lastDisplay = 0;
-        unsigned long _lastTelemetry = 0;
         unsigned long _lastLinkStats = 0;
         unsigned long _lastGpsSpeed = 0;
         unsigned long _lastAirspeed = 0;
@@ -297,8 +296,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         int16_t _rawAxes[ELRS_GIMBAL_AXIS_COUNT];
         int16_t _stableAxes[ELRS_GIMBAL_AXIS_COUNT];
         ELRSAxisCalibrationData _axisCal[ELRS_GIMBAL_AXIS_COUNT];
-        ELRSInputAxisProfile _axisProfiles[ELRS_GIMBAL_AXIS_COUNT];
-        ELRSGimbalRouting _inputRouting;
         uint8_t _lastPackStates = 0;
         uint16_t _localInputsInitialized = 0;
         uint16_t _localNeedsRelease = 0;
@@ -337,7 +334,6 @@ class ELRSCrsfCore : private ELRSCrsfTransportSink {
         uint8_t _moduleFieldCount = 0;
         uint16_t _moduleFieldIndex = 0;
         uint8_t _moduleTargetIndex = 0;
-        uint8_t _moduleWriteFieldId = 0;
         uint8_t _moduleProbeRetryCount = 0;
         uint8_t _moduleParameterRetryCount = 0;
         ModuleParameterInfo _moduleTelemetryRatio;

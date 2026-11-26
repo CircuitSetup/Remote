@@ -30,9 +30,9 @@ struct RemoteSettingsSnapshot {
 struct RemoteRestorePreview {
     RemoteTransferKind kind=RemoteTransferKind::ModelProfile;char fileHash[65]={},settingsHash[65]={};
     uint32_t expiresAt=0,settingsGeneration=0,deviceGeneration=0,capabilityFingerprint=0;
-    RemoteCrsfParameters currentSettings,proposedSettings;
-    bool valid=false;ELRSCrsfSettingsBlob currentCrsf={},proposedCrsf={};
-    ELRSRadioPreferences currentRadio,proposedRadio;uint16_t currentCadence=250,proposedCadence=250;
+    RemoteCrsfParameters proposedSettings;
+    bool valid=false;ELRSCrsfSettingsBlob proposedCrsf={};
+    ELRSRadioPreferences proposedRadio;uint16_t currentCadence=250,proposedCadence=250;
 };
 constexpr size_t REMOTE_MODEL_MAX_BYTES=16384,REMOTE_BACKUP_MAX_BYTES=16384,REMOTE_TRANSFER_JSON_CAPACITY=16384;
 const char *remoteTransferCodeName(RemoteTransferCode);
@@ -40,6 +40,7 @@ bool remoteTransferFail(RemoteTransferError &,RemoteTransferCode,const char *,co
 void remoteSha256(const uint8_t *,size_t,char[65]);
 ELRSCrsfSettingsBlob remoteDefaultCrsfSettings();
 bool elrsIsValidCrsfSettingsBlob(const ELRSCrsfSettingsBlob &);
+void remoteEncodeModelBehavior(JsonObject, const ELRSCrsfSettingsBlob &);
 bool remoteEncodeModel(JsonObject,const RemoteSettingsSnapshot &,RemoteTransferError &);
 bool remoteEncodeBackup(JsonObject,const RemoteSettingsSnapshot &,RemoteTransferError &);
 bool remoteDecodeTransfer(JsonVariantConst,RemoteTransferKind,const RemoteSettingsSnapshot &,RemoteSettingsSnapshot &,RemoteTransferError &);

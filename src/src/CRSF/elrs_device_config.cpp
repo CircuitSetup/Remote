@@ -3,6 +3,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+static bool isReceiverModelId(const ELRSParameterView &view)
+{
+    return view.device == 0xEC && view.type == 12 && !view.hidden() &&
+           (!strcmp(view.name(), "Model Id") || !strcmp(view.name(), "Model ID"));
+}
+
 bool elrsIsValidRadioPreferences(const ELRSRadioPreferences &p)
 {
     return p.modelId <= 63 && p.telemetry[0] && p.dynamic[0] && p.maxPower.label[0] &&
@@ -56,8 +62,8 @@ void ELRSDeviceConfig::reset()
     _status = ELRSOperationStatus();
     _haveRadio = _modelIdKnown = false;
     _modelMatchField = 0;
+    memset(_receiverModelFields, 0, sizeof(_receiverModelFields));
     memset(_parents, 0, sizeof(_parents));
-    memset(_parentKnown, 0, sizeof(_parentKnown));
 }
 
 int ELRSDeviceConfig::deviceIndex(uint8_t address) const
@@ -242,7 +248,8 @@ void ELRSDeviceConfig::invalidateDescriptors()
 {
     _generation++;
     for(uint8_t i = 0; i < _deviceCount; i++) _devices[i].generation = _generation;
-    memset(_parentKnown, 0, sizeof(_parentKnown));
+    memset(_receiverModelFields, 0, sizeof(_receiverModelFields));
+    memset(_parents, 0, sizeof(_parents));
     _view.generation = _status.generation = _generation;
 }
 
@@ -382,7 +389,8 @@ bool ELRSDeviceConfig::deviceInfo(const uint8_t *payload, size_t length)
         _haveRadio = false;
         if(next.address == 0xEE) { _modelIdKnown = false; _modelMatchField = 0; }
         for(uint8_t i = 0; i < _deviceCount; i++) _devices[i].generation = _generation;
-        memset(_parentKnown, 0, sizeof(_parentKnown));
+        memset(_receiverModelFields, 0, sizeof(_receiverModelFields));
+        memset(_parents, 0, sizeof(_parents));
         if(busy() && _request != Discover) fail(ELRSDeviceError::Stale);
     }
     next.generation = _generation;
@@ -412,7 +420,7 @@ bool ELRSDeviceConfig::onFrame(uint8_t type, const uint8_t *payload, size_t leng
         return true;
     }
     if(type != 0x2B || !busy() || (_request != Read && _request != Write && _request != SelectModel && _request != Command && _request != AssignReceiver) || length < 5 ||
-       payload[1] != _status.device || payload[2] != _status.field || _queuedMutation ||
+       payload[1] != _status.device || payload[2] != _status.field || _phase == 1 || _queuedMutation ||
        (_request == Command && _phase == 3 ? _lastSentType != 0x2D : _lastSentType != 0x2C) || _lastSentChunk != _chunk) return false;
     if(_chunkActive && payload[3] != (uint8_t)(_chunksRemain - 1)) return false;
     if(_queued) {
@@ -478,7 +486,7 @@ bool ELRSDeviceConfig::onFrame(uint8_t type, const uint8_t *payload, size_t leng
         const long receiverId = _request == AssignReceiver ? strtol(_view.info(), &end, 10) : 0;
         if(_phase != 2 || (_request == Write && _view.value.raw != _desired.raw) ||
            (_request == SelectModel && (!readModelId(selected) || selected != _desired.raw)) ||
-           (_request == AssignReceiver && (_view.type != 12 || !_view.info()[0] || !end || *end || receiverId != _assignModelId))) {
+           (_request == AssignReceiver && (!isReceiverModelId(_view) || end == _view.info() || *end || receiverId != _assignModelId))) {
             fail(ELRSDeviceError::Rejected); _viewReady = true; return false;
         }
         if(_request == AssignReceiver || refreshesDependents()) invalidateDescriptors();
@@ -518,7 +526,6 @@ bool ELRSDeviceConfig::parseField()
     uint8_t parent = _view.parent;
     for(int depth = 0; parent && depth <= 255; depth++) {
         if(parent == _view.field) return false;
-        if(!(_parentKnown[device][parent / 8] & (1 << (parent % 8)))) break;
         parent = _parents[device][parent];
         if(depth == 255) return false;
     }
@@ -573,7 +580,6 @@ bool ELRSDeviceConfig::parseField()
         if(offset == _view.dataLength) return false;
     }
     _parents[device][_view.field] = _view.parent;
-    _parentKnown[device][_view.field / 8] |= 1 << (_view.field % 8);
     uint32_t hash = 2166136261UL;
     for(size_t i = 0; i < _view.dataLength; i++) hash = (hash ^ _view.data[i]) * 16777619UL;
     _view.value.descriptorHash = hash;
@@ -581,7 +587,9 @@ bool ELRSDeviceConfig::parseField()
         _modelMatchField = _view.field;
         _modelIdKnown = readModelId(_modelId);
     }
-    if(_view.device == 0xEC && _view.type == 12 && (!strcmp(_view.name(), "Model Id") || !strcmp(_view.name(), "Model ID")))
+    if(isReceiverModelId(_view))
         _receiverModelFields[device] = _view.field;
+    else if(_receiverModelFields[device] == _view.field)
+        _receiverModelFields[device] = 0;
     return true;
 }

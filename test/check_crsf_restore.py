@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "test"))
 from check_crsf_adc import HEADERS, compile_and_run  # noqa: E402
+from check_crsf_portal_http import PORTAL, function  # noqa: E402
 
 HEADERS["FS.h"] = r'''
 #pragma once
@@ -137,6 +138,39 @@ static void expectStale(RemoteRestorePreview &p) {
     RemoteTransferError error; const unsigned calls = saveCalls;
     assert(!applyRemoteTransfer(p, error));
     assert(error.code == RemoteTransferCode::StalePreview && saveCalls == calls);
+}
+static RemoteRestorePreview remotePortalPreview;
+static RemoteTransferKind remotePortalUploadKind = RemoteTransferKind::ModelProfile;
+static bool remotePortalUploadOk;
+static unsigned remotePortalUploadFiles;
+static RemoteTransferError remotePortalUploadError;
+static bool remotePortalGate() { return true; }
+static void remotePortalError(const RemoteTransferError &) { assert(false); }
+static void remotePortalError(int, const char *, const char *, const char *) { assert(false); }
+static std::string response;
+static void remotePortalJson(JsonDocument &doc) { serializeJson(doc, response); }
+''' + function(PORTAL, r"static void remotePortalUploadDone\(\)") + r'''
+static void testPreviewShowsModelChanges() {
+    auto original = capture();
+    auto model = original;
+    std::swap(model.crsf.gimbalRouting.aileronChannel, model.crsf.gimbalRouting.elevatorChannel);
+    model.crsf.localActions[0] = 1;
+    model.crsf.displayConfig.offset = 2.5f;
+    model.crsf.vehicleConfig.motorPoles = 8;
+    model.crsf.throttleIdleDeadband = 7;
+    model.crsf.timeTravel = {1, 16};
+    putFile(remoteUploadStorage(), remoteUploadPath(), encodeModel(model, 35, 12));
+    remotePortalUploadOk = true;
+    remotePortalUploadDone();
+    DynamicJsonDocument doc(REMOTE_TRANSFER_JSON_CAPACITY);
+    assert(!deserializeJson(doc, response));
+    assert(doc["current"]["routing"]["gimbals"][0] == original.crsf.gimbalRouting.aileronChannel);
+    auto p = doc["proposed"];
+    assert(p["routing"]["gimbals"][0] == model.crsf.gimbalRouting.aileronChannel);
+    assert(p["routing"]["switches"].size() == 12 && p["localActions"][0] == 1);
+    assert(p["display"]["offset"] == 2.5f && p["vehicle"]["motorPoles"] == 8);
+    assert(p["tolerances"]["throttleIdleDeadband"] == 7 && p["timeTravel"]["channel"] == 16);
+    assert(p["logical"].size() == 16 && p["mixes"].size() == 16);
 }
 static void testFileValidation() {
     auto target = capture(); const std::string valid = encodeModel(target, 35, 12);
@@ -281,7 +315,7 @@ int main() {
     livePortal.radio.modelId = 2; strcpy(livePortal.radio.telemetry, "Std");
     strcpy(livePortal.radio.dynamic, "Off"); strcpy(livePortal.radio.maxPower.label, "100mW");
     strcpy(livePortal.radio.maxPower.unit, "mW");
-    testFileValidation(); testImportsCannotLeaveCrsfDisabled(); testPreviewBindingAndApply(); testRadioReviewRequiresActiveCrsfAndReadback(); testCapabilityBindingAndStorage();
+    testPreviewShowsModelChanges(); testFileValidation(); testImportsCannotLeaveCrsfDisabled(); testPreviewBindingAndApply(); testRadioReviewRequiresActiveCrsfAndReadback(); testCapabilityBindingAndStorage();
     puts("CRSF model bounds, preview binding/expiry, upload selection and CRSF-only review pass");
 }
 '''

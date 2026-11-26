@@ -168,8 +168,8 @@ bool validateRemoteTransfer(File &file,RemoteTransferKind kind,const RemoteSetti
     if(!fileHash(file,preview.fileHash))return remoteTransferFail(e,RemoteTransferCode::InvalidValue,"file","File could not be read completely");
     if(!decodeFile(file,kind,target,*proposed,e) || !settingsHash(target,preview.settingsHash,e))return false;
     preview.kind=kind;preview.settingsGeneration=target.generation;preview.deviceGeneration=target.deviceGeneration;preview.capabilityFingerprint=target.capabilityFingerprint;preview.expiresAt=millis()+300000U;
-    preview.currentSettings=target.settings;preview.proposedSettings=proposed->settings;
-    preview.currentCrsf=target.crsf;preview.proposedCrsf=proposed->crsf;preview.currentRadio=target.radio;preview.proposedRadio=proposed->radio;
+    preview.proposedSettings=proposed->settings;
+    preview.proposedCrsf=proposed->crsf;preview.proposedRadio=proposed->radio;
     const uint16_t rates[]={50,100,150,250,500};preview.currentCadence=rates[atoi(target.settings.elrsPktRate)];preview.proposedCadence=rates[atoi(proposed->settings.elrsPktRate)];preview.valid=true;return true;
 }
 bool applyRemoteTransfer(const RemoteRestorePreview &preview,RemoteTransferError &e) {
