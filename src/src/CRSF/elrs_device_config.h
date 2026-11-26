@@ -96,7 +96,7 @@ class ELRSDeviceConfig {
     static int32_t integer(const uint8_t *data, uint8_t width, bool sign);
     ELRSCrsfTransport *_transport = NULL;
     ELRSDeviceInfo _devices[4];
-    uint8_t _parents[4][256] = {}, _parentKnown[4][32] = {};
+    uint8_t _parents[4][256] = {};
     uint8_t _deviceCount = 0, _chunk = 0, _chunksRemain = 0, _retries = 0;
     uint32_t _generation = 1, _queuedCount = 0, _startedAt = 0;
     bool _queued = false, _chunkActive = false, _viewReady = false, _hasStarted = false;

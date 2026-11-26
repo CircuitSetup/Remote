@@ -223,11 +223,11 @@ static void remotePortalUploadDone() {
     doc["calibration"]=remotePortalUploadKind==RemoteTransferKind::DeviceBackup?"Restore the file's CRSF calibration":"Keep this Remote's calibration";
     doc["restart"]=true;doc["radio"]="Imported radio preferences require separate readback and review";
     if(current->newBoard) {
-        const ELRSCrsfSettingsBlob *models[]={&remotePortalPreview.currentCrsf,&remotePortalPreview.proposedCrsf};
-        const ELRSRadioPreferences *radios[]={&remotePortalPreview.currentRadio,&remotePortalPreview.proposedRadio};
+        const ELRSCrsfSettingsBlob *models[]={&current->crsf,&remotePortalPreview.proposedCrsf};
+        const ELRSRadioPreferences *radios[]={&current->radio,&remotePortalPreview.proposedRadio};
         for(unsigned side=0;side<2;side++){auto x=doc.createNestedObject(side?"proposed":"current");const auto &m=*models[side];auto inputs=x.createNestedArray("inputs");for(unsigned i=0;i<4;i++){auto a=inputs.createNestedArray();a.add((bool)m.axisProfile[i].reverse);a.add(m.axisProfile[i].deadband);a.add(m.axisProfile[i].expo);a.add(m.outputLimits[i].minimumUs);a.add(m.outputLimits[i].maximumUs);}
             remoteEncodeModelBehavior(x, m);
-            const auto &prefs=side?remotePortalPreview.proposedSettings:remotePortalPreview.currentSettings;
+            const auto &prefs=side?remotePortalPreview.proposedSettings:current->settings;
             auto calibration=x.createNestedArray("calibration");for(const auto &p:m.axisProfile){auto a=calibration.createNestedArray();a.add(p.minimum);a.add(p.center);a.add(p.maximum);}
             x["inputFiltering"]=m.adcHysteresis;x["mode"]=atoi(prefs.opMode);x["connectWiFi"]=prefs.crsfap[0]!='0';x["speedUnits"]=prefs.elrsSpdUnit[0]=='0'?"kmh":"mph";
             x["CRSF channel cadence"]=side?remotePortalPreview.proposedCadence:remotePortalPreview.currentCadence;x["profileId"]=radios[side]->modelId;x["telemetry"]=radios[side]->telemetry;x["power"]=radios[side]->maxPower.label;x["powerUnit"]=radios[side]->maxPower.unit;x["dynamic"]=radios[side]->dynamic;

@@ -122,21 +122,14 @@ void remoteEncodeModelBehavior(JsonObject object, const ELRSCrsfSettingsBlob &mo
     auto logic = object.createNestedArray("logical");
     for(const auto &rule : model.logic.rules) {
         auto row = logic.createNestedArray();
-        row.add(rule.function);
-        row.add(rule.sourceA);
-        row.add(rule.sourceB);
-        row.add(rule.threshold);
-        row.add(rule.andSwitch);
+        const int16_t values[] = {rule.function, rule.sourceA, rule.sourceB, rule.threshold, rule.andSwitch};
+        for(int16_t value : values) row.add(value);
     }
     auto mixes = object.createNestedArray("mixes");
     for(const auto &line : model.mixes.lines) {
         auto row = mixes.createNestedArray();
-        row.add(line.channel);
-        row.add(line.source);
-        row.add(line.switchSource);
-        row.add(line.weight);
-        row.add(line.offset);
-        row.add(line.multiplex);
+        const int16_t values[] = {line.channel, line.source, line.switchSource, line.weight, line.offset, line.multiplex};
+        for(int16_t value : values) row.add(value);
     }
 
     auto display = object.createNestedObject("display");

@@ -3452,7 +3452,9 @@ static void test_serial_mode_refreshes_sibling_outputs()
     TEST_ASSERT_FALSE(device.read(0xEC, 2, expected.generation, 4));
 }
 
-static void test_assign_rx_id_does_not_write_info_field()
+enum class ReceiverReadback { Verified, InvalidField, InvalidValue };
+
+static void checkReceiverAssignment(const char *name, uint8_t type, const char *value, ReceiverReadback expected)
 {
     FakeHost host;
     ELRSCrsfTransport transport;
@@ -3461,12 +3463,11 @@ static void test_assign_rx_id_does_not_write_info_field()
     auto rx = makeDeviceInfoFrame("Connected RX", 3); rx[4] = 0xEC; feedDevice(device, rx, 502);
     TEST_ASSERT_TRUE(device.read(0xEE, 1, device.deviceAt(0)->generation, 2));
     deviceStep(device, transport, host, 600);
-    auto model = modelMatchEntry(7);
     auto modelData = makeTextSelectionEntryData("Model Match", "Off;On", 1, 1);
     modelData.pop_back();
     const char *unit = " (ID: 7)";
     modelData.insert(modelData.end(), unit, unit + strlen(unit) + 1);
-    model = makeParameterChunkFrame(1, 0, modelData);
+    const auto model = makeParameterChunkFrame(1, 0, modelData);
     feedDevice(device, model, 601);
     TEST_ASSERT_TRUE(device.read(0xEC, 2, device.deviceAt(1)->generation, 3));
     deviceStep(device, transport, host, 700);
@@ -3483,10 +3484,66 @@ static void test_assign_rx_id_does_not_write_info_field()
     deviceStep(device, transport, host, 1000, maintenanceSafety());
     TEST_ASSERT_EQUAL_HEX8(0xEC, host.writes.back()[3]);
     TEST_ASSERT_EQUAL_UINT8(2, host.writes.back()[5]);
-    info[info.size() - 3] = '7';
+    std::vector<uint8_t> data = {0, type};
+    data.insert(data.end(), name, name + strlen(name) + 1);
+    data.insert(data.end(), value, value + strlen(value) + 1);
+    info = makeParameterChunkFrame(2, 0, data);
+    info[4] = 0xEC;
     feedDevice(device, info, 1001);
-    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    if(expected == ReceiverReadback::Verified) {
+        TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    } else {
+        TEST_ASSERT_EQUAL((int)ELRSOperationState::Failed, (int)device.status().state);
+        TEST_ASSERT_EQUAL((int)ELRSDeviceError::Rejected, (int)device.status().error);
+        TEST_ASSERT_EQUAL(expected == ReceiverReadback::InvalidValue,
+                          device.assignReceiver(0xEC, 7, device.deviceAt(1)->generation, 5));
+    }
     for(const auto &frame : host.writes) if(frame[2] == 0x2D && frame[5]) TEST_ASSERT_EQUAL_HEX8(0xEE, frame[3]);
+}
+
+static void test_assign_rx_id_does_not_write_info_field()
+{
+    checkReceiverAssignment("Model Id", 12, "7", ReceiverReadback::Verified);
+    checkReceiverAssignment("Model ID", 12, "7", ReceiverReadback::Verified);
+}
+
+static void test_receiver_assignment_rejects_repurposed_field()
+{
+    checkReceiverAssignment("Status", 12, "7", ReceiverReadback::InvalidField);
+}
+
+static void test_receiver_assignment_rejects_hidden_or_wrong_type()
+{
+    checkReceiverAssignment("Model Id", 12 | 0x80, "7", ReceiverReadback::InvalidField);
+    checkReceiverAssignment("Model Id", 10, "7", ReceiverReadback::InvalidField);
+}
+
+static void test_receiver_assignment_requires_matching_numeric_id()
+{
+    for(const char *value : {"3", "", "7x"})
+        checkReceiverAssignment("Model Id", 12, value, ReceiverReadback::InvalidValue);
+}
+
+static void test_parameter_parents_detect_cycles_and_reset_on_replacement()
+{
+    FakeHost host;
+    ELRSCrsfTransport transport;
+    ELRSDeviceConfig device;
+    discoverDevice(device, transport, host);
+    auto readFolder = [&](uint8_t field, uint8_t parent, uint32_t now) {
+        TEST_ASSERT_TRUE(device.read(0xEE, field, device.deviceAt(0)->generation, now));
+        deviceStep(device, transport, host, now);
+        feedDevice(device, makeParameterChunkFrame(field, 0, {parent, 11, 'F', 0, 0xff}), now + 1);
+    };
+    readFolder(1, 2, 600);  // The parent has not been read yet.
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    readFolder(2, 1, 700);
+    TEST_ASSERT_EQUAL((int)ELRSDeviceError::Malformed, (int)device.status().error);
+    readFolder(2, 0, 800);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
+    TEST_ASSERT_TRUE(feedDevice(device, makeDeviceInfoFrame("Replacement TX", 3), 900));
+    readFolder(2, 1, 1000);
+    TEST_ASSERT_EQUAL((int)ELRSOperationState::Complete, (int)device.status().state);
 }
 
 static void test_rx_wifi_requires_connected_receiver()
@@ -6462,6 +6519,10 @@ int main(int argc, char **argv)
     RUN_TEST(test_missing_backpack_command_never_guesses_a_field);
     RUN_TEST(test_serial_mode_refreshes_sibling_outputs);
     RUN_TEST(test_assign_rx_id_does_not_write_info_field);
+    RUN_TEST(test_receiver_assignment_rejects_repurposed_field);
+    RUN_TEST(test_receiver_assignment_rejects_hidden_or_wrong_type);
+    RUN_TEST(test_receiver_assignment_requires_matching_numeric_id);
+    RUN_TEST(test_parameter_parents_detect_cycles_and_reset_on_replacement);
     RUN_TEST(test_rx_wifi_requires_connected_receiver);
     RUN_TEST(test_receiver_model_field_must_be_rediscovered);
     RUN_TEST(test_pwm_capture_sweeps_each_pin_and_restores_cursor);
